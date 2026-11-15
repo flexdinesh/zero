@@ -67,6 +67,14 @@ ssh -L 7971:localhost:7971 <host>
 zero connect --host localhost 10.0.0.5:7971/<credential>
 ```
 
+### Versions
+
+`zero connect`, `zero attach`, and the desktop app compare your build with the
+server's. A different release warns and says which side to update: `zero update`
+on the server, then `zero <path> --remote` again, or `zero update` here. Builds
+from source compare by commit. A server that speaks another protocol is refused
+until both run the same release.
+
 ## Security
 
 The string is a password: anyone who has it and can reach the port can read the

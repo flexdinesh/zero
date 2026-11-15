@@ -55,7 +55,10 @@ type host struct {
 	windows       map[string]*mygo.Window
 	notifiers     map[string]*notifier.Notifier
 	noticeTargets map[string]string
-	noticesDenied atomic.Bool
+	// versionNoticed holds the connection and server build pairs already told
+	// about, for the app's lifetime (decision 0148).
+	versionNoticed map[string]bool
+	noticesDenied  atomic.Bool
 	// opening serializes looking for a window and creating it, so two links to
 	// one connection cannot open two windows. It is separate from mu because
 	// creating a window waits for the main thread, where OnClosed takes mu.
@@ -77,10 +80,11 @@ func main() {
 	resources, _ := mygo.App.Path(mygo.PathResources)
 	binary, binaryErr := connect.Locate(mygo.App.IsPackaged(), resources, os.Getenv, exec.LookPath)
 	app := &host{
-		daemon:        connect.NewDaemon(binary, binaryErr, connect.DevFlags(os.Getenv), connect.Exec),
-		windows:       map[string]*mygo.Window{},
-		notifiers:     map[string]*notifier.Notifier{},
-		noticeTargets: map[string]string{},
+		daemon:         connect.NewDaemon(binary, binaryErr, connect.DevFlags(os.Getenv), connect.Exec),
+		windows:        map[string]*mygo.Window{},
+		notifiers:      map[string]*notifier.Notifier{},
+		noticeTargets:  map[string]string{},
+		versionNoticed: map[string]bool{},
 	}
 	app.notify = app.showWarning
 	storePath, err := connection.DefaultStorePath()
@@ -90,6 +94,11 @@ func main() {
 	app.store = connection.NewStore(storePath)
 	// Sandbox connections run the same zero the daemon does (decision 0128).
 	app.connections = proxy.NewConnections(app.daemon, app.store, binary)
+	// The bundled zero is this release's, so the app's version stands for it.
+	app.connections.CheckVersions(proxy.VersionCheck{
+		Local: contract.RemoteInfo{Protocol: connect.Protocol, Version: version, Commit: commit},
+		Warn:  app.versionNotice,
+	})
 	app.looks = appearance.Open(looksPath())
 	// The app starts in the appearance the local window had last, before
 	// any page reports one.

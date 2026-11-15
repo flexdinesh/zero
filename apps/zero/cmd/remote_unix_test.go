@@ -450,7 +450,7 @@ func TestConnectHostOverrideReplacesTheOffered(t *testing.T) {
 	var probed []string
 	deps.probe = func(_ context.Context, endpoint connection.TLS) (connection.TLS, contract.RemoteInfo, error) {
 		probed = endpoint.Hosts
-		return endpoint, contract.RemoteInfo{Name: "box", Version: "1"}, nil
+		return endpoint, contract.RemoteInfo{Protocol: daemon.ProtocolVersion, Name: "box", Version: "1"}, nil
 	}
 	if err := runConnect(context.Background(), connectOptions{text: validConnectText(t), host: "localhost", noOpen: true}, io.Discard, io.Discard, deps); err != nil {
 		t.Fatal(err)
@@ -468,7 +468,7 @@ func TestConnectWithoutTheAppOffersTheBrowser(t *testing.T) {
 			fake, deps := newConnectFake(t)
 			arrange(fake)
 			deps.probe = func(_ context.Context, endpoint connection.TLS) (connection.TLS, contract.RemoteInfo, error) {
-				return endpoint, contract.RemoteInfo{Name: "box", Version: "1"}, nil
+				return endpoint, contract.RemoteInfo{Protocol: daemon.ProtocolVersion, Name: "box", Version: "1"}, nil
 			}
 			var stdout, stderr bytes.Buffer
 			if err := runConnect(context.Background(), connectOptions{text: validConnectText(t)}, &stdout, &stderr, deps); err != nil {

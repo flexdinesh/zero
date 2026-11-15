@@ -137,6 +137,9 @@ func attachInDesktop(ctx context.Context, opts attachOptions, target sandbox.Tar
 	if err != nil {
 		return err
 	}
+	if err := checkServerVersion(info, opts.cliName, stderr); err != nil {
+		return err
+	}
 	ref, engine, err := target.Environment.Identity(ctx)
 	if err != nil {
 		return err
@@ -204,6 +207,9 @@ func attachInBrowser(ctx context.Context, opts attachOptions, target sandbox.Tar
 	defer func() { _ = transport.Close() }()
 	info, err := transport.Connect(ctx)
 	if err != nil {
+		return err
+	}
+	if err := checkServerVersion(info, opts.cliName, stderr); err != nil {
 		return err
 	}
 	proxy, err := attachProxy(endpoint.BaseURL(), transport)
@@ -327,7 +333,7 @@ func serveStdio(ctx context.Context, dir string, wire io.ReadWriteCloser) error 
 	if err != nil {
 		name = "zero"
 	}
-	info := contract.RemoteInfo{Protocol: daemon.ProtocolVersion, Version: version.Number(), Name: name}
+	info := contract.RemoteInfo{Protocol: daemon.ProtocolVersion, Version: version.Number(), Name: name, Commit: version.Commit}
 	return stdio.Serve(ctx, wire, rt.Handler(), info)
 }
 

@@ -12,6 +12,7 @@ import (
 	"github.com/flexdinesh/zero/apps/desktop/internal/connect"
 	"github.com/flexdinesh/zero/apps/desktop/internal/notifier"
 	"github.com/flexdinesh/zero/apps/desktop/internal/proxy"
+	"github.com/flexdinesh/zero/pkg/contract"
 )
 
 // These reach the OS; end-to-end builds, which have no notification service,
@@ -97,4 +98,19 @@ func (h *host) noticeClicked(id string) {
 		return
 	}
 	go h.load(target)
+}
+
+// versionNotice tells, once per connection and server build, that a server runs
+// another zero than this app (decision 0148). It shows whatever the page's
+// notification settings say: those choose project notices only.
+func (h *host) versionNotice(connectionHost, label string, server contract.RemoteInfo, warning string) {
+	key := connectionHost + "\x00" + server.Version + "\x00" + server.Commit
+	h.mu.Lock()
+	seen := h.versionNoticed[key]
+	h.versionNoticed[key] = true
+	h.mu.Unlock()
+	if seen {
+		return
+	}
+	h.showNotice(notifier.Notice{ID: connectionHost + "/version", Title: label + " runs another zero", Body: warning, Route: "/"})
 }
