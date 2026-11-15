@@ -239,8 +239,11 @@ func TestRunSelectsFreePortAndStopsWithContext(t *testing.T) {
 	}
 	localPort := ""
 	for _, line := range strings.Split(stdout.String(), "\n") {
-		if strings.HasPrefix(line, "  web:      http://localhost:") {
-			localPort = strings.TrimSuffix(strings.TrimPrefix(line, "  web:      http://localhost:"), "/")
+		// The URL opens the served root (decision 0153).
+		if address, ok := strings.CutPrefix(line, "  web:      http://localhost:"); ok {
+			if port, query, found := strings.Cut(address, "/?"); found && query == (url.Values{"project": {root}}).Encode() {
+				localPort = port
+			}
 		}
 	}
 	port, err := strconv.Atoi(localPort)
@@ -384,8 +387,9 @@ func TestEphemeralServersStayIndependent(t *testing.T) {
 			defer reader.Close()
 			scanner := bufio.NewScanner(reader)
 			for scanner.Scan() {
-				if url, ok := strings.CutPrefix(scanner.Text(), "  web:      "); ok {
-					urls <- url
+				if link, ok := strings.CutPrefix(scanner.Text(), "  web:      "); ok {
+					base, _, _ := strings.Cut(link, "?")
+					urls <- base
 				}
 			}
 		}()

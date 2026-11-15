@@ -498,6 +498,21 @@ project, plus, in a local macOS desktop window, an accent Open Privacy Settings
 link with a 12px arrow-up-right icon; the explorer reads “Can't read this
 folder.”
 
+### Choose a project
+
+A link without a project, while there is more than one to open (decision
+0153), shows a flat page on the document surface instead of the workspace:
+the title band, then a 40rem column with “Choose a project” at the preview h1
+size (600, -0.02em), a secondary “Serving N folders.” line at the preview
+font size, and Welcome's project list (`ProjectList`: the 28px filter field,
+focused, then the picker's 32px rows with worktree expansion and problem
+notes). The project last opened carries an accent “Last opened” mark with a
+12px history icon where the picker shows Current; rows keep the server's
+order. Enter in the filter opens it, or the first match once there is a
+query. Where the server manages roots, a link-variant “Open folder…” with a
+14px folder icon sits under a 1px `border`, opening the picker's Browse. No
+eyebrow, host name, or status bar.
+
 ### Tabs and view mode
 
 Filenames truncate at 12.5rem maximum tab width; titles expose paths. Tabs fill the strip's height without gaps or an active accent rule (decision 0056), in 12px mono with a 1px `border` divider after each (decision 0102). The active tab is a flat, square block that cuts through the strip's hairline and joins the document surface; inactive tabs stay on workspace chrome and alone receive the chrome hover layer. With a precise hovering pointer, inactive close actions appear on hover or focus within the tab; their space stays reserved. Other devices keep all close actions visible, and the active close action is always visible. The strip reveals the whole active tab, including its close action, when it narrows. Keyboard focus retains an inset accent outline. Keyboard focus on the document draws a 2px accent ring around the visible pane, above the sticky gutter (decision 0046). Closing active selects nearest neighbour. Back and Forward (decision 0131) lead the strip as Zed's pane does: two `bar` IconButtons (arrow left and right) on workspace chrome, closed by a tab's 1px divider. A button whose direction has no entry is `aria-disabled` with “No earlier location” or “No later location”; otherwise its tooltip names the destination and key (“Back to tsconfig.json (Ctrl+Alt+-)”, adding “in <project>” for another project). Right-click, a 500 ms hold, or Shift+F10 lists up to 12 destinations, nearest first, on the shared menu (native in the desktop app). Phones hide them. Right-click or Shift+F10 on a tab opens a themed context menu: Close, Close Others, Close to the Right, and Close All; working-tree document tabs add Show File History (and Reveal in File Manager in the desktop app) after a separator (decision 0114). Unavailable actions are disabled. Right-click preserves the active document; dismissal returns focus to the tab, and closing returns focus to a surviving tab or the document pane. The Document view group follows declared capabilities: Markdown and SVG show [Preview][Source]; formattable types (JSON, YAML) show [Source][Format]; everything else shows no toggle. The mode group is an `md` `SegmentedControl` filling the 32px toolbar. Image zoom controls share the same `SegmentedControl`; icon-only items are 28px wide, so SVG view and zoom controls fit at 320px. View labels/defaults come from file-type metadata. Open tabs and the active document are remembered per project in browser storage and restored against the fresh tree; mode is remembered per open tab and resets on reload; URL/history remain authoritative for the document. Preview failures explain the problem and preserve access to Source.

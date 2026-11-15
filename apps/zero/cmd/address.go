@@ -3,6 +3,7 @@ package cmd
 import (
 	"io"
 	"net"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -39,6 +40,15 @@ func loopbackHost(host string) bool {
 // serverURL is the web URL of a server bound to host and port.
 func serverURL(host string, port int) string {
 	return "http://" + net.JoinHostPort(host, strconv.Itoa(port)) + "/"
+}
+
+// projectURL is a server URL that opens project, so the page skips choosing
+// one (decision 0153); an empty project leaves the choice to the page.
+func projectURL(base, project string) string {
+	if project == "" {
+		return base
+	}
+	return base + "?" + url.Values{"project": {project}}.Encode()
 }
 
 // hyperlink wraps link in an OSC 8 hyperlink when tty; the visible text is

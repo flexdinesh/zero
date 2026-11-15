@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"runtime"
 	"strings"
@@ -75,7 +76,8 @@ func newConnectCommand() *cobra.Command {
 // runConnect checks the server answers to the string, saves the connection,
 // and opens it. The link names the connection; the secret stays in the store.
 func runConnect(ctx context.Context, opts connectOptions, stdout, stderr io.Writer, deps connectDeps) error {
-	endpoint, err := connection.Parse(opts.text)
+	invite, err := connection.ParseInvite(opts.text)
+	endpoint := invite.Endpoint
 	if err != nil {
 		return errors.New("not a zero connection string: expected the host:port/credential that `zero <path> --remote` prints\n" + serverCLIHint)
 	}
@@ -107,7 +109,12 @@ func runConnect(ctx context.Context, opts connectOptions, stdout, stderr io.Writ
 		return err
 	}
 
+	// The string's project opens directly; without one the window asks
+	// which to open (decision 0153).
 	target := "zero://" + saved.ID + "/"
+	if invite.Project != "" {
+		target += "?" + url.Values{"project": {invite.Project}}.Encode()
+	}
 	link := hyperlink(target, deps.terminal(stdout) && deps.getenv("TERM") != "dumb")
 	connected := func() {
 		_, _ = fmt.Fprintf(stdout, "connected to %s (zero %s)\ndesktop: %s\n", info.Name, info.Version, link)
@@ -118,7 +125,7 @@ func runConnect(ctx context.Context, opts connectOptions, stdout, stderr io.Writ
 	}
 	unavailable := func(notice string) error {
 		_, _ = fmt.Fprintf(stderr, "%s\n%s", notice, opts.cliName.installHint(deps.goos))
-		web, err := working.WebURL()
+		web, err := connection.Invite{Endpoint: working, Project: invite.Project}.WebURL()
 		if err != nil {
 			return err
 		}

@@ -30,9 +30,9 @@ const tabs = (page: Page) => page.getByRole("tablist", { name: "Open documents" 
 const welcome = (page: Page) => page.getByRole("main")
 const projects = (page: Page) => page.getByRole("region", { name: "Projects" })
 
-test("a first landing opens Welcome with the projects instead of the picker", async ({ page }) => {
+test("a project with nothing to restore opens Welcome with the projects", async ({ page }) => {
   await mockProjects(page)
-  await page.goto("/")
+  await page.goto(`/?project=${rootParam}`)
   await expect(page).toHaveURL(endsWith(`/view?project=${rootParam}&welcome=1`))
   await expect(tabs(page).getByRole("tab", { name: "Welcome" })).toHaveAttribute("aria-selected", "true")
   await expect(welcome(page).getByRole("heading", { name: "Zero", level: 1 })).toBeVisible()

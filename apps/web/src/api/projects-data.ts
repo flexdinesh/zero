@@ -30,47 +30,30 @@ export function removeRoot(root: string, signal?: AbortSignal): Promise<RemovedR
     (failure) => failure.kind === "rejected" ? failure.error : `Couldn't stop serving the folder: ${failureReason(failure)}.`)
 }
 
-export interface Landing {
-  project: string
-  // listed is false for a folder discovery does not vouch for; check it exists.
-  listed: boolean
-  // pick opens the picker: nothing is remembered, there is a choice, and
-  // Welcome, which lists the projects, is off (decision 0052).
-  pick: boolean
-  // fallback is the first served root, opened when project is gone.
-  fallback: string
-}
+// Landing is what a URL without a project shows (decision 0153): the only
+// project there is, or the choice among them.
+export type Landing =
+  | { kind: "open"; project: string }
+  | { kind: "choose" }
 
 // defaultProject is the first served root, always listed as a project.
 export function defaultProject(projects: ProjectsResponse): string {
   return projects.roots[0]?.path ?? ""
 }
 
-// landingProject picks the project for a URL without one: the last project
-// remembered for this session, or the first root.
-export function landingProject(projects: ProjectsResponse, memory: WorkspaceMemory, welcome: boolean): Landing {
-  const fallback = defaultProject(projects)
+// landing opens the one available project and otherwise asks: a link that
+// names no project never opens one the user did not choose.
+export function landing(projects: ProjectsResponse): Landing {
+  const available = projects.projects.filter((project) => project.available)
+  const only = available.length === 1 ? available[0] : undefined
+  return only ? { kind: "open", project: only.id } : { kind: "choose" }
+}
+
+// lastOpened is the project last opened in this session while a served root
+// still holds it, or "" (decision 0153).
+export function lastOpened(projects: ProjectsResponse, memory: WorkspaceMemory): string {
   const last = lastProject(memory, projects.sessionKey)
-  if (!last) {
-    const choices = projects.projects.filter((project) => project.available).length
-    return { project: fallback, listed: true, pick: !welcome && choices > 1, fallback }
-  }
+  if (!last) return ""
   const listed = projects.projects.some((project) => project.available && project.id === last)
-  // A folder no served root holds any more (its root stopped being served)
-  // falls back at once.
-  if (!listed && !projects.roots.some((root) => within(last, root.path))) return { project: fallback, listed: true, pick: false, fallback }
-  return { project: last, listed, pick: false, fallback }
-}
-
-let landingPick = false
-
-// requestLandingPick asks the next mounted picker to open once.
-export function requestLandingPick() {
-  landingPick = true
-}
-
-export function takeLandingPick(): boolean {
-  const pick = landingPick
-  landingPick = false
-  return pick
+  return listed || projects.roots.some((root) => within(last, root.path)) ? last : ""
 }

@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 
 import type { ProjectsResponse } from "@zero/contracts"
-import { listsProjects, projectLines, startEntries, welcomeSections, type ProjectFacts } from "./welcome-model.ts"
+import { listsProjects, projectLines, startEntries, type ProjectFacts } from "./welcome-model.ts"
 
 const response: ProjectsResponse = {
   sessionKey: "/work",
@@ -39,23 +39,4 @@ test("projects list only when there is a choice", () => {
   assert.equal(listsProjects(response), true)
   assert.equal(listsProjects({ ...response, projects: response.projects.slice(0, 1) }), false)
   assert.equal(listsProjects({ ...response, projects: response.projects.map((project, index) => ({ ...project, available: index === 0 })) }), false)
-})
-
-test("sections group repositories, carry several worktrees for expansion, and drop Browse", () => {
-  const sections = welcomeSections(response, [], "/work/app-fix", "")
-  const rows = sections.flatMap((section) => section.rows)
-  assert.equal(rows.length, 3)
-  assert.deepEqual(new Set(rows.map((entry) => entry.row.name)), new Set(["work", "app", "notes"]))
-  const app = rows.find((entry) => entry.row.name === "app")
-  assert.equal(app?.row.current, true)
-  assert.equal(app?.worktrees.length, 2)
-  assert.equal(app?.worktrees.find((member) => member.name === "main")?.current, false)
-  assert.equal(app?.worktrees.find((member) => member.name === "fix")?.current, true)
-  assert.deepEqual(rows.find((entry) => entry.row.name === "notes")?.worktrees, [])
-})
-
-test("a query flattens projects into ranked matches without expansion", () => {
-  const sections = welcomeSections(response, [], "/work", "fix")
-  assert.deepEqual(sections.map((section) => section.rows.map((entry) => [entry.row.name, entry.worktrees.length])), [[["fix", 0]]])
-  assert.deepEqual(welcomeSections(response, [], "/work", "zzz"), [])
 })

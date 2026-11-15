@@ -10,6 +10,7 @@ import {
   FolderSearchIcon,
   GitBranchIcon,
   GitForkIcon,
+  HistoryIcon,
   XIcon,
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
@@ -42,7 +43,7 @@ import {
   type PickerSection,
 } from "./project-picker.ts"
 import type { DirectoriesResponse, ProjectsResponse } from "@zero/contracts"
-import { fetchDirectories, fetchProjects, openRoot, removeRoot, takeLandingPick } from "../../api/projects-data.ts"
+import { fetchDirectories, fetchProjects, openRoot, removeRoot } from "../../api/projects-data.ts"
 import { useDelayedFlag } from "../../lib/use-delayed-flag.ts"
 import { forgetProject, readMemory, rememberedProjects, updateMemory } from "../../workspace/workspace-memory.ts"
 
@@ -174,7 +175,6 @@ export function ProjectPicker({ project, registerOpen, onOpen }: ProjectPickerPr
       show()
     }
     document.addEventListener("keydown", shortcut)
-    if (takeLandingPick()) show()
     return () => {
       registerOpen(null)
       document.removeEventListener("keydown", shortcut)
@@ -555,7 +555,8 @@ function OptionPath({ path, title = path }: { path: string; title?: string }) {
   return <span className="project-option-path project-option-path-tail" title={title}><span dir="ltr">{path}</span></span>
 }
 
-export function OptionText({ row }: { row: PickerRow }) {
+// last marks the project last opened when choosing one (decision 0153).
+export function OptionText({ row, last = false }: { row: PickerRow; last?: boolean }) {
   switch (row.kind) {
     case "browse":
       return <>
@@ -588,6 +589,7 @@ export function OptionText({ row }: { row: PickerRow }) {
         {row.disabled && <span className={row.problem ? "project-option-meta project-option-problem" : "project-option-meta"} title={row.problem || undefined}>{row.note}</span>}
         {row.worktrees > 1 && <span className="project-option-meta">{row.worktrees} worktrees</span>}
         {row.current && <span className="project-option-current"><CheckIcon aria-hidden="true" />Current</span>}
+        {last && !row.current && <span className="project-option-current"><HistoryIcon aria-hidden="true" />Last opened</span>}
       </>
   }
 }

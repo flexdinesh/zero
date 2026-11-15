@@ -54,6 +54,8 @@ test("the browser link signs in once, and the server counts the page as a UI", a
     const cookies = await context.cookies()
     expect(cookies.map((cookie) => [cookie.name, cookie.httpOnly, cookie.secure, cookie.sameSite])).toEqual([["zero_remote", true, true, "Strict"]])
     expect(await signedIn.evaluate(() => document.cookie)).toBe("")
+    // The link opens the project --remote started with (decision 0153).
+    await expect.poll(() => new URL(signedIn.url()).searchParams.get("project")).toBe(project)
 
     await signedIn.goto(`${signIn.origin}/view?${new URLSearchParams({ project, path: "guide.md" }).toString()}`)
     await expect(signedIn.getByRole("textbox", { name: "Markdown source" })).toContainText("# Remote guide")

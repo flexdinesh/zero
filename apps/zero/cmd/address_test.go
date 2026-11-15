@@ -10,6 +10,18 @@ func TestLoopbackHost(t *testing.T) {
 	}
 }
 
+// Every URL the CLI opens names its project, so the page skips choosing one
+// (decision 0153).
+func TestProjectURLNamesTheProject(t *testing.T) {
+	base := serverURL("127.0.0.1", 7971)
+	if got, want := projectURL(base, "/home/dee/my project"), "http://127.0.0.1:7971/?project=%2Fhome%2Fdee%2Fmy+project"; got != want {
+		t.Errorf("projectURL() = %q, want %q", got, want)
+	}
+	if got := projectURL(base, ""); got != base {
+		t.Errorf("projectURL(no project) = %q, want %q", got, base)
+	}
+}
+
 func TestHyperlinkFramesOnlyTerminals(t *testing.T) {
 	const link = "zero://r-0123456789ab/"
 	if got := hyperlink(link, false); got != link {

@@ -32,8 +32,9 @@ zero ~/code/foo --remote
   serving directory:  /home/dee/code/foo
 
   on your computer, run:
-  zero connect 10.0.0.5:7971/<credential>
+  zero connect '10.0.0.5:7971/<credential>/home/dee/code/foo'
   copied to your clipboard (if your terminal allows OSC 52).
+  if Zero is installed under another command name on your computer, substitute that name for zero.
 
   stops 10 min after this if nothing connects, and 5 min after the last UI closes. `zero remote stop` stops it now.
 ```
@@ -41,7 +42,8 @@ zero ~/code/foo --remote
 It returns to your shell and keeps serving in the background, so you can close
 the SSH session. It binds every interface unless `--host` names one, on the
 first free port from 7971 to 7980 unless `--port` sets it. It serves every
-directory Zero already serves on that machine, and prints them all.
+directory Zero already serves on that machine, and prints them all. The string
+ends with the folder you gave it, so connecting opens that project.
 
 In a terminal, it also copies the `zero connect` command to your computer's
 clipboard with OSC 52, which reaches it through SSH. Most modern terminals
@@ -57,13 +59,15 @@ without a display) prints a reminder and exits. It never opens a port by itself.
 ## Connect from your computer
 
 ```sh
-zero connect 10.0.0.5:7971/<credential>
+zero connect '10.0.0.5:7971/<credential>/home/dee/code/foo'
 ```
 
 The desktop app opens that machine in its own window, with its own tabs and
-settings. Connect to several machines and each gets a window. Zero saves the
-connection, so `zero://<id>/` links reopen it. `--no-open` saves it and prints
-the link instead.
+settings, on the string's project. Connect to several machines and each gets a
+window. Zero saves the connection, so `zero://<id>/` links reopen it. `--no-open`
+saves it and prints the link instead. A string without a folder, as
+`zero remote status` prints, opens on **Choose a project**: the served projects,
+with the one you last opened there marked (Enter opens it).
 
 The printed addresses are a guess at what your computer can reach: the address
 your SSH session reached, then Tailscale addresses (they work from any network),
@@ -108,7 +112,7 @@ The server stops 10 minutes after starting if no window or browser connects, and
 5 minutes after the last one closes. A hidden or minimized window still counts.
 
 ```sh
-zero remote status    # state, clients, and the string again
+zero remote status    # state, clients, and the string again (without a folder)
 zero remote stop      # stop now
 ```
 

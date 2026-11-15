@@ -102,7 +102,8 @@ func writeRemoteStartup(output io.Writer, info remoteStartup) {
 			_, _ = fmt.Fprint(output, "  ")
 			_, _ = label.Fprintln(output, "copied to your clipboard (if your terminal allows OSC 52).")
 		}
-		writeConnectNameHint(output)
+		_, _ = fmt.Fprint(output, "  ")
+		_, _ = label.Fprintln(output, connectNameHint)
 	}
 	if info.Web != "" {
 		_, _ = fmt.Fprintln(output)

@@ -3,6 +3,7 @@ import {
   createRoute,
   createRouter,
   redirect,
+  useRouterState,
   useSearch,
 } from "@tanstack/react-router"
 
@@ -10,9 +11,8 @@ import { App } from "./App.tsx"
 import { isAbort } from "./api/http.ts"
 import { loadPage } from "./api/page-data.ts"
 import { parseDiffLineAnchor } from "./features/source-control/diff-line-selection.ts"
-import { defaultProject, fetchDirectories, fetchProjects, landingProject, requestLandingPick } from "./api/projects-data.ts"
-import { readMemory } from "./workspace/workspace-memory.ts"
-import { readStoredSettings } from "./settings/settings.ts"
+import { ChooseProject } from "./features/projects/ChooseProject.tsx"
+import { defaultProject, fetchProjects, landing } from "./api/projects-data.ts"
 import { compareSearch, legacyCompare, reviewFragment, routeCompare } from "./features/source-control/compare.ts"
 import { isCommitHash } from "./lib/commit-hash.ts"
 import { routeAt } from "./workspace/workspace-tabs.ts"
@@ -86,6 +86,9 @@ function RoutedApp() {
   // Committed (not pending) search: the workspace switches once the new
   // project's page has loaded, then remounts without the old project's state.
   const project = useSearch({ strict: false, select: (search) => typeof search.project === "string" ? search.project : "" })
+  // The index route without a project asks which to open (decision 0153).
+  const choosing = useRouterState({ select: (state) => !project && state.matches.some((match) => match.routeId === indexRoute.id) })
+  if (choosing) return <ChooseProject />
   return <App key={project} project={project} />
 }
 
@@ -97,31 +100,28 @@ const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
   validateSearch,
-  // Without a project, reopen the last one, else the first served root. When
-  // projects cannot be listed, the page reports that no project is selected.
+  // Without a project, open the only one there is; otherwise the page asks
+  // which (decision 0153). When projects cannot be listed, it asks too and
+  // reports why.
   beforeLoad: async ({ search, abortController }) => {
     if (search.project) return
     let project = ""
     try {
-      const landing = landingProject(await fetchProjects(abortController.signal), readMemory(),
-        readStoredSettings().showWelcome === "on")
-      project = landing.fallback
-      // An unlisted folder (opened by hand) reopens only while it still exists.
-      if (!landing.listed) await fetchDirectories(landing.project, abortController.signal)
-      project = landing.project
-      if (landing.pick) requestLandingPick()
+      const chosen = landing(await fetchProjects(abortController.signal))
+      if (chosen.kind === "open") project = chosen.project
     } catch (error: unknown) {
       if (isAbort(error)) throw error
     }
     if (project) throw redirect({ to: "/", search: withProject(search, project), replace: true })
   },
   loaderDeps: ({ search }) => ({ project: search.project ?? "" }),
-  loader: ({ abortController, deps }) => loadPage({
+  // Choosing a project loads no page.
+  loader: ({ abortController, deps }) => deps.project ? loadPage({
     pathname: "/",
     project: deps.project,
     selected: "",
     signal: abortController.signal,
-  }),
+  }) : null,
 })
 
 const viewRoute = createRoute({

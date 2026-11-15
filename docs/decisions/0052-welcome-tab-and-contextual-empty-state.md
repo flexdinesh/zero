@@ -1,6 +1,7 @@
 # 0052: Welcome tab and an empty pane that follows the sidebar view
 
 - Status: Accepted
+- Superseded by: [0153](0153-links-name-their-project.md) for Landing
 - Date: 2026-10-27
 - Supersedes parts of: [0007](0007-projects-and-project-picker.md) (the
   picker opening on first landing)

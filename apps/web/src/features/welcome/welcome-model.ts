@@ -1,7 +1,5 @@
 import type { ProjectsResponse } from "@zero/contracts"
 
-import { projectSections, type ProjectRow } from "../projects/project-picker.ts"
-
 // Pure content for the Welcome tab (decision 0052); WelcomeTab.tsx renders it.
 
 export type WelcomeAction =
@@ -111,33 +109,4 @@ export function projectLines(facts: ProjectFacts): ProjectLine[] {
 // listsProjects: the project list shows only when there is a choice.
 export function listsProjects(response: ProjectsResponse): boolean {
   return response.projects.filter((project) => project.available).length > 1
-}
-
-export interface WelcomeSection {
-  title: string
-  rows: WelcomeProjectRow[]
-}
-
-export interface WelcomeProjectRow {
-  row: ProjectRow
-  // worktrees lists a repository's members when it has several, else none.
-  worktrees: ProjectRow[]
-}
-
-// welcomeSections are the picker's sections without its Browse actions: a
-// query flattens them into ranked matches; otherwise each repository with
-// several worktrees carries them for inline expansion.
-export function welcomeSections(response: ProjectsResponse, remembered: readonly string[], current: string, query: string): WelcomeSection[] {
-  const filtering = query.trim() !== ""
-  return projectSections(response, remembered, current, query).flatMap((section): WelcomeSection[] => {
-    const rows = section.rows.flatMap((row): WelcomeProjectRow[] => {
-      if (row.kind !== "project") return []
-      const members = !filtering && row.worktrees > 1
-        ? projectSections(response, remembered, current, "", row.group).flatMap((group) => group.rows)
-          .flatMap((member) => member.kind === "project" ? [member] : [])
-        : []
-      return [{ row, worktrees: members }]
-    })
-    return rows.length ? [{ title: section.title, rows }] : []
-  })
 }

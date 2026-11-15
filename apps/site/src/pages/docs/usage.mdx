@@ -65,7 +65,7 @@ browses the serving machine's folders from your home folder and serves the one
 you open. Folders starting with `.` show once you type a `.`. Folders zero
 cannot read are marked, and opening one explains why instead of serving it.
 Hover a served folder in the picker and choose **Stop serving** to remove it;
-the next served project opens. A served folder that has disappeared is dropped
+the page then asks which project to open. A served folder that has disappeared is dropped
 the next time the daemon starts.
 
 `zero browser` serves the directories it was given: its Open folder only
@@ -79,8 +79,16 @@ uncommitted changes, and walkthroughs; every served project (when there is
 more than one) with a filter and each repository's worktrees; and a short
 guide in which every entry runs what it describes. Click **Zero** in the
 status bar, or run **Help › Welcome** from the command palette, to open it
-again. Turn it off with **Workbench › Show Welcome on Startup** in Settings;
-the project picker then opens on the first launch instead.
+again. Turn it off with **Workbench › Show Welcome on Startup** in Settings.
+
+## Choose a project
+
+Every link `zero` prints or opens names its project. A link without one, such
+as the desktop app opened on its own or the string `zero remote status`
+prints, opens the only project there is, and otherwise shows **Choose a
+project**: every served project under a filter, with the one you last opened
+there marked **Last opened**. Enter opens it, or the first match once you
+type; nothing loads until you pick.
 
 With no tab open, the document area names what the current sidebar view
 offers: a file to choose, a search to run, changes to review, or a
