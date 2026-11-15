@@ -157,7 +157,7 @@ func serveDaemon(ctx context.Context, opts daemonOptions, lifetime daemon.Lifeti
 	return err
 }
 
-// daemonLog is where the daemon logs (decision 0151): stderr, and the
+// daemonLog is where the daemon logs (decision 0152): stderr, and the
 // rotating daemon.log and crash output in its log directory when that opens.
 type daemonLog struct {
 	logger      *slog.Logger

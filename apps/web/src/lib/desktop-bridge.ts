@@ -26,7 +26,7 @@ export interface NotificationConfig {
   feedback: boolean
 }
 
-// DesktopDiagnostics is the app's part of a problem report (decision 0151):
+// DesktopDiagnostics is the app's part of a problem report (decision 0152):
 // its build, its log directory, and its newest log and crash lines, redacted.
 export interface DesktopDiagnostics {
   version: string
@@ -65,7 +65,7 @@ export interface NotificationStatus {
 // notices can reach the user, or null when it refuses (decision 0099);
 // setAppearance has the app's menus and window controls follow the theme's
 // polarity, or the OS for "system" (decision 0119); diagnostics resolves the
-// app's part of a problem report, or null when it refuses (decision 0151). A
+// app's part of a problem report, or null when it refuses (decision 0152). A
 // window on a remote server has no revealPath or diagnostics: its files are
 // not on this computer, and its server is not trusted with this computer's
 // logs (decision 0098).

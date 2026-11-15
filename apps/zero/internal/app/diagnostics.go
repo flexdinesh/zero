@@ -14,7 +14,7 @@ import (
 const diagnosticsLines = 200
 
 // ServerInfo describes the running server for problem reports (decision
-// 0151); its zero value is a foreground browser server that keeps no log.
+// 0152); its zero value is a foreground browser server that keeps no log.
 type ServerInfo struct {
 	// Mode is how the server runs; empty is DiagnosticsBrowser.
 	Mode contract.DiagnosticsMode

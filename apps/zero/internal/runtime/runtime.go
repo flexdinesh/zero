@@ -45,7 +45,7 @@ type Config struct {
 	// 0146); nil serves Roots as they are.
 	RootControl app.RootControl
 	// Server describes the running server for problem reports (decision
-	// 0151).
+	// 0152).
 	Server app.ServerInfo
 	// Log records what the web app logs; nil discards.
 	Log *slog.Logger

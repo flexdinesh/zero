@@ -68,7 +68,7 @@ type host struct {
 	// notify shows a failure to the user.
 	notify func(message, detail string)
 	// logDir holds desktop.log and its crash output; "" keeps none
-	// (decision 0151).
+	// (decision 0152).
 	logDir string
 }
 

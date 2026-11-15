@@ -1,4 +1,4 @@
-// Package logfile keeps zero's persistent logs (decision 0151): where they
+// Package logfile keeps zero's persistent logs (decision 0152): where they
 // live, a size-rotated file, crash output, reading the newest lines back, and
 // redacting them for a problem report. The daemon and the desktop app share
 // it; it knows no server or UI.

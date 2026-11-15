@@ -3,7 +3,7 @@ import type { Diagnostics } from "@zero/contracts"
 import type { DesktopDiagnostics } from "../../lib/desktop-bridge.ts"
 import type { UIError } from "../../lib/ui-errors.ts"
 
-// Pure content for Report a Problem (decision 0151): the redacted Markdown a
+// Pure content for Report a Problem (decision 0152): the redacted Markdown a
 // user reviews, copies, and pastes into an issue. ReportProblemDialog.tsx
 // shows it.
 

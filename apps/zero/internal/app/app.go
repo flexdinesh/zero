@@ -55,7 +55,7 @@ type Config struct {
 	// roots (decision 0146); nil serves Roots as they are.
 	RootControl RootControl
 	// Server describes the running server for problem reports (decision
-	// 0151).
+	// 0152).
 	Server ServerInfo
 }
 

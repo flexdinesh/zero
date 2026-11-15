@@ -1,4 +1,4 @@
-# 0151: Persistent logs and Report a Problem
+# 0152: Persistent logs and Report a Problem
 
 - Status: Accepted
 - Date: 2026-11-15

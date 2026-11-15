@@ -34,7 +34,7 @@ type Config struct {
 	// Lifetime is when the daemon and its remote listener stop on their own.
 	Lifetime Lifetime
 	// Log receives startup, skipped roots, exposures, the stop reason, and
-	// what the web app logs (decision 0151); nil discards.
+	// what the web app logs (decision 0152); nil discards.
 	Log *slog.Logger
 	// LogFile and CrashFile are where Log and crash output persist, for
 	// problem reports; "" keeps none.

@@ -115,7 +115,7 @@ func (b *bridgeService) SetAppearance(ctx context.Context, value any) error {
 	return nil
 }
 
-// Diagnostics answers the app's part of a problem report (decision 0151),
+// Diagnostics answers the app's part of a problem report (decision 0152),
 // to the local window only: a remote server is not trusted with this
 // machine's logs.
 func (b *bridgeService) Diagnostics(ctx context.Context) (bridge.Diagnostics, error) {

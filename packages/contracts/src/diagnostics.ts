@@ -11,7 +11,7 @@ export function isDiagnosticsMode(value: unknown): value is DiagnosticsMode {
 }
 
 // Diagnostics is GET /api/diagnostics: what a problem report says about the
-// server (decision 0151). Paths and log lines are redacted: Home stands as
+// server (decision 0152). Paths and log lines are redacted: Home stands as
 // ~, and connection credentials and tokens are replaced. Home is the server
 // user's home directory, so a client can redact its own text the same way.
 // LogsKept is false for a server that keeps no log file; LogFile is then

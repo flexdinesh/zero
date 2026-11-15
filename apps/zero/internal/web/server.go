@@ -57,10 +57,10 @@ type Config struct {
 	// Roots as they are.
 	RootControl app.RootControl
 	// Server describes the running server for problem reports (decision
-	// 0151).
+	// 0152).
 	Server app.ServerInfo
 	// Log records failed requests, language servers, and live update
-	// fallbacks, and each request at debug level (decision 0151); nil
+	// fallbacks, and each request at debug level (decision 0152); nil
 	// discards.
 	Log *slog.Logger
 }

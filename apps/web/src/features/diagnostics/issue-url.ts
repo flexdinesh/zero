@@ -1,4 +1,4 @@
-// Pure link to a new GitHub issue for Report a Problem (decision 0151). A
+// Pure link to a new GitHub issue for Report a Problem (decision 0152). A
 // URL cannot hold the logs, so the body carries the system facts and asks
 // for the copied report.
 

@@ -1,5 +1,5 @@
 // ui-errors.ts keeps this tab's recent failures for a problem report
-// (decision 0151): uncaught errors, unhandled rejections, and failed API
+// (decision 0152): uncaught errors, unhandled rejections, and failed API
 // requests. It holds only the newest UI_ERROR_LIMIT, in memory, never sent
 // anywhere on its own.
 

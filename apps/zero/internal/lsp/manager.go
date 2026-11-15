@@ -55,7 +55,7 @@ type Options struct {
 	Idle time.Duration
 	// LookPath finds a server binary; nil searches PATH and install dirs.
 	LookPath func(name string) (string, bool)
-	// Log records server starts and failures (decision 0151); nil discards.
+	// Log records server starts and failures (decision 0152); nil discards.
 	Log *slog.Logger
 }
 

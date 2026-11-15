@@ -101,7 +101,7 @@ type Options struct {
 	MaxWatched int
 	// MaxPaths caps the paths of one Change.
 	MaxPaths int
-	// Log records falling back to polling (decision 0151); nil discards.
+	// Log records falling back to polling (decision 0152); nil discards.
 	Log *slog.Logger
 }
 

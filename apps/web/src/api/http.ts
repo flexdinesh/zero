@@ -48,7 +48,7 @@ export function failureReason(failure: RequestFailure): string {
   }
 }
 
-// recorded notes a failed request for a problem report (decision 0151):
+// recorded notes a failed request for a problem report (decision 0152):
 // its method, path without the query, status, and message.
 function recorded(method: string, url: string, error: RequestError): RequestError {
   const status = error.failure.kind === "unreachable" ? "no response" : String(error.failure.status)

@@ -12,7 +12,7 @@ const failureBodyLimit = 512
 
 // logged records every request that fails with a server error, with its
 // method, path, status, and body, and every request at debug level (decision
-// 0151). The query is left out: it names files.
+// 0152). The query is left out: it names files.
 func (a *App) logged(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()

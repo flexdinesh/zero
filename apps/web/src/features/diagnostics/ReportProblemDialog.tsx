@@ -45,7 +45,7 @@ async function gatherReport(signal: AbortSignal): Promise<ReportInput> {
   }
 }
 
-// ReportProblemDialog shows the redacted problem report (decision 0151) for
+// ReportProblemDialog shows the redacted problem report (decision 0152) for
 // the user to read, copy, and paste into a new GitHub issue. Nothing is sent
 // anywhere until they do.
 export function ReportProblemDialog({ registerOpen }: ReportProblemDialogProps) {

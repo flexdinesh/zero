@@ -12,7 +12,7 @@ import (
 
 // The app is a client of zero (decision 0094): from the zero module it
 // imports only the transport contract, the connection model, the Go client,
-// and the log files it shares with the daemon (decision 0151). Its module path sits under zero's, so Go's internal rule would not
+// and the log files it shares with the daemon (decision 0152). Its module path sits under zero's, so Go's internal rule would not
 // stop it.
 func TestImportsOnlyZeroContractAndClient(t *testing.T) {
 	const zero = "github.com/flexdinesh/zero/"
