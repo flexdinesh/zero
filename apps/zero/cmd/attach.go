@@ -159,7 +159,7 @@ func attachInDesktop(ctx context.Context, opts attachOptions, target sandbox.Tar
 		return err
 	}
 
-	link := "zero://" + saved.ID + "/"
+	link := projectURL("zero://"+saved.ID+"/", sandboxProject(target))
 	attached := func() {
 		_, _ = fmt.Fprintf(stdout, "attached to %s (zero %s on %s)\ndesktop: %s\n", saved.Label, info.Version, info.Name, hyperlink(link, deps.terminal(stdout) && deps.getenv("TERM") != "dumb"))
 	}
@@ -197,6 +197,16 @@ func installInSandbox(ctx context.Context, target sandbox.Target, stdout io.Writ
 	return attach.Attach(ctx, target.Environment, target.Path, version.Number())
 }
 
+// sandboxProject is the project an attach opens: the target's path when it
+// names one. The sandbox's working directory (".") is unknown here, so the
+// page chooses (decision 0153).
+func sandboxProject(target sandbox.Target) string {
+	if filepath.IsAbs(target.Path) {
+		return target.Path
+	}
+	return ""
+}
+
 // attachInBrowser installs zero in the target, runs it there, and serves it
 // to the browser on attachHost until ctx ends.
 func attachInBrowser(ctx context.Context, opts attachOptions, target sandbox.Target, stdout, stderr io.Writer) error {
@@ -230,7 +240,7 @@ func attachInBrowser(ctx context.Context, opts attachOptions, target sandbox.Tar
 		_ = listener.Close()
 		return err
 	}
-	link := serverURL(attachHost, port)
+	link := projectURL(serverURL(attachHost, port), sandboxProject(target))
 	writeAttachStartup(stdout, opts.target, info, hyperlink(link, linkTerminal(stdout, os.Getenv)))
 	if shouldOpenBrowser(opts.noOpen, goruntime.GOOS, os.Getenv) {
 		go func() {

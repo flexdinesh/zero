@@ -80,7 +80,8 @@ func serveRemote(ctx context.Context, opts options, stdout, stderr io.Writer, de
 		}
 		deps.roots.ensure = func(context.Context, daemonOptions) (daemon.Status, bool, error) { return status, true, nil }
 	}
-	if _, err := openDaemonRoots(ctx, roots, opts.depth, opts.scanDepth, deps.roots, stderr); err != nil {
+	project, err := openDaemonRoots(ctx, roots, opts.depth, opts.scanDepth, deps.roots, stderr)
+	if err != nil {
 		return err
 	}
 	timeout := daemonTimeout
@@ -102,7 +103,7 @@ func serveRemote(ctx context.Context, opts options, stdout, stderr io.Writer, de
 			CLIName:     opts.cliName,
 			Version:     "zero " + version.Number(),
 			Directories: served,
-			Tailnet:     tailnetURL(status),
+			Tailnet:     tailnetURL(status, project),
 			FirstWait:   opts.remoteFirstWait,
 			Grace:       opts.remoteGrace,
 			Foreground:  opts.foreground,
@@ -121,17 +122,18 @@ func serveRemote(ctx context.Context, opts options, stdout, stderr io.Writer, de
 	if err != nil {
 		return err
 	}
+	invite := connection.Invite{Endpoint: endpoint, Project: project}
 	info := remoteStartup{
 		CLIName:     opts.cliName,
 		Version:     "zero " + version.Number(),
 		Directories: served,
-		Connect:     endpoint.Shell(),
+		Connect:     invite.Shell(),
 		FirstWait:   opts.remoteFirstWait,
 		Grace:       opts.remoteGrace,
 		Foreground:  opts.foreground,
 	}
 	if opts.web {
-		if info.Web, err = endpoint.WebURL(); err != nil {
+		if info.Web, err = invite.WebURL(); err != nil {
 			return err
 		}
 		info.Links = deps.terminal(stdout) && deps.getenv("TERM") != "dumb"
@@ -296,13 +298,18 @@ func remoteFailure(err error) error {
 	return err
 }
 
-// tailnetURL is where the tailnet reaches a Tailscale exposure.
-func tailnetURL(status contract.DaemonRemote) string {
+// tailnetURL is where the tailnet reaches a Tailscale exposure, opening
+// project when there is one (decision 0153).
+func tailnetURL(status contract.DaemonRemote, project string) string {
 	host := status.Host
 	if status.Port != 443 {
 		host = net.JoinHostPort(host, strconv.Itoa(status.Port))
 	}
-	return (&url.URL{Scheme: "https", Host: host, Path: "/"}).String()
+	target := url.URL{Scheme: "https", Host: host, Path: "/"}
+	if project != "" {
+		target.RawQuery = url.Values{"project": {project}}.Encode()
+	}
+	return target.String()
 }
 
 // newRemoteCommand manages the daemon's TCP listener.
@@ -367,7 +374,7 @@ func remoteStatus(ctx context.Context, client *daemon.Client, asJSON bool, candi
 		return nil
 	}
 	if status.Exposure == contract.RemoteExposureTailscale {
-		_, _ = fmt.Fprintf(stdout, "serving over Tailscale, %d connected\nopen: %s\n", status.Clients, tailnetURL(status))
+		_, _ = fmt.Fprintf(stdout, "serving over Tailscale, %d connected\nopen: %s\n", status.Clients, tailnetURL(status, ""))
 		return nil
 	}
 	_, _ = fmt.Fprintf(stdout, "serving on port %d, %d connected\n", status.Port, status.Clients)
@@ -391,8 +398,10 @@ func writeConnect(status contract.DaemonRemote, candidates func() []string, stdo
 	return nil
 }
 
+const connectNameHint = "if Zero is installed under another command name on your computer, substitute that name for zero."
+
 func writeConnectNameHint(stdout io.Writer) {
-	_, _ = fmt.Fprintln(stdout, "if Zero is installed under another command name on your computer, substitute that name for zero.")
+	_, _ = fmt.Fprintln(stdout, connectNameHint)
 }
 
 func unspecifiedHost(host string) bool {

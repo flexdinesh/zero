@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test"
 import { endsWith, projectParam, rootParam } from "./fixture-root.ts"
 
-test("projects remember their tabs and the last project reopens", async ({ page }) => {
+test("projects remember their tabs; a link without a project opens the only one", async ({ page }) => {
   const tree = page.getByRole("complementary", { name: "Files" })
   const tabs = page.getByRole("tablist", { name: "Open documents" })
   await page.goto(`/view?project=${rootParam}&path=guides%2Fgetting-started.md`)
@@ -13,11 +13,13 @@ test("projects remember their tabs and the last project reopens", async ({ page 
   await tree.getByRole("treeitem", { name: "diagrams.md" }).click()
   await expect(tabs.getByRole("tab", { name: "diagrams.md" })).toHaveAttribute("aria-selected", "true")
 
-  await page.goto("/")
+  await page.goto(`/?project=${projectParam("guides")}`)
   await expect(page).toHaveURL(endsWith(`/view?project=${projectParam("guides")}&path=diagrams.md`))
   await expect(tabs.getByRole("tab")).toHaveText(["Welcome", "diagrams.md"])
 
-  await page.goto(`/?project=${rootParam}`)
+  // The served root is the one available project, so a link without a
+  // project opens it, not the folder last opened by hand (decision 0153).
+  await page.goto("/")
   await expect(page).toHaveURL(endsWith(`/view?project=${rootParam}&path=README.md`))
   await expect(tabs.getByRole("tab", { name: "getting-started.md" })).toBeVisible()
   await expect(tabs.getByRole("tab", { name: "README.md" })).toHaveAttribute("aria-selected", "true")

@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -133,7 +134,7 @@ func TestRemoteStringConnects(t *testing.T) {
 	if err := serveRemote(context.Background(), remoteOptions(root), &printed, &stderr, deps); err != nil {
 		t.Fatalf("%v\n%s", err, stderr.String())
 	}
-	for _, want := range []string{root, "zero connect 127.0.0.1:", "stops 10 min after this if nothing connects, and 5 min after the last UI closes", "zero remote stop"} {
+	for _, want := range []string{root, "zero connect '127.0.0.1:", "\n  " + connectNameHint + "\n", "stops 10 min after this if nothing connects, and 5 min after the last UI closes", "zero remote stop"} {
 		if !strings.Contains(printed.String(), want) {
 			t.Errorf("output = %q, want %q", printed.String(), want)
 		}
@@ -148,11 +149,17 @@ func TestRemoteStringConnects(t *testing.T) {
 	if err := runConnect(context.Background(), connectOptions{text: text}, &stdout, &stderr, connect); err != nil {
 		t.Fatalf("connect: %v", err)
 	}
-	endpoint, err := connection.Parse(text)
+	invite, err := connection.ParseInvite(text)
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantLink := "zero://" + endpoint.Credential.ID() + "/"
+	endpoint := invite.Endpoint
+	// The string names the project --remote started with, and the link opens
+	// it (decision 0153).
+	if invite.Project != root {
+		t.Errorf("string project = %q, want %q", invite.Project, root)
+	}
+	wantLink := "zero://" + endpoint.Credential.ID() + "/?" + url.Values{"project": {root}}.Encode()
 	if len(fake.opened) != 1 || fake.opened[0] != wantLink {
 		t.Errorf("opened %v, want %s", fake.opened, wantLink)
 	}
@@ -174,14 +181,15 @@ func TestRemoteStringConnects(t *testing.T) {
 		t.Errorf("store mode = %v, %v", info, err)
 	}
 
-	// status prints the same string; stop closes it.
+	// status prints the same server without a project, so its window asks
+	// which to open; stop closes it.
 	client := daemon.NewClient(socket)
 	var status bytes.Buffer
 	if err := remoteStatus(context.Background(), client, false, deps.candidates, &status); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(status.String(), "zero connect "+text+"\n") {
-		t.Errorf("status = %q, want the string %s", status.String(), text)
+	if !strings.Contains(status.String(), "zero connect "+endpoint.Shell()+"\n") {
+		t.Errorf("status = %q, want the string %s", status.String(), endpoint.Shell())
 	}
 	var rotated bytes.Buffer
 	if err := remoteRotate(context.Background(), client, func() (string, error) { return "", errors.New("unused") }, deps.candidates, &rotated); err != nil {
@@ -214,8 +222,9 @@ func TestRemoteWebPrintsATokenLinkOnlyWhenAsked(t *testing.T) {
 	if err := serveRemote(context.Background(), opts, &printed, &stderr, deps); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(printed.String(), "web:  https://127.0.0.1:") || !strings.Contains(printed.String(), "/?token=") {
-		t.Errorf("output = %q", printed.String())
+	if !strings.Contains(printed.String(), "web:  https://127.0.0.1:") || !strings.Contains(printed.String(), "/?token=") ||
+		!strings.Contains(printed.String(), "&"+url.Values{"project": {root}}.Encode()+"\n") {
+		t.Errorf("output = %q, want a token link that opens %s", printed.String(), root)
 	}
 }
 
@@ -529,6 +538,53 @@ func TestConnectWithoutTheAppOffersTheBrowser(t *testing.T) {
 	}
 }
 
+// A string's project reaches every link connect opens or prints; a string
+// without one leaves the choice to the window (decision 0153).
+func TestConnectOpensTheStringsProject(t *testing.T) {
+	endpoint, err := connection.Parse(validConnectText(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	project := "/home/dee/my project"
+	withProject := connection.Invite{Endpoint: endpoint, Project: project}.Shell()
+	query := url.Values{"project": {project}}.Encode()
+	probe := func(_ context.Context, endpoint connection.TLS) (connection.TLS, contract.RemoteInfo, error) {
+		return endpoint, contract.RemoteInfo{Protocol: daemon.ProtocolVersion, Name: "box", Version: "1"}, nil
+	}
+	for _, test := range []struct {
+		name, text, link string
+	}{
+		{"project", withProject, "zero://" + endpoint.Credential.ID() + "/?" + query},
+		{"none", endpoint.Shell(), "zero://" + endpoint.Credential.ID() + "/"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fake, deps := newConnectFake(t)
+			deps.probe = probe
+			var stdout bytes.Buffer
+			if err := runConnect(context.Background(), connectOptions{text: test.text}, &stdout, io.Discard, deps); err != nil {
+				t.Fatal(err)
+			}
+			if len(fake.opened) != 1 || fake.opened[0] != test.link || !strings.Contains(stdout.String(), "desktop: "+test.link+"\n") {
+				t.Errorf("opened %v, stdout %q, want %s", fake.opened, stdout.String(), test.link)
+			}
+			stdout.Reset()
+			if err := runConnect(context.Background(), connectOptions{text: test.text, noOpen: true}, &stdout, io.Discard, deps); err != nil || !strings.Contains(stdout.String(), "desktop: "+test.link+"\n") {
+				t.Errorf("--no-open stdout = %q, %v, want %s", stdout.String(), err, test.link)
+			}
+		})
+	}
+	fake, deps := newConnectFake(t)
+	fake.installed = false
+	deps.probe = probe
+	var stdout bytes.Buffer
+	if err := runConnect(context.Background(), connectOptions{text: withProject}, &stdout, io.Discard, deps); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), "web: https://10.0.0.5:7971/?token=") || !strings.Contains(stdout.String(), "&"+query+"\n") {
+		t.Errorf("fallback stdout = %q, want a web link that opens %s", stdout.String(), project)
+	}
+}
+
 // fakeTailscaleCLI puts a tailscale CLI on PATH that answers status with
 // status and serves until stopped.
 func fakeTailscaleCLI(t *testing.T, status string) {
@@ -553,7 +609,7 @@ func TestTailscalePrintsTheTailnetURLAndRemoteManagesIt(t *testing.T) {
 	if err := serveRemote(context.Background(), opts, &printed, &stderr, deps); err != nil {
 		t.Fatalf("serveRemote() = %v\n%s", err, stderr.String())
 	}
-	if !strings.Contains(printed.String(), "tailnet:  https://box.tail1234.ts.net:7971/") || strings.Contains(printed.String(), "zero connect") || strings.Contains(printed.String(), "\x1b]52;") {
+	if !strings.Contains(printed.String(), "tailnet:  https://box.tail1234.ts.net:7971/?"+url.Values{"project": {root}}.Encode()+"\n") || strings.Contains(printed.String(), "zero connect") || strings.Contains(printed.String(), "\x1b]52;") {
 		t.Errorf("output = %q", printed.String())
 	}
 	client := daemon.NewClient(socket)
@@ -589,8 +645,11 @@ func TestTailscaleRequestAndURL(t *testing.T) {
 		t.Errorf("--port: %+v", request)
 	}
 	for port, want := range map[int]string{443: "https://box.ts.net/", 7971: "https://box.ts.net:7971/"} {
-		if got := tailnetURL(contract.DaemonRemote{Host: "box.ts.net", Port: port}); got != want {
+		if got := tailnetURL(contract.DaemonRemote{Host: "box.ts.net", Port: port}, ""); got != want {
 			t.Errorf("tailnetURL(%d) = %s, want %s", port, got, want)
 		}
+	}
+	if got, want := tailnetURL(contract.DaemonRemote{Host: "box.ts.net", Port: 443}, "/home/dee/my project"), "https://box.ts.net/?project=%2Fhome%2Fdee%2Fmy+project"; got != want {
+		t.Errorf("tailnetURL(project) = %s, want %s", got, want)
 	}
 }

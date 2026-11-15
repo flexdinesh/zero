@@ -4,7 +4,8 @@
   (roots, project IDs, what opens, worktree boundary, picker layout, memory)
   and [0052](0052-welcome-tab-and-contextual-empty-state.md) (the picker
   opening on first landing); exclusions (`--exclude`) superseded by
-  [0060](0060-scope-flags-removed.md)
+  [0060](0060-scope-flags-removed.md); the landing project superseded by
+  [0153](0153-links-name-their-project.md)
 - Date: 2026-10-13
 
 ## Context

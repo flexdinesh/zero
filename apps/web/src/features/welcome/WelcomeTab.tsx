@@ -1,27 +1,21 @@
 import {
-  ALargeSmallIcon, ArrowUpRightIcon, BracesIcon, FileSearchIcon, FolderGit2Icon, FolderOpenIcon, FunnelIcon, GitBranchIcon, LifeBuoyIcon, PaletteIcon, RouteIcon,
-  SearchIcon, SquareTerminalIcon, XIcon,
+  ALargeSmallIcon, ArrowUpRightIcon, BracesIcon, FileSearchIcon, FolderGit2Icon, FolderOpenIcon, GitBranchIcon, LifeBuoyIcon, PaletteIcon, RouteIcon,
+  SearchIcon, SquareTerminalIcon,
 } from "lucide-react"
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 
 import { BrandMark } from "../../components/ui/brand-mark.tsx"
 import { Button } from "../../components/ui/button.tsx"
-import { IconButton } from "../../components/ui/icon-button.tsx"
 import { Kbd } from "../../components/ui/kbd.tsx"
-import { ListButton } from "../../components/ui/list-row.tsx"
-import { Chevron } from "../../components/ui/section-toggle.tsx"
-import { TextField } from "../../components/ui/text-field.tsx"
 import { isAbort } from "../../api/http.ts"
 import type { ProjectsResponse } from "@zero/contracts"
 import { fetchProjects } from "../../api/projects-data.ts"
 import { useDelayedFlag } from "../../lib/use-delayed-flag.ts"
-import { readMemory, rememberedProjects } from "../../workspace/workspace-memory.ts"
-import { OptionIcon, OptionText } from "../projects/ProjectPicker.tsx"
-import type { ProjectRow } from "../projects/project-picker.ts"
+import { ProjectList } from "../projects/ProjectList.tsx"
 import { useManageRoots } from "../projects/use-manage-roots.ts"
 import {
-  documentationUrl, guideEntries, listsProjects, projectLines, startEntries, welcomeSections,
-  type ProjectFacts, type WelcomeAction, type WelcomeEntry, type WelcomeProjectRow,
+  documentationUrl, guideEntries, listsProjects, projectLines, startEntries,
+  type ProjectFacts, type WelcomeAction, type WelcomeEntry,
 } from "./welcome-model.ts"
 
 const mac = typeof navigator !== "undefined" && navigator.platform.includes("Mac")
@@ -139,10 +133,7 @@ function EntryList({ entries, onAction }: { entries: readonly WelcomeEntry[]; on
 // is more than one to choose from.
 function WelcomeProjects({ project, onOpenProject }: { project: string; onOpenProject(project: string): void }) {
   const [load, setLoad] = useState<Load>({ kind: "loading", previous: null })
-  const [query, setQuery] = useState("")
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set())
   const controller = useRef<AbortController | null>(null)
-  const remembered = useMemo(() => rememberedProjects(readMemory()), [])
 
   // The list starts loading; Retry marks it loading again.
   const read = useCallback(() => {
@@ -164,91 +155,23 @@ function WelcomeProjects({ project, onOpenProject }: { project: string; onOpenPr
   }, [read])
 
   const response = loaded(load)
-  const sections = useMemo(() => response ? welcomeSections(response, remembered, project, query) : [],
-    [project, query, remembered, response])
   const scanning = useDelayedFlag(load.kind === "loading" && response === null, 150)
   if (response && !listsProjects(response)) return null
   if (!response && load.kind === "loading" && !scanning) return null
 
-  const toggle = (group: string) => setExpanded((current) => {
-    const next = new Set(current)
-    if (next.has(group)) next.delete(group)
-    else next.add(group)
-    return next
-  })
-  const trimmed = query.trim()
+  const status = load.kind === "error" ? <>
+    <span>{load.message}</span>
+    <Button variant="outline" onClick={() => {
+      setLoad((current) => ({ kind: "loading", previous: loaded(current) }))
+      read()
+    }}>Retry</Button>
+  </> : undefined
   return (
     <section className="welcome-section welcome-projects" aria-labelledby="welcome-projects">
       <h2 id="welcome-projects">Projects</h2>
-      {response && (
-        <TextField className="welcome-projects-filter" icon={<FunnelIcon />} type="text" autoComplete="off" spellCheck={false}
-          placeholder="Filter projects" aria-label="Filter projects" value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          onKeyDown={(event) => { if (event.key === "Escape" && query) { event.stopPropagation(); setQuery("") } }}
-          trailing={query && <IconButton size="xs" label="Clear filter" icon={<XIcon aria-hidden="true" />} onClick={() => setQuery("")} />} />
-      )}
-      <div className="welcome-projects-status" role="status" aria-live="polite">
-        {load.kind === "error" ? <>
-          <span>{load.message}</span>
-          <Button variant="outline" onClick={() => {
-            setLoad((current) => ({ kind: "loading", previous: loaded(current) }))
-            read()
-          }}>Retry</Button>
-        </> : !response ? "Scanning for projects…"
-          : trimmed && sections.length === 0 ? `No projects match “${trimmed}”.` : ""}
-      </div>
-      {sections.map((section) => (
-        <div key={section.title} className="welcome-project-group">
-          {sections.length > 1 && <h3 className="project-group-title">{section.title}</h3>}
-          <ul aria-label={section.title}>
-            {section.rows.map((entry) => (
-              <ProjectEntry key={entry.row.key} entry={entry} expanded={expanded.has(entry.row.group)}
-                onToggle={() => toggle(entry.row.group)} onOpen={onOpenProject} />
-            ))}
-          </ul>
-        </div>
-      ))}
+      {response
+        ? <ProjectList response={response} current={project} status={status} onOpen={onOpenProject} />
+        : <div className="project-list-status" role="status" aria-live="polite">{status ?? "Scanning for projects…"}</div>}
     </section>
-  )
-}
-
-interface ProjectEntryProps {
-  entry: WelcomeProjectRow
-  expanded: boolean
-  onToggle(): void
-  onOpen(project: string): void
-}
-
-function ProjectEntry({ entry, expanded, onToggle, onOpen }: ProjectEntryProps) {
-  const { row, worktrees } = entry
-  return (
-    <li>
-      <div className={worktrees.length ? "project-option-row drillable" : "project-option-row"}>
-        <ProjectButton row={row} onOpen={onOpen} />
-        {worktrees.length > 0 && (
-          <IconButton size="xs" className="project-drill welcome-project-expand" aria-expanded={expanded}
-            label={`${expanded ? "Hide" : "Show"} ${row.name} worktrees`} icon={<Chevron />} onClick={onToggle} />
-        )}
-      </div>
-      {expanded && worktrees.length > 0 && (
-        <ul className="welcome-worktrees" aria-label={`${row.name} worktrees`}>
-          {worktrees.map((member) => (
-            <li key={member.key} className="project-option-row"><ProjectButton row={member} onOpen={onOpen} /></li>
-          ))}
-        </ul>
-      )}
-    </li>
-  )
-}
-
-function ProjectButton({ row, onOpen }: { row: ProjectRow; onOpen(project: string): void }) {
-  const inert = row.disabled || row.current
-  return (
-    <ListButton density="pick" className={row.disabled ? "project-option disabled" : "project-option"}
-      aria-current={row.current || undefined} aria-disabled={row.disabled || undefined} title={row.path}
-      onClick={() => { if (!inert) onOpen(row.id) }}>
-      <OptionIcon row={row} />
-      <OptionText row={row} />
-    </ListButton>
   )
 }

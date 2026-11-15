@@ -66,10 +66,11 @@ repository, then a worktree by branch.
 # on the host, over ssh is fine; it keeps serving after you log out
 zero ~/code --remote
 # on your computer: the line the host printed
-zero connect 10.0.0.5:7971/<credential>
+zero connect '10.0.0.5:7971/<credential>/home/me/code'
 ```
 
-`zero connect` opens the host in its own desktop app window. The printed
+`zero connect` opens the host in its own desktop app window, on the folder
+`--remote` was given. The printed
 addresses are a guess; any route to the port works:
 
 ```sh
@@ -78,7 +79,8 @@ ssh -L 7971:localhost:7971 mybox         # or tunnel the port yourself
 zero connect --host localhost <string>
 ```
 
-On the host, `zero remote status` prints the string again, `zero remote stop`
+On the host, `zero remote status` prints the string again without a folder (its
+window asks which project to open), `zero remote stop`
 stops serving, and `zero remote rotate` invalidates old strings. The string is a
 password: traffic is TLS pinned to it and every request carries its token.
 `--web` also prints a browser link. See [remote hosts](apps/site/src/pages/docs/remote.mdx).

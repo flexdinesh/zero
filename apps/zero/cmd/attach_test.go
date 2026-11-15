@@ -272,10 +272,12 @@ func TestAttachSavesTheSandboxAndOpensItInTheDesktopApp(t *testing.T) {
 		t.Fatalf("attach = %v\n%s", err, stderr.String())
 	}
 	id := connection.SandboxID("docker", "engine-1", "3f2a9c1b7d4e0000")
-	if browsed || !slices.Equal(opened, []string{"zero://" + id + "/"}) {
+	// The target's path opens directly (decision 0153).
+	link := "zero://" + id + "/?" + url.Values{"project": {dir}}.Encode()
+	if browsed || !slices.Equal(opened, []string{link}) {
 		t.Fatalf("opened %q, browsed %v", opened, browsed)
 	}
-	if !strings.Contains(stdout.String(), "attached to docker://web"+dir+" (zero ") || !strings.Contains(stdout.String(), "desktop: zero://"+id+"/") {
+	if !strings.Contains(stdout.String(), "attached to docker://web"+dir+" (zero ") || !strings.Contains(stdout.String(), "desktop: "+link+"\n") {
 		t.Fatalf("stdout = %q", stdout.String())
 	}
 	path, err := connection.DefaultStorePath()
@@ -397,11 +399,12 @@ func TestAttachNoOpenSavesAndPrintsTheLink(t *testing.T) {
 	deps := desktopAttachDeps(t, &opened, &browsed)
 	deps.installed = func(context.Context) (bool, error) { return false, errors.New("not asked") }
 	var stdout, stderr bytes.Buffer
-	if err := attachWith(t.Context(), attachOptions{cliName: "zero", target: "docker://web" + t.TempDir(), noOpen: true}, &stdout, &stderr, deps); err != nil {
+	dir := t.TempDir()
+	if err := attachWith(t.Context(), attachOptions{cliName: "zero", target: "docker://web" + dir, noOpen: true}, &stdout, &stderr, deps); err != nil {
 		t.Fatal(err)
 	}
 	id := connection.SandboxID("docker", "engine-1", "3f2a9c1b7d4e0000")
-	if browsed || len(opened) != 0 || !strings.Contains(stdout.String(), "desktop: zero://"+id+"/") {
+	if browsed || len(opened) != 0 || !strings.Contains(stdout.String(), "desktop: zero://"+id+"/?"+url.Values{"project": {dir}}.Encode()+"\n") {
 		t.Fatalf("browsed %v, opened %q, stdout %q", browsed, opened, stdout.String())
 	}
 }

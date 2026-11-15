@@ -4,11 +4,12 @@
 //
 // A connection string says where a remote server is and how to trust it:
 //
-//	<host>[,<host>...]:<port>/<credential>
+//	<host>[,<host>...]:<port>/<credential>[<absolute path>]
 //
 // The credential is base64url of a certificate fingerprint and a token. Every
 // character is safe unquoted in POSIX shells, zsh, and fish, except the
-// brackets of an IPv6 host; Shell quotes those.
+// brackets of an IPv6 host; Shell quotes those. The optional path names the
+// project to open (Invite, decision 0153); Invite.Shell always quotes it.
 package connection
 
 import (

@@ -257,7 +257,8 @@ func run(ctx context.Context, opts options, stdin io.Reader, stdout, stderr io.W
 		return err
 	}
 	defer func() { _ = instance.Close() }()
-	url := serverURL(host, port)
+	// The page opens the first root rather than asking (decision 0153).
+	url := projectURL(serverURL(host, port), roots[0])
 	writeStartup(stdout, startupInfo{
 		Version:      "zero " + version.Number(),
 		Directories:  roots,
