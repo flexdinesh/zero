@@ -219,6 +219,51 @@ func TestRemoteWebPrintsATokenLinkOnlyWhenAsked(t *testing.T) {
 	}
 }
 
+// A terminal gets the printed connect command on its clipboard through
+// OSC 52, and a notice that says so; --no-copy, a pipe, or a dumb
+// terminal get neither (decision 0150).
+func TestRemoteCopiesTheConnectCommandToATerminal(t *testing.T) {
+	disableColor(t)
+	root := appRoot(t)
+	deps, _ := realRemote(t)
+	const notice = "copied to your clipboard (if your terminal allows OSC 52)."
+	for _, test := range []struct {
+		name     string
+		terminal bool
+		term     string
+		noCopy   bool
+		copied   bool
+	}{
+		{name: "terminal", terminal: true, term: "xterm-256color", copied: true},
+		{name: "no-copy", terminal: true, term: "xterm-256color", noCopy: true},
+		{name: "pipe", term: "xterm-256color"},
+		{name: "dumb", terminal: true, term: "dumb"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			deps := deps
+			deps.terminal = func(io.Writer) bool { return test.terminal }
+			deps.getenv = envOf(map[string]string{"TERM": test.term})
+			opts := remoteOptions(root)
+			opts.noCopy = test.noCopy
+			var printed, stderr bytes.Buffer
+			if err := serveRemote(context.Background(), opts, &printed, &stderr, deps); err != nil {
+				t.Fatal(err)
+			}
+			output := printed.String()
+			sequence, rest, found := strings.Cut(output, "\a")
+			if found != test.copied || strings.Contains(output, notice) != test.copied {
+				t.Fatalf("output = %q; want copied %v", output, test.copied)
+			}
+			if !test.copied {
+				return
+			}
+			if got, want := copiedText(t, sequence+"\a"), "zero connect "+connectLine(t, rest); got != want {
+				t.Errorf("copied %q, printed %q", got, want)
+			}
+		})
+	}
+}
+
 func TestRemoteRequestFollowsTheFlags(t *testing.T) {
 	opts := options{host: defaultHost, port: 0, remoteFirstWait: time.Minute, remoteGrace: time.Second}
 	request := remoteRequest(opts)
@@ -503,11 +548,12 @@ func TestTailscalePrintsTheTailnetURLAndRemoteManagesIt(t *testing.T) {
 	deps, socket := realRemoteWith(t, func(config *daemon.Config) { config.Tailscale = &tailscale.Client{} })
 	opts := remoteOptions(root)
 	opts.tailscale, opts.portSet = true, false
+	deps.terminal = func(io.Writer) bool { return true }
 	var printed, stderr bytes.Buffer
 	if err := serveRemote(context.Background(), opts, &printed, &stderr, deps); err != nil {
 		t.Fatalf("serveRemote() = %v\n%s", err, stderr.String())
 	}
-	if !strings.Contains(printed.String(), "tailnet:  https://box.tail1234.ts.net:7971/") || strings.Contains(printed.String(), "zero connect") {
+	if !strings.Contains(printed.String(), "tailnet:  https://box.tail1234.ts.net:7971/") || strings.Contains(printed.String(), "zero connect") || strings.Contains(printed.String(), "\x1b]52;") {
 		t.Errorf("output = %q", printed.String())
 	}
 	client := daemon.NewClient(socket)

@@ -62,6 +62,7 @@ type remoteStartup struct {
 	Tailnet     string // with --tailscale, the URL instead of Connect
 	Web         string // "" unless --web
 	Links       bool   // write Web as an OSC 8 hyperlink
+	Copied      bool   // the connect command was sent to the clipboard
 	FirstWait   time.Duration
 	Grace       time.Duration
 	Foreground  bool // serves until this process stops
@@ -96,7 +97,11 @@ func writeRemoteStartup(output io.Writer, info remoteStartup) {
 		_, _ = fmt.Fprint(output, "  ")
 		_, _ = label.Fprintln(output, "on your computer, run:")
 		_, _ = fmt.Fprint(output, "  ")
-		_, _ = command.Fprintln(output, "zero connect "+info.Connect)
+		_, _ = command.Fprintln(output, connectCommand(info.Connect))
+		if info.Copied {
+			_, _ = fmt.Fprint(output, "  ")
+			_, _ = label.Fprintln(output, "copied to your clipboard (if your terminal allows OSC 52).")
+		}
 		writeConnectNameHint(output)
 	}
 	if info.Web != "" {
@@ -112,6 +117,12 @@ func writeRemoteStartup(output io.Writer, info remoteStartup) {
 		return
 	}
 	_, _ = label.Fprintf(output, "stops %s after this if nothing connects, and %s after the last UI closes. `%s remote stop` stops it now.\n", minutesText(info.FirstWait), minutesText(info.Grace), info.CLIName)
+}
+
+// connectCommand is what to run on the user's computer for connect, a string
+// ready for a shell.
+func connectCommand(connect string) string {
+	return "zero connect " + connect
 }
 
 func writeDiscovery(output io.Writer, label, count, duration *color.Color, info startupInfo) {

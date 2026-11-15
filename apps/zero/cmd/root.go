@@ -47,6 +47,7 @@ type options struct {
 	remote          bool
 	tailscale       bool
 	web             bool
+	noCopy          bool
 	foreground      bool
 	remoteFirstWait time.Duration
 	remoteGrace     time.Duration
@@ -96,6 +97,7 @@ func addRemoteFlags(command *cobra.Command, opts *options) {
 	flags.BoolVar(&opts.remote, "remote", false, "serve to other machines over TLS and print a zero connect string")
 	flags.BoolVar(&opts.tailscale, "tailscale", false, "serve to your tailnet over HTTPS with tailscale serve (--port sets the HTTPS port, default 7971)")
 	flags.BoolVar(&opts.web, "web", false, "with --remote, also print a browser link")
+	flags.BoolVar(&opts.noCopy, "no-copy", false, "with --remote, do not copy the connect command to the clipboard")
 	flags.BoolVar(&opts.foreground, "foreground", false, "with --remote or --tailscale, run the daemon in this process until it is stopped, as in a container")
 	flags.DurationVar(&opts.remoteFirstWait, "remote-first-wait", daemon.DefaultRemoteFirstWait, "how long --remote or --tailscale waits for a first UI")
 	flags.DurationVar(&opts.remoteGrace, "remote-grace", daemon.DefaultRemoteGrace, "how long --remote or --tailscale outlives its last UI")
@@ -134,6 +136,9 @@ func newServeCommand(use string, runCommand runner, addFlags func(*cobra.Command
 			}
 			if opts.web && !opts.remote {
 				return errors.New("--web needs --remote")
+			}
+			if opts.noCopy && !opts.remote {
+				return errors.New("--no-copy needs --remote")
 			}
 			if opts.tailscale && opts.remote {
 				return errors.New("--tailscale and --remote cannot be combined")
