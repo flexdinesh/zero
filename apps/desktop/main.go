@@ -67,6 +67,9 @@ type host struct {
 	first firstPage
 	// notify shows a failure to the user.
 	notify func(message, detail string)
+	// logDir holds desktop.log and its crash output; "" keeps none
+	// (decision 0151).
+	logDir string
 }
 
 func main() {
@@ -77,6 +80,7 @@ func main() {
 	if !mygo.App.RequestSingleInstanceLock() {
 		return // the first instance handles our arguments
 	}
+	logs := openLog()
 	resources, _ := mygo.App.Path(mygo.PathResources)
 	binary, binaryErr := connect.Locate(mygo.App.IsPackaged(), resources, os.Getenv, exec.LookPath)
 	app := &host{
@@ -85,6 +89,7 @@ func main() {
 		notifiers:      map[string]*notifier.Notifier{},
 		noticeTargets:  map[string]string{},
 		versionNoticed: map[string]bool{},
+		logDir:         logs,
 	}
 	app.notify = app.showWarning
 	storePath, err := connection.DefaultStorePath()

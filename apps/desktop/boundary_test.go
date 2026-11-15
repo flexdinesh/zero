@@ -11,12 +11,12 @@ import (
 )
 
 // The app is a client of zero (decision 0094): from the zero module it
-// imports only the transport contract, the connection model, and the Go
-// client. Its module path sits under zero's, so Go's internal rule would not
+// imports only the transport contract, the connection model, the Go client,
+// and the log files it shares with the daemon (decision 0151). Its module path sits under zero's, so Go's internal rule would not
 // stop it.
 func TestImportsOnlyZeroContractAndClient(t *testing.T) {
 	const zero = "github.com/flexdinesh/zero/"
-	allowed := map[string]bool{zero + "pkg/contract": true, zero + "pkg/connection": true, zero + "pkg/client": true}
+	allowed := map[string]bool{zero + "pkg/contract": true, zero + "pkg/connection": true, zero + "pkg/client": true, zero + "pkg/logfile": true}
 	files := 0
 	err := filepath.WalkDir(".", func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
@@ -39,7 +39,7 @@ func TestImportsOnlyZeroContractAndClient(t *testing.T) {
 				return err
 			}
 			if strings.HasPrefix(imported, zero) && !strings.HasPrefix(imported, zero+"apps/desktop/") && !allowed[imported] {
-				t.Errorf("%s imports %s; the app imports only pkg/contract, pkg/connection, and pkg/client from zero", path, imported)
+				t.Errorf("%s imports %s; the app imports only pkg/contract, pkg/connection, pkg/client, and pkg/logfile from zero", path, imported)
 			}
 		}
 		return nil

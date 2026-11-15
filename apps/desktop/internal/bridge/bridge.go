@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/flexdinesh/zero/apps/desktop/internal/appearance"
+	"github.com/flexdinesh/zero/pkg/logfile"
 )
 
 const (
@@ -279,4 +280,27 @@ func ResolveReveal(roots []string, project, relative string, realpath RealPath) 
 		return "", ErrPathEscapes
 	}
 	return target, nil
+}
+
+// Diagnostics is what the page's problem report says about the app
+// (decision 0151): its build, where its logs live, and its newest log and
+// crash lines, all redacted.
+type Diagnostics struct {
+	Version    string   `json:"version"`
+	Commit     string   `json:"commit"`
+	LogDir     string   `json:"logDir"`
+	LogLines   []string `json:"logLines"`
+	CrashLines []string `json:"crashLines"`
+}
+
+// NewDiagnostics redacts the app's log directory and lines with home, never
+// leaving the lines null.
+func NewDiagnostics(version, commit, logDir string, lines, crash []string, home string) Diagnostics {
+	redact := func(lines []string) []string {
+		if lines == nil {
+			return []string{}
+		}
+		return logfile.RedactLines(lines, home)
+	}
+	return Diagnostics{Version: version, Commit: commit, LogDir: logfile.Redact(logDir, home), LogLines: redact(lines), CrashLines: redact(crash)}
 }
