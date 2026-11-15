@@ -1,0 +1,22 @@
+{
+  "version": "0.4.2",
+  "commit": "3367158b0c1e4b6f9a2d7e5f8a9b0c1d2e3f4a5b",
+  "buildDate": "2026-11-12T09:30:00Z",
+  "os": "linux",
+  "arch": "amd64",
+  "installMethod": "script",
+  "mode": "daemon",
+  "protocol": 1,
+  "uptimeSeconds": 4210,
+  "roots": 2,
+  "exposure": "",
+  "home": "/home/user",
+  "logsKept": true,
+  "logFile": "~/.local/state/zero/logs/daemon.log",
+  "logLines": [
+    "time=2026-11-15T09:12:03.120Z level=INFO msg=\"zero daemon listening\" version=0.4.2 protocol=1 socket=/run/user/1000/zero/daemon.sock roots=2",
+    "time=2026-11-15T09:40:51.004Z level=WARN msg=\"language server failed\" server=gopls root=~/code/zero error=\"gopls exited: exit status 2\"",
+    "time=2026-11-15T10:02:17.871Z level=ERROR msg=\"request failed\" method=GET path=/api/diff status=500 error=\"{\\\"error\\\":\\\"could not read the index\\\"}\""
+  ],
+  "crashLines": []
+}

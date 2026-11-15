@@ -26,6 +26,28 @@ export interface NotificationConfig {
   feedback: boolean
 }
 
+// DesktopDiagnostics is the app's part of a problem report (decision 0151):
+// its build, its log directory, and its newest log and crash lines, redacted.
+export interface DesktopDiagnostics {
+  version: string
+  commit: string
+  logDir: string
+  logLines: string[]
+  crashLines: string[]
+}
+
+function isStrings(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string")
+}
+
+// readDesktopDiagnostics accepts the app's report, or null.
+export function readDesktopDiagnostics(value: unknown): DesktopDiagnostics | null {
+  if (!isRecord(value)) return null
+  const { version, commit, logDir, logLines, crashLines } = value
+  if (typeof version !== "string" || typeof commit !== "string" || typeof logDir !== "string" || !isStrings(logLines) || !isStrings(crashLines)) return null
+  return { version, commit, logDir, logLines, crashLines }
+}
+
 // NotificationStatus is whether notices can reach the user.
 export interface NotificationStatus {
   supported: boolean
@@ -42,9 +64,11 @@ export interface NotificationStatus {
 // configureNotifications sets what the app notifies about and resolves whether
 // notices can reach the user, or null when it refuses (decision 0099);
 // setAppearance has the app's menus and window controls follow the theme's
-// polarity, or the OS for "system" (decision 0119). A window
-// on a remote server has no revealPath: its files are not on this computer
-// (decision 0098).
+// polarity, or the OS for "system" (decision 0119); diagnostics resolves the
+// app's part of a problem report, or null when it refuses (decision 0151). A
+// window on a remote server has no revealPath or diagnostics: its files are
+// not on this computer, and its server is not trusted with this computer's
+// logs (decision 0098).
 export interface DesktopBridge {
   version: number
   closeWindow: (() => void) | null
@@ -53,6 +77,7 @@ export interface DesktopBridge {
   showContextMenu: ((items: readonly NativeMenuItem[], x: number, y: number) => Promise<string | null>) | null
   configureNotifications: ((config: NotificationConfig) => Promise<NotificationStatus | null>) | null
   setAppearance: ((appearance: DesktopAppearance) => void) | null
+  diagnostics: (() => Promise<DesktopDiagnostics | null>) | null
 }
 
 // DesktopAppearance is the polarity native surfaces take: the OS's, or one.
@@ -62,7 +87,7 @@ export type DesktopAppearance = "system" | "light" | "dark"
 // means no bridge. Methods that are missing or not functions are null.
 export function readDesktopBridge(value: unknown): DesktopBridge | null {
   if (!isRecord(value) || typeof value.version !== "number" || !Number.isInteger(value.version) || value.version < 1) return null
-  const { closeWindow, showAppMenu, revealPath, showContextMenu, configureNotifications, setAppearance } = value
+  const { closeWindow, showAppMenu, revealPath, showContextMenu, configureNotifications, setAppearance, diagnostics } = value
   return {
     version: value.version,
     closeWindow: typeof closeWindow === "function"
@@ -106,6 +131,15 @@ export function readDesktopBridge(value: unknown): DesktopBridge | null {
     setAppearance: typeof setAppearance === "function"
       ? (appearance) => {
         setAppearance.call(value, appearance)
+      }
+      : null,
+    diagnostics: typeof diagnostics === "function"
+      ? async () => {
+        try {
+          return readDesktopDiagnostics(await diagnostics.call(value))
+        } catch {
+          return null
+        }
       }
       : null,
   }

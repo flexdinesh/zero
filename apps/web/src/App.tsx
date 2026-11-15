@@ -77,6 +77,7 @@ import { QuickOpen, type QuickOpenOptions } from "./features/quick-open/QuickOpe
 import { navigationEligibility, type NavigationKind } from "./features/navigation/code-navigation.ts"
 import type { CommandAction } from "./workspace/commands.ts"
 import { NavigationDialog } from "./features/navigation/NavigationDialog.tsx"
+import { ReportProblemDialog } from "./features/diagnostics/ReportProblemDialog.tsx"
 import type { SourceChanges, SourceNavigation } from "./features/documents/SourceDocument.tsx"
 import type { SourceTarget } from "./features/navigation/source-position.ts"
 import { useCodeNavigation } from "./features/navigation/use-code-navigation.ts"
@@ -102,6 +103,7 @@ import { usePreviewPreference } from "./features/documents/use-preview-preferenc
 import { useProjectMemory } from "./workspace/use-project-memory.ts"
 import { useDesktopCloseTab } from "./workspace/use-desktop-close-tab.ts"
 import { useDesktopOpenFolder } from "./workspace/use-desktop-open-folder.ts"
+import { useDesktopReportProblem } from "./workspace/use-desktop-report-problem.ts"
 import { useSearchSession } from "./features/search/use-search-session.ts"
 import type { LiveChange } from "./api/events-contract.ts"
 import { liveTargets } from "./features/live-updates/live-updates.ts"
@@ -217,6 +219,7 @@ export function App({ project }: AppProps) {
   const openCommands = useRef<(options?: CommandPaletteOptions) => void>(() => {})
   const openColorTheme = useRef<() => void>(() => {})
   const openRecent = useRef<() => void>(() => {})
+  const openReport = useRef<() => void>(() => {})
   const stepHunk = useRef<HunkStep>(() => {})
   const [lastPage, setLastPage] = useState<PageData | null>(() => result ? initialPage(result) : null)
   useEffect(() => {
@@ -260,6 +263,11 @@ export function App({ project }: AppProps) {
   }, [])
   const showRecent = useCallback(() => openRecent.current(), [])
   useNavigationKeys(historyStore, showRecent)
+  const registerReport = useCallback((open: (() => void) | null) => {
+    openReport.current = open ?? (() => {})
+  }, [])
+  const reportProblem = useCallback(() => openReport.current(), [])
+  useDesktopReportProblem(reportProblem)
   const runNavigation = useRef<(kind: NavigationKind) => void>(() => {})
   const walkthroughCommands = useRef({ move: (_direction: 1 | -1) => {}, close: () => {}, present: () => {} })
   const openWelcomeCommand = useRef(() => {})
@@ -279,6 +287,7 @@ export function App({ project }: AppProps) {
     else if (action.kind === "go-forward") historyStore.go(1)
     else if (action.kind === "recent-locations") openRecent.current()
     else if (action.kind === "select-color-theme") openColorTheme.current()
+    else if (action.kind === "report-problem") openReport.current()
     else openSettings.current(action.kind === "open-setting" ? action.setting : undefined)
   }, [historyStore])
   const sidebar = useSidebar()
@@ -778,6 +787,7 @@ export function App({ project }: AppProps) {
       case "color-theme": openColorTheme.current(); break
       case "font-size": openSettings.current("fontSize"); break
       case "review-uncommitted": openReview(workingCompare, true); break
+      case "report-problem": reportProblem(); break
     }
   }
   function runEmptyAction(action: EmptyWorkspaceAction) {
@@ -1065,6 +1075,7 @@ export function App({ project }: AppProps) {
         } : undefined}
         onSearch={() => openSearch.current()}
         onSettings={() => openSettings.current()}
+        onReport={reportProblem}
         onHome={openWelcome} />
       <ProjectPicker project={project} registerOpen={registerProjects} onOpen={switchProject} />
       <SettingsDialog registerOpen={registerSettings} notificationStatus={notificationStatus} />
@@ -1074,6 +1085,7 @@ export function App({ project }: AppProps) {
         onCommands={showCommandsFrom} />
       <ColorThemePicker registerOpen={registerColorTheme} />
       <RecentLocations log={historyLog} project={project} registerOpen={registerRecent} onOpen={navigateToHref} />
+      <ReportProblemDialog registerOpen={registerReport} />
       <NavigationDialog panel={codeNavigation.panel} onClose={closeNavigation} onOpen={openNavigationResult} />
       <OverlayScrollbars />
     </>
