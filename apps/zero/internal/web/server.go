@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"os"
 	"sync"
@@ -55,6 +56,13 @@ type Config struct {
 	// /api/directories browse the whole host (decision 0146); nil serves
 	// Roots as they are.
 	RootControl app.RootControl
+	// Server describes the running server for problem reports (decision
+	// 0151).
+	Server app.ServerInfo
+	// Log records failed requests, language servers, and live update
+	// fallbacks, and each request at debug level (decision 0151); nil
+	// discards.
+	Log *slog.Logger
 }
 
 // App adapts the application layer (internal/app) to the HTTP API.
@@ -70,6 +78,9 @@ type App struct {
 	servers  *lsp.Manager
 	watches  *watch.Hub
 	routes   *http.ServeMux
+	// handler is routes behind the request log.
+	handler http.Handler
+	log     *slog.Logger
 	// stopping ends presence streams, which follow no subscription.
 	stopping     chan struct{}
 	stoppingOnce sync.Once
@@ -98,14 +109,19 @@ func New(config Config) (*App, error) {
 	if config.Roots == nil {
 		return nil, errors.New("web: no roots")
 	}
+	if config.Log == nil {
+		config.Log = slog.New(slog.DiscardHandler)
+	}
 	if config.LanguageServers == nil {
-		config.LanguageServers = lsp.NewManager(builtinServers(config.Types), lsp.Options{})
+		config.LanguageServers = lsp.NewManager(builtinServers(config.Types), lsp.Options{Log: config.Log})
 	}
 	if err := checkLanguageServers(config.LanguageServers.Servers(), config.Types); err != nil {
 		return nil, err
 	}
 	if config.LiveUpdates == nil {
-		config.LiveUpdates = watch.NewHub(watch.DefaultOptions())
+		options := watch.DefaultOptions()
+		options.Log = config.Log
+		config.LiveUpdates = watch.NewHub(options)
 	}
 	a := &App{config: config, roots: config.Roots, openFile: openFile, shell: string(shell), servers: config.LanguageServers, watches: config.LiveUpdates, stopping: make(chan struct{})}
 	a.app, err = app.New(app.Config{
@@ -122,11 +138,14 @@ func New(config Config) (*App, error) {
 		WalkthroughDirectory: config.WalkthroughDirectory,
 		FeedbackDirectory:    config.FeedbackDirectory,
 		RootControl:          config.RootControl,
+		Server:               config.Server,
 	})
 	if err != nil {
 		return nil, err
 	}
 	a.routes = a.newRoutes()
+	a.log = config.Log
+	a.handler = a.logged(a.routes)
 	return a, nil
 }
 

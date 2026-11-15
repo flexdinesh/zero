@@ -6,10 +6,10 @@ package daemon
 import (
 	"context"
 	"errors"
-	"fmt"
-	"io"
+	"log/slog"
 	"time"
 
+	"github.com/flexdinesh/zero/internal/app"
 	"github.com/flexdinesh/zero/internal/runtime"
 	"github.com/flexdinesh/zero/internal/tailscale"
 	"github.com/flexdinesh/zero/internal/version"
@@ -33,8 +33,15 @@ type Config struct {
 	ScanDepth int
 	// Lifetime is when the daemon and its remote listener stop on their own.
 	Lifetime Lifetime
-	// Log receives startup, skipped roots, and the stop reason; nil discards.
-	Log io.Writer
+	// Log receives startup, skipped roots, exposures, the stop reason, and
+	// what the web app logs (decision 0151); nil discards.
+	Log *slog.Logger
+	// LogFile and CrashFile are where Log and crash output persist, for
+	// problem reports; "" keeps none.
+	LogFile, CrashFile string
+	// InstallMethod names how zero was installed, for problem reports; nil
+	// reports none.
+	InstallMethod func() string
 	// IdentityFile holds the identity for serving over TCP; "" never does.
 	IdentityFile string
 	// Tailscale serves over Tailscale on request; nil never does (decision
@@ -60,7 +67,7 @@ func Run(ctx context.Context, config Config) error {
 	}
 	log := config.Log
 	if log == nil {
-		log = io.Discard
+		log = slog.New(slog.DiscardHandler)
 	}
 	roots, err := LoadedRoots(config.RootsFile, log)
 	if err != nil {
@@ -71,7 +78,10 @@ func Run(ctx context.Context, config Config) error {
 		return err
 	}
 	defer func() { _ = listener.Close() }()
-	rt, err := runtime.New(runtime.Config{Roots: roots.Set(), RootControl: roots, Depth: config.Depth, ScanDepth: config.ScanDepth, SessionKey: "daemon", Presence: true})
+	exposed := &exposures{}
+	server := app.ServerInfo{Mode: contract.DiagnosticsDaemon, Protocol: ProtocolVersion, LogFile: config.LogFile, CrashFile: config.CrashFile,
+		InstallMethod: config.InstallMethod, Exposure: exposed.serving}
+	rt, err := runtime.New(runtime.Config{Roots: roots.Set(), RootControl: roots, Depth: config.Depth, ScanDepth: config.ScanDepth, SessionKey: "daemon", Presence: true, Server: server, Log: log})
 	if err != nil {
 		return err
 	}
@@ -83,7 +93,6 @@ func Run(ctx context.Context, config Config) error {
 	defer idle.stop()
 	// An exposure closing on its own exits the daemon only if no other one
 	// serves.
-	exposed := &exposures{}
 	exit := func() {
 		if !exposed.listening() {
 			cancel(errIdle)
@@ -122,8 +131,8 @@ func Run(ctx context.Context, config Config) error {
 			StartedAt: time.Now().UTC().Truncate(time.Second),
 		},
 	})
-	_, _ = fmt.Fprintf(log, "zero daemon %s (protocol %d) listening on %s with %d roots\n", version.Number(), ProtocolVersion, config.Socket, len(roots.Set().List()))
+	log.Info("zero daemon listening", "version", version.Number(), "protocol", ProtocolVersion, "socket", config.Socket, "roots", len(roots.Set().List()))
 	err = rt.Serve(ctx, listener, idle.wrap(control.Handler(rt.Handler())))
-	_, _ = fmt.Fprintf(log, "zero daemon stopped: %v\n", context.Cause(ctx))
+	log.Info("zero daemon stopped", "reason", context.Cause(ctx))
 	return err
 }

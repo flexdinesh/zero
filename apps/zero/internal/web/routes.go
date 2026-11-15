@@ -34,7 +34,7 @@ func (a *App) serve(policy HostPolicy, w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden host", http.StatusForbidden)
 		return
 	}
-	a.routes.ServeHTTP(w, r)
+	a.handler.ServeHTTP(w, r)
 }
 
 // HostPolicy is which Host headers a listener answers. A site that rebinds
@@ -206,6 +206,9 @@ func (a *App) newRoutes() *http.ServeMux {
 		mux.HandleFunc("GET /api/presence", a.servePresence)
 	}
 
+	api("/api/diagnostics", func(w http.ResponseWriter, _ *http.Request, _ url.Values) {
+		writeJSON(w, http.StatusOK, a.app.Diagnostics.Report())
+	})
 	api("/api/metrics", func(w http.ResponseWriter, _ *http.Request, _ url.Values) {
 		writeJSON(w, http.StatusOK, a.app.Metrics.Sample())
 	})

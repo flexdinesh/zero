@@ -11,6 +11,7 @@ package watch
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -100,6 +101,8 @@ type Options struct {
 	MaxWatched int
 	// MaxPaths caps the paths of one Change.
 	MaxPaths int
+	// Log records falling back to polling (decision 0151); nil discards.
+	Log *slog.Logger
 }
 
 // DefaultOptions are decisions 0050 and 0066's limits.

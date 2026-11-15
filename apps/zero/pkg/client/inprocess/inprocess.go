@@ -157,6 +157,10 @@ func (c *Client) Metrics(ctx context.Context) (contract.ProcessMetrics, error) {
 	return call(ctx, func() (contract.ProcessMetrics, error) { return c.app.Metrics.Sample(), nil })
 }
 
+func (c *Client) Diagnostics(ctx context.Context) (contract.Diagnostics, error) {
+	return call(ctx, func() (contract.Diagnostics, error) { return c.app.Diagnostics.Report(), nil })
+}
+
 func (c *Client) Walkthroughs(ctx context.Context, project string) ([]contract.WalkthroughSummary, error) {
 	return call(ctx, func() ([]contract.WalkthroughSummary, error) { return c.app.Walkthroughs.List(project) })
 }

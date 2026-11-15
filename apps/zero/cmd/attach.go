@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/fatih/color"
+	"github.com/flexdinesh/zero/internal/app"
 	"github.com/flexdinesh/zero/internal/attach"
 	"github.com/flexdinesh/zero/internal/browser"
 	"github.com/flexdinesh/zero/internal/daemon"
@@ -324,7 +325,8 @@ func serveStdio(ctx context.Context, dir string, wire io.ReadWriteCloser) error 
 	if err != nil {
 		return err
 	}
-	rt, err := runtime.New(runtime.Config{Roots: roots, Depth: defaultDepth, ScanDepth: defaultScanDepth})
+	rt, err := runtime.New(runtime.Config{Roots: roots, Depth: defaultDepth, ScanDepth: defaultScanDepth,
+		Server: app.ServerInfo{Mode: contract.DiagnosticsStdio, InstallMethod: installMethodName}})
 	if err != nil {
 		return err
 	}

@@ -6,15 +6,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
+	goruntime "runtime"
 	"strconv"
 	"time"
 
 	"github.com/flexdinesh/zero/internal/daemon"
 	"github.com/flexdinesh/zero/internal/remote"
 	"github.com/flexdinesh/zero/internal/tailscale"
+	"github.com/flexdinesh/zero/pkg/logfile"
 	"github.com/spf13/cobra"
 )
 
@@ -144,11 +147,70 @@ func serveDaemon(ctx context.Context, opts daemonOptions, lifetime daemon.Lifeti
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "cannot serve over TCP: %v\n", err)
 	}
-	err = daemon.Run(ctx, daemon.Config{Socket: opts.socket, RootsFile: rootsFile, Depth: opts.depth, ScanDepth: opts.scanDepth, Lifetime: lifetime, Log: stderr, IdentityFile: identityFile, Tailscale: &tailscale.Client{}})
+	logs := openDaemonLog(opts.socket, stderr)
+	defer logs.close()
+	err = daemon.Run(ctx, daemon.Config{Socket: opts.socket, RootsFile: rootsFile, Depth: opts.depth, ScanDepth: opts.scanDepth, Lifetime: lifetime,
+		Log: logs.logger, LogFile: logs.file, CrashFile: logs.crash, InstallMethod: installMethodName, IdentityFile: identityFile, Tailscale: &tailscale.Client{}})
 	if errors.Is(err, daemon.ErrRunning) {
 		return fmt.Errorf("%w at %s", err, opts.socket)
 	}
 	return err
+}
+
+// daemonLog is where the daemon logs (decision 0151): stderr, and the
+// rotating daemon.log and crash output in its log directory when that opens.
+type daemonLog struct {
+	logger      *slog.Logger
+	file, crash string
+	close       func()
+}
+
+// openDaemonLog logs at ZERO_LOG's level to stderr and to daemon.log. The
+// default socket's daemon logs in the user's log directory; a daemon on
+// another socket (dev and test isolation) logs in logs/ beside it. A log
+// directory that cannot open leaves stderr only, said there.
+func openDaemonLog(socket string, stderr io.Writer) daemonLog {
+	level, levelErr := logfile.ParseLevel(os.Getenv("ZERO_LOG"))
+	plain := func(w io.Writer) *slog.Logger {
+		return slog.New(slog.NewTextHandler(w, &slog.HandlerOptions{Level: level}))
+	}
+	if levelErr != nil {
+		_, _ = fmt.Fprintf(stderr, "%v; logging at info\n", levelErr)
+	}
+	dir, err := daemonLogDir(socket)
+	var file *logfile.File
+	if err == nil {
+		file, err = logfile.Open(dir, "daemon")
+	}
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "cannot keep a daemon log: %v\n", err)
+		return daemonLog{logger: plain(stderr), close: func() {}}
+	}
+	crash := logfile.CrashPath(dir, "daemon")
+	if err := logfile.CaptureCrashes(dir, "daemon"); err != nil {
+		_, _ = fmt.Fprintf(stderr, "cannot keep daemon crash output: %v\n", err)
+		crash = ""
+	}
+	return daemonLog{logger: plain(io.MultiWriter(stderr, file)), file: file.Path(), crash: crash, close: func() { _ = file.Close() }}
+}
+
+// daemonLogDir is the default socket's user log directory, else logs/
+// beside the socket.
+func daemonLogDir(socket string) (string, error) {
+	if defaultSocket, err := daemon.DefaultSocket(); err == nil && defaultSocket == socket {
+		return logfile.DefaultDir(goruntime.GOOS)
+	}
+	return filepath.Join(filepath.Dir(socket), "logs"), nil
+}
+
+// installMethodName names how this zero was installed, for problem
+// reports: the detected kind, with a package manager's name.
+func installMethodName() string {
+	method := detectInstall()
+	if method.Manager != "" {
+		return string(method.Kind) + " (" + method.Manager + ")"
+	}
+	return string(method.Kind)
 }
 
 func ensureDaemon(ctx context.Context, opts daemonOptions, stdout, _ io.Writer) error {

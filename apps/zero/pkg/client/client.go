@@ -75,6 +75,9 @@ type Client interface {
 
 	// Metrics samples the server process.
 	Metrics(ctx context.Context) (contract.ProcessMetrics, error)
+	// Diagnostics describes the server for a problem report, its log lines
+	// redacted (decision 0151).
+	Diagnostics(ctx context.Context) (contract.Diagnostics, error)
 
 	// Walkthroughs lists a project's walkthroughs, most recently updated
 	// first.

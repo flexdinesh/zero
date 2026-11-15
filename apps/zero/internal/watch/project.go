@@ -215,6 +215,9 @@ func (p *project) pollGit(reason string) {
 // startPolling takes the first snapshot before reporting polling, so no
 // change after the status goes unseen.
 func (p *project) startPolling(dirs []string, tree bool, reason string) {
+	if log := p.hub.options.Log; log != nil {
+		log.Info("live updates polling", "root", p.target.Root, "tree", tree, "reason", reason)
+	}
 	p.stopPolling()
 	p.stopPoll = make(chan struct{})
 	p.pollTree = tree

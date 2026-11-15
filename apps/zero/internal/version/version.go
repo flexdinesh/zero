@@ -37,6 +37,10 @@ func Number() string {
 	return version
 }
 
+// Details returns the resolved version, commit, and build date; commit and
+// date are empty when unknown.
+func Details() (string, string, string) { return metadata() }
+
 func metadata() (string, string, string) {
 	version := Version
 	commit := Commit
