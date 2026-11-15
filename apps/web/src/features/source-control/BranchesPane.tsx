@@ -112,7 +112,7 @@ function BranchRow({ baseName, focusable, row, onFocus, onOpen }: BranchRowProps
       }} />
   )
   return (
-    <ListRow role="option" tabIndex={focusable ? 0 : -1} aria-selected={false} className="compare-row branch-row"
+    <ListRow indent="nested" role="option" tabIndex={focusable ? 0 : -1} aria-selected={false} className="compare-row branch-row"
       data-current={layer.current || undefined} data-lane={row.lane}
       aria-label={`${name}${layer.current ? ", checked out" : ""}, ${plural(layer.ahead, "commit")} on ${layer.parent}${aliases}`}
       title={`${name}${aliases}\n${plural(layer.ahead, "commit")} on ${layer.parent}`}

@@ -175,6 +175,14 @@
   --row-menu: 1.75rem;
   --row-pick: 2rem;
   --row-drawer: 2rem;
+  /* Row insets (decision 0149): ListRow's leading indent, by reason, and an
+     end inset that keeps trailing content clear of the overlay scrollbar
+     lane. Features choose an indent; they never pad rows sideways. */
+  --row-indent-flush: var(--space-2);
+  --row-indent-toggle: var(--space-1);
+  --row-indent-nested: var(--space-5);
+  --row-indent-match: 2.5rem;
+  --row-inset-end: calc(var(--scrollbar-size) + var(--space-1));
   --chrome-height: var(--control-lg);
   --field-height: var(--control-md);
   /* Palette fields lead their dialog, a step above its pick rows. */

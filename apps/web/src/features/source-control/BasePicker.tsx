@@ -75,7 +75,7 @@ export function BasePicker({ base, mergeBase, name, refs, onChange }: BasePicker
         refs.load()
       }
     }}>
-      <Popover.Trigger render={<ListButton density="list" className="compare-row branch-row-base"
+      <Popover.Trigger render={<ListButton density="list" indent="nested" className="compare-row branch-row-base"
         aria-label={name ? `Change base branch, ${name}` : "Choose base branch"}
         title={name && mergeBase ? `${name} at the merge-base ${mergeBase}` : name || undefined} />}>
         <GitBranchIcon className="compare-row-icon" aria-hidden="true" />

@@ -438,6 +438,25 @@ test("every Source Control pane scrolls in one lane at the sidebar's edge", asyn
   expect(await right(pane(page, "Uncommitted").locator(".file-tree-host"))).toBe(await right(pane(page, "Uncommitted")))
 })
 
+// Rows end at ListRow's end inset, so a row's trailing status and diff glyph
+// never sit under its list's overlay scrollbar lane (decision 0149).
+test("trailing row content stays clear of the scrollbar lane", async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 360 })
+  await openSourceControl(page)
+  const cases: [Locator, Locator][] = [
+    [changeRow(page, "README.md"), changeRow(page, "README.md").locator(".commit-file-status")],
+    [commitRow(page, featureSubject), commitRow(page, featureSubject).locator(".commit-diff-glyph")],
+  ]
+  for (const [row, trailing] of cases) {
+    await row.hover()
+    await expect(trailing).toBeVisible()
+    await expect(verticalBar(page)).toHaveAttribute("data-visible", "")
+    const [lane, end] = await Promise.all([verticalBar(page).boundingBox(), trailing.boundingBox()])
+    if (!lane || !end) throw new Error("the lane or the row's end is not laid out")
+    expect(lane.x - (end.x + end.width)).toBeGreaterThanOrEqual(4)
+  }
+})
+
 // Source Control's tree shares the Explorer's folder icons (decision 0138).
 test("the changes tree marks folders with folder icons", async ({ page }) => {
   await openSourceControl(page)

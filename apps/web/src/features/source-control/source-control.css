@@ -190,7 +190,6 @@
 .changes-row {
   height: var(--row-list);
   gap: var(--space-1);
-  padding: 0 var(--space-2) 0 var(--space-5);
   white-space: nowrap;
 }
 
@@ -255,7 +254,6 @@
 .compare-row {
   height: var(--row-list);
   gap: var(--space-1);
-  padding: 0 var(--space-2) 0 var(--space-5);
   color: var(--color-text-secondary);
   white-space: nowrap;
 }
@@ -364,7 +362,6 @@
 .compare-row-commit {
   height: auto;
   padding-block: var(--space-1);
-  padding-left: var(--space-1);
 }
 
 .commit-row-text {
@@ -426,7 +423,7 @@
   display: grid;
   justify-items: start;
   gap: 2px;
-  padding: 0 var(--space-2) var(--space-1) var(--space-5);
+  padding: 0 var(--row-inset-end) var(--space-1) var(--row-indent-nested);
   color: var(--color-text-muted);
   font-size: var(--text-xs);
 }
@@ -467,7 +464,7 @@
 .commit-details-files {
   display: grid;
   justify-self: stretch;
-  margin: 0 calc(-1 * var(--space-2)) 0 calc(-1 * var(--space-5));
+  margin: 0 calc(-1 * var(--row-inset-end)) 0 calc(-1 * var(--row-indent-nested));
 }
 
 /* File rows read as Uncommitted's, not as the details' small lines. */

@@ -90,10 +90,6 @@
   text-overflow: ellipsis;
 }
 
-.search-match {
-  padding-left: 2.5rem;
-}
-
 .search-match-text {
   min-width: 0;
   overflow: hidden;

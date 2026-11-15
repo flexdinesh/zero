@@ -136,6 +136,9 @@ export default function UiGallery() {
               <ListRow tabIndex={0} selected>Selected row</ListRow>
               <ListRow tabIndex={0} aria-expanded="false"><Chevron />Collapsed folder</ListRow>
               <ListRow tabIndex={0} density="pick">Pick density</ListRow>
+              <ListRow tabIndex={0} indent="toggle"><Chevron />Toggle indent<span className="gallery-row-end">M</span></ListRow>
+              <ListRow tabIndex={0} indent="nested">Nested indent<span className="gallery-row-end">M</span></ListRow>
+              <ListRow tabIndex={0} indent="match">Match indent<span className="gallery-row-end">M</span></ListRow>
               <ListButton selected>Settings category</ListButton>
               <ListButton>Another category</ListButton>
             </>

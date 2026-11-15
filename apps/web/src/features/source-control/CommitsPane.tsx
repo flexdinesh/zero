@@ -266,7 +266,7 @@ export function CommitsPane({
         {(result?.more || moreError) && (
           <div className="commit-more">
             {moreError && <StatusMessage className="commit-more-error" tone="error" role="alert">{moreError}</StatusMessage>}
-            <ListButton density="list" className="compare-row commit-more-row" aria-disabled={loadingMore || undefined}
+            <ListButton density="list" indent="nested" className="compare-row commit-more-row" aria-disabled={loadingMore || undefined}
               onClick={() => { if (!loadingMore) loadMore() }}>
               {moreError ? <RefreshCwIcon className="compare-row-icon" aria-hidden="true" />
                 : <ChevronsDownIcon className="compare-row-icon" aria-hidden="true" />}
@@ -323,7 +323,7 @@ function CommitRow({
   const age = commitAge(commit.authorTime, now)
   const detailsId = useId()
   return (<>
-    <ListRow data-row-key={commit.hash} role="option" tabIndex={focusable ? 0 : -1} aria-selected={selected} selected={selected}
+    <ListRow indent="toggle" data-row-key={commit.hash} role="option" tabIndex={focusable ? 0 : -1} aria-selected={selected} selected={selected}
       className="compare-row compare-row-commit" data-range={inRange || undefined} data-pending={pending || undefined}
       data-diff-pinned={glyph?.pinned || undefined} data-expanded={expanded || undefined} data-lane={lane}
       aria-describedby={expanded ? detailsId : undefined}
@@ -413,7 +413,7 @@ function CommitFiles({ files, onOpen, onRetry }: CommitFilesProps) {
       {capped.shown.map((file) => {
         const { name, folder } = fileParts(file.path)
         return (
-          <ListRow key={file.path} className="changes-row commit-details-file" data-status={file.status}
+          <ListRow indent="nested" key={file.path} className="changes-row commit-details-file" data-status={file.status}
             title={file.oldPath ? `${file.path}\nRenamed from ${file.oldPath}` : file.path}
             onClick={() => onOpen(file.path)}>
             <FileIcon path={file.path} />
@@ -424,7 +424,7 @@ function CommitFiles({ files, onOpen, onRetry }: CommitFilesProps) {
         )
       })}
       {more && (
-        <ListRow className="changes-row commit-details-file commit-details-more" onClick={() => onOpen("")}>
+        <ListRow indent="nested" className="changes-row commit-details-file commit-details-more" onClick={() => onOpen("")}>
           <span className="changes-row-folder">{more}</span>
         </ListRow>
       )}
