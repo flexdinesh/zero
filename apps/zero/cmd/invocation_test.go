@@ -135,7 +135,7 @@ func TestAlternateNameAppHints(t *testing.T) {
 			}
 			deps.installed = func(context.Context) (bool, error) { return false, nil }
 			_, stderr, err = runAppWith(opts, deps)
-			for _, want := range []string{"`" + name.String() + " browser`", "| sh -s -- --name " + name.String(), "zero-desktop_", "zero://"} {
+			for _, want := range []string{"`" + name.String() + " browser`", "| sh -s -- --name " + name.String(), "zero-app_", "zero://"} {
 				if err != nil || !strings.Contains(stderr, want) {
 					t.Errorf("fallback = %q, %v; want %q", stderr, err, want)
 				}

@@ -48,7 +48,7 @@ func TestInstalledPerOS(t *testing.T) {
 		calls  [][]string
 	}{
 		{"darwin lets open decide", "darwin", &fakeRunner{}, true, false, nil},
-		{"linux with a handler", "linux", &fakeRunner{outputs: map[string]string{"xdg-mime": "zero-desktop.desktop\n"}}, true, false, [][]string{query}},
+		{"linux with a handler", "linux", &fakeRunner{outputs: map[string]string{"xdg-mime": "zero-app.desktop\n"}}, true, false, [][]string{query}},
 		{"linux without a handler", "linux", &fakeRunner{outputs: map[string]string{"xdg-mime": "\n"}}, false, false, [][]string{query}},
 		{"linux without xdg-mime", "linux", &fakeRunner{errs: map[string]error{"xdg-mime": &exec.Error{Name: "xdg-mime", Err: exec.ErrNotFound}}}, false, false, [][]string{query}},
 		{"linux query failure", "linux", &fakeRunner{errs: map[string]error{"xdg-mime": exitError(1)}}, false, true, [][]string{query}},
@@ -78,9 +78,9 @@ func TestOpenPerOS(t *testing.T) {
 		{"darwin opens", "darwin", &fakeRunner{}, false, false, [][]string{{"open", target}}},
 		{"darwin without a handler", "darwin", &fakeRunner{errs: map[string]error{"open": exitError(1)}}, true, true, [][]string{{"open", target}}},
 		{"darwin open missing", "darwin", &fakeRunner{errs: map[string]error{"open": exec.ErrNotFound}}, false, true, [][]string{{"open", target}}},
-		{"linux opens", "linux", &fakeRunner{outputs: map[string]string{"xdg-mime": "zero-desktop.desktop\n"}}, false, false, [][]string{query, {"xdg-open", target}}},
+		{"linux opens", "linux", &fakeRunner{outputs: map[string]string{"xdg-mime": "zero-app.desktop\n"}}, false, false, [][]string{query, {"xdg-open", target}}},
 		{"linux without a handler", "linux", &fakeRunner{}, true, true, [][]string{query}},
-		{"linux xdg-open failure", "linux", &fakeRunner{outputs: map[string]string{"xdg-mime": "zero-desktop.desktop\n"}, errs: map[string]error{"xdg-open": exitError(4)}}, false, true, [][]string{query, {"xdg-open", target}}},
+		{"linux xdg-open failure", "linux", &fakeRunner{outputs: map[string]string{"xdg-mime": "zero-app.desktop\n"}, errs: map[string]error{"xdg-open": exitError(4)}}, false, true, [][]string{query, {"xdg-open", target}}},
 		{"windows", "windows", &fakeRunner{}, true, true, nil},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -106,15 +106,15 @@ func TestInstallHintPerOS(t *testing.T) {
 		want []string
 	}{
 		{"darwin", append([]string{
-			"zero-desktop_<version>_darwin_<arm64|amd64>.zip",
+			"zero-app_<version>_darwin_<arm64|amd64>.zip",
 			"https://github.com/flexdinesh/zero/releases",
 			"Applications",
 			"right-click",
-			"xattr -dr com.apple.quarantine /Applications/zero-desktop.app",
+			"xattr -dr com.apple.quarantine /Applications/Zero.app",
 		}, footer...)},
 		{"linux", append([]string{
 			"WebKitGTK 4.1",
-			"zero-desktop_<version>_linux_<amd64|arm64>.tar.gz",
+			"zero-app_<version>_linux_<amd64|arm64>.tar.gz",
 			"https://github.com/flexdinesh/zero/releases",
 		}, footer...)},
 		{"windows", []string{"not available on this OS"}},

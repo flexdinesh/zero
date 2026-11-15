@@ -171,7 +171,7 @@ func publishWalkthrough(ctx context.Context, opts publishOptions, stdin io.Reade
 				openApp = desktopapp.Open
 			}
 			if err := openApp(ctx, viewer); err != nil {
-				_, _ = fmt.Fprintf(stderr, "could not open the zero desktop app: %v\n", err)
+				_, _ = fmt.Fprintf(stderr, "could not open the Zero app: %v\n", err)
 				viewer = ""
 			}
 		}

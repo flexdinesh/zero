@@ -128,7 +128,7 @@ func runConnect(ctx context.Context, opts connectOptions, stdout, stderr io.Writ
 	if deps.goos == "linux" {
 		installed, err := deps.installed(ctx)
 		if err != nil {
-			return unavailable(fmt.Sprintf("could not detect the zero desktop app (%v)", err))
+			return unavailable(fmt.Sprintf("could not detect the Zero app (%v)", err))
 		}
 		if !installed {
 			return unavailable(desktopapp.ErrNotInstalled.Error())
@@ -138,7 +138,7 @@ func runConnect(ctx context.Context, opts connectOptions, stdout, stderr io.Writ
 		if errors.Is(err, desktopapp.ErrNotInstalled) {
 			return unavailable(desktopapp.ErrNotInstalled.Error())
 		}
-		return unavailable(fmt.Sprintf("could not open the zero desktop app (%v)", err))
+		return unavailable(fmt.Sprintf("could not open the Zero app (%v)", err))
 	}
 	connected()
 	return nil

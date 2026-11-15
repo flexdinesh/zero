@@ -70,7 +70,7 @@ func newRootCommandWith(runApp, runBrowser runner) *cobra.Command {
 
 func newNamedRootCommand(name cliName, runApp, runBrowser runner) *cobra.Command {
 	command := newServeCommand(name.String()+" [path]", runApp, addRemoteFlags)
-	command.Short = "Open local files in the zero desktop app, falling back to a web browser"
+	command.Short = "Open local files in the Zero app, falling back to a web browser"
 	command.Flags().Lookup("no-open").Usage = "print the desktop app URL instead of opening it (in browser mode, do not open the browser)"
 	command.Version = version.String()
 	command.SetVersionTemplate("{{.Version}}\n")

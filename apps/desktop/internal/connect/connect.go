@@ -89,7 +89,7 @@ func Ensure(ctx context.Context, run Run, binary string, flags []string) (contra
 	status, parsed := lastStatus(stdout)
 	if parsed && status.Protocol != Protocol {
 		return status, &EnsureError{Mismatch: true, Status: &status, Detail: fmt.Sprintf(
-			"The running daemon speaks protocol %d; zero-desktop needs protocol %d. Run zero daemon stop, or use a matching zero.", status.Protocol, Protocol)}
+			"The running daemon speaks protocol %d; the Zero app needs protocol %d. Run zero daemon stop, or use a matching zero.", status.Protocol, Protocol)}
 	}
 	if parsed && err == nil && status.Socket != "" {
 		return status, nil

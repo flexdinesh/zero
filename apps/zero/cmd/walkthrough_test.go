@@ -545,7 +545,7 @@ func TestPublishWalkthroughOpensDaemonServedProjectsInTheApp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stdout, "web: "+viewer+"\n") || stderr != "could not open the zero desktop app: no handler\n" {
+	if !strings.Contains(stdout, "web: "+viewer+"\n") || stderr != "could not open the Zero app: no handler\n" {
 		t.Errorf("stdout = %q, stderr = %q; want url %s", stdout, stderr, viewer)
 	}
 	select {

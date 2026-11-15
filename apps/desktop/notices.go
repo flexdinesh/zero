@@ -80,7 +80,7 @@ func (h *host) showNotice(notice notifier.Notice) {
 		case errors.Is(err, mygo.ErrNotificationsDenied):
 			h.noticesDenied.Store(true)
 		case err != nil:
-			log.Printf("zero-desktop: notification: %v", err)
+			log.Printf("zero-app: notification: %v", err)
 		default:
 			h.noticesDenied.Store(false)
 		}

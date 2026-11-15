@@ -19,7 +19,8 @@ domain and `sourcezero-docs` Cloudflare Worker stay unchanged. Implementation
 and PR merge do not tag or publish a release or rename the repository.
 
 Previously published releases remain immutable. Old releases carry `srcz`
-asset names; the new installers require `zero_*` and `zero-desktop_*` assets.
+asset names; the new installers require `zero_*` and desktop assets (`zero-app_*` since
+decision 0151).
 Between cutover and their publication, stable installation fails
 clearly before changing either component. Publish v0.2.0 before announcing
 the install command as available.
@@ -92,8 +93,8 @@ Each release publishes `checksums.txt`, four archives, and four desktop
 packages, where `<version>` is the tag without its leading `v`:
 
 - `zero_<version>_<darwin|linux>_<amd64|arm64>.tar.gz`
-- `zero-desktop_<version>_linux_<amd64|arm64>.tar.gz`
-- `zero-desktop_<version>_darwin_<amd64|arm64>.zip`
+- `zero-app_<version>_linux_<amd64|arm64>.tar.gz`
+- `zero-app_<version>_darwin_<amd64|arm64>.zip` (`Zero.app`)
 
 The install scripts use these names:
 
@@ -102,9 +103,10 @@ The install scripts use these names:
 | `install.sh` | CLI and desktop app; CLI alone with `--cli-only` | the release `releases/latest` redirects to |
 | `install-dev.sh` | CLI and desktop app, built from `--ref` (default `main`) | the ref's `mise run dist` |
 
-These names are part of the installer contract. v0.1.6 and earlier have no
-`zero_*` or `zero-desktop_*` assets. The new stable installer stops until
-v0.2.0 publishes them. Missing assets never authorize falling back to old
+These names are part of the installer contract. Releases before decision 0151
+carry `zero-desktop_*` packages; the current installer requires `zero-app_*`
+and stops, before changing anything, until a release publishes them. v0.1.6
+and earlier have no `zero_*` or `zero-desktop_*` assets. Missing assets never authorize falling back to old
 srcz binaries.
 
 Each archive contains the native `zero` binary, README, and license. The

@@ -23,7 +23,7 @@ one Go binary, plus desktop packages that bundle it (decision 0068).
 - `apps/zero/internal/web/`: HTTP adapter (`routes.go`, kind-to-status mapping, server-sent events, raw bytes), shell/static delivery, embedded assets, and the domains not yet moved to `internal/app` (navigation, walkthroughs, metrics).
 - `packages/contracts/`: generated TypeScript types and runtime guards (`@zero/contracts`); never edited by hand.
 - `apps/web/`: React UI, Vite build, frontend tests and development tooling.
-- `apps/desktop/`: the desktop app `zero-desktop` (decisions 0094, 0095), its own Go 1.27 module outside `go.work`: mygo shows `apps/web` in the OS web view, proxying `zero-app://local` from the daemon socket; it never reads project files and embeds no frontend.
+- `apps/desktop/`: the desktop app Zero, binary `zero-app` (decisions 0094, 0095, 0151), its own Go 1.27 module outside `go.work`: mygo shows `apps/web` in the OS web view, proxying `zero-app://local` from the daemon socket; it never reads project files and embeds no frontend.
 - `tools/`: validation, release, and contract-generation tooling, its own Go module. The root `go.work` uses `apps/zero` and `tools` (decision 0078).
 - `testdata/markdown/`: canonical filesystem corpus for Go and browser tests.
 - `testdata/api/`: transport scenarios for frontend-only development.

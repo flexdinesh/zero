@@ -110,7 +110,7 @@ func openInApp(ctx context.Context, opts options, stdin io.Reader, stdout, stder
 	if deps.goos == "linux" {
 		installed, err := deps.installed(ctx)
 		if err != nil {
-			return fallback(fmt.Sprintf("could not detect the zero desktop app (%v)", err), hint)
+			return fallback(fmt.Sprintf("could not detect the Zero app (%v)", err), hint)
 		}
 		if !installed {
 			return fallback(desktopapp.ErrNotInstalled.Error(), hint)
@@ -134,7 +134,7 @@ func openInApp(ctx context.Context, opts options, stdin io.Reader, stdout, stder
 		if errors.Is(err, desktopapp.ErrNotInstalled) {
 			return fallback(desktopapp.ErrNotInstalled.Error(), hint)
 		}
-		return fallback(fmt.Sprintf("could not open the zero desktop app (%v)", err), hint)
+		return fallback(fmt.Sprintf("could not open the Zero app (%v)", err), hint)
 	}
 	_, _ = fmt.Fprintf(stdout, "opened %s in zero\ndesktop: %s\n", project, link)
 	return nil

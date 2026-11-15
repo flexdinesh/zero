@@ -209,10 +209,10 @@ func TestAppFallsBackToBrowserWithANotice(t *testing.T) {
 	}{
 		{"not installed", func(_ *appFake, d *appDeps) {
 			d.installed = func(context.Context) (bool, error) { return false, nil }
-		}, "zero desktop app is not installed; serving in browser mode\n", true, 0, 0},
+		}, "the Zero app is not installed; serving in browser mode\n", true, 0, 0},
 		{"detection failure", func(_ *appFake, d *appDeps) {
 			d.installed = func(context.Context) (bool, error) { return false, errors.New("xdg-mime broke") }
-		}, "could not detect the zero desktop app (xdg-mime broke); serving in browser mode\n", true, 0, 0},
+		}, "could not detect the Zero app (xdg-mime broke); serving in browser mode\n", true, 0, 0},
 		{"ensure failure", func(f *appFake, d *appDeps) {
 			d.ensure = func(_ context.Context, opts daemonOptions) (daemon.Status, bool, error) {
 				f.ensured = append(f.ensured, opts)
@@ -235,13 +235,13 @@ func TestAppFallsBackToBrowserWithANotice(t *testing.T) {
 				f.openedURLs = append(f.openedURLs, target)
 				return desktopapp.ErrNotInstalled
 			}
-		}, "zero desktop app is not installed; serving in browser mode\n", true, 1, 1},
+		}, "the Zero app is not installed; serving in browser mode\n", true, 1, 1},
 		{"open failure", func(f *appFake, d *appDeps) {
 			d.openApp = func(_ context.Context, target string) error {
 				f.openedURLs = append(f.openedURLs, target)
 				return errors.New("xdg-open failed")
 			}
-		}, "could not open the zero desktop app (xdg-open failed); serving in browser mode\n", true, 1, 1},
+		}, "could not open the Zero app (xdg-open failed); serving in browser mode\n", true, 1, 1},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			fake, deps := newAppFake()
@@ -284,7 +284,7 @@ func TestAppOnMacOSLetsOpenDecide(t *testing.T) {
 	if fake.installedCalls != 0 {
 		t.Errorf("checked installation %d times on macOS", fake.installedCalls)
 	}
-	if want := "zero desktop app is not installed; serving in browser mode\n" + desktopapp.InstallHint("darwin"); stderr != want {
+	if want := "the Zero app is not installed; serving in browser mode\n" + desktopapp.InstallHint("darwin"); stderr != want {
 		t.Errorf("stderr = %q, want %q", stderr, want)
 	}
 	if len(fake.served) != 1 {

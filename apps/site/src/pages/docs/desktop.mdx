@@ -4,7 +4,7 @@ showAskAi: false
 
 # Desktop app
 
-The Zero desktop app, `zero-desktop`, shows the same UI as `zero browser`
+The Zero desktop app, **Zero** (`Zero.app` on macOS, `zero-app` on Linux), shows the same UI as `zero browser`
 in one window of its own: the operating system's web view, with native menus
 and dialogs, through the [mygo](https://github.com/egoist/mygo) toolkit. It talks
 to one long-lived Zero daemon per user over a private socket, so the window
@@ -23,7 +23,7 @@ curl -fsSL https://raw.githubusercontent.com/flexdinesh/zero/main/scripts/instal
 
 If `zero` is taken, confirm available `zero-cli` in the terminal or pass
 `--name NAME`; see [command name collisions](/docs/getting-started#command-name-collisions).
-Only the exposed CLI name changes. The app and launcher stay `zero-desktop`,
+Only the exposed CLI name changes. The app stays Zero (`zero-app` on Linux),
 with canonical `zero://` links, configuration paths, and bundled `zero` binary.
 
 Linux needs WebKitGTK 4.1 and GTK 3; the install script warns when it can't find
@@ -34,43 +34,41 @@ sudo apt install libwebkit2gtk-4.1-0
 ```
 
 The app carries its own `zero` binary for the daemon. The scripts put the
-chosen CLI command and `zero-desktop` in `~/.local/bin` (or `~/bin`). The CLI
+chosen CLI command in `~/.local/bin` (or `~/bin`); the app is not on PATH. The CLI
 opens the app with `zero .` and publishes walkthroughs; substitute your chosen
 command for `zero` in the examples below.
 
-- macOS: `zero-desktop.app` goes to `/Applications` (or `~/Applications`).
+- macOS: `Zero.app` goes to `/Applications` (or `~/Applications`).
   Builds are ad-hoc signed, not notarized. curl marks nothing as downloaded, so
   Gatekeeper does not block the first launch. A browser-downloaded zip needs one
   right-click, **Open**, or:
 
   ```sh
-  xattr -dr com.apple.quarantine /Applications/zero-desktop.app
+  xattr -dr com.apple.quarantine /Applications/Zero.app
   ```
 
-- Linux: the app goes to `~/.local/share/zero-desktop/app/`, with a desktop
+- Linux: the app goes to `~/.local/share/zero-app/app/`, with a desktop
   entry that opens `zero://` links and an icon.
+
+An install made before the rename (`zero-desktop`) is moved over on update:
+the old app, launcher, desktop entry, and icon are removed, and page state and
+window looks carry over.
 
 Run a script again to update; quit the app first. The script then stops a
 running daemon, so the app's next window uses the new version. Packages are on
 [GitHub Releases](https://github.com/flexdinesh/zero/releases):
-`zero-desktop_<version>_linux_<arch>.tar.gz` and
-`zero-desktop_<version>_darwin_<arch>.zip`. Unpacking one by hand registers no
+`zero-app_<version>_linux_<arch>.tar.gz` and
+`zero-app_<version>_darwin_<arch>.zip`. Unpacking one by hand registers no
 `zero://` handler on Linux, so `zero .` serves in a browser instead.
 
 ## Open from a terminal
 
 ```sh
-zero-desktop .
-```
-
-opens the current directory. Only one copy runs: a second command or link opens
-in the running app. With the CLI installed:
-
-```sh
 zero .
 ```
 
-Zero checks the directory, starts the daemon if needed, adds the directory to
+opens the current directory. Only one copy runs: a second command or link opens
+in the running app. Zero checks the directory, starts the daemon if needed, adds the directory to
 it, opens the project in the app, and exits. `--no-open` prints the `zero://`
 link instead.
 
@@ -113,8 +111,8 @@ and forward buttons on macOS.
 
 `zero://local/?project=/abs/path` opens a project, and
 `zero://local/view?…` takes the same query as a browser URL (`path`, `wt`,
-`review`, …). Links never add directories; only `zero [path]`, `zero-desktop
-[path]`, and **File › Open Folder…** do. `zero walkthrough publish` prints a
+`review`, …). Links never add directories; only `zero [path]` and
+**File › Open Folder…** do. `zero walkthrough publish` prints a
 `zero://` link when the app can show the walkthrough.
 
 `zero://r-<id>/…` opens a server you connected to with `zero connect`, and
@@ -194,7 +192,7 @@ installs and data untouched:
 curl -fsSL https://raw.githubusercontent.com/flexdinesh/zero/main/scripts/uninstall.sh | sh
 ```
 
-Page state lives in `~/.local/share/zero-desktop/` beside the app on Linux, and
+Page state lives in `~/.local/share/zero-app/` beside the app on Linux, and
 in `~/Library/WebKit/io.github.flexdinesh.zero.desktop` on macOS. The daemon's
 remembered directories are in `zero/roots.json` under `~/.config` or
 `~/Library/Application Support`.

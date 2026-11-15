@@ -7,7 +7,7 @@ description: Explain code, a pull request, a branch, or a feature as a Zero walk
 
 Commands use the canonical `zero`. If installed as `zero-cli` or with
 `--name NAME`, substitute the chosen command for `zero` in every example.
-Only the exposed CLI name changes; `zero-desktop`, `zero://` links, and
+Only the exposed CLI name changes; the Zero app, `zero://` links, and
 Zero's configuration and data paths keep their canonical names.
 
 A walkthrough is an ordered list of steps. Each step has a title, Markdown

@@ -1,4 +1,4 @@
-// Package desktopapp detects the zero desktop app and opens zero:// URLs
+// Package desktopapp detects the Zero app and opens zero:// URLs
 // in it through the operating system's URL handler.
 package desktopapp
 
@@ -13,7 +13,7 @@ import (
 )
 
 // ErrNotInstalled reports that no zero:// handler is registered.
-var ErrNotInstalled = errors.New("zero desktop app is not installed")
+var ErrNotInstalled = errors.New("the Zero app is not installed")
 
 // launchWait bounds how long Open waits for xdg-open to report failure.
 const launchWait = 3 * time.Second
@@ -132,21 +132,21 @@ func InstallHint(goos string) string {
 		"  docs: " + docsURL + "\n"
 	switch goos {
 	case "darwin":
-		return "  install the zero desktop app:\n" +
+		return "  install the Zero app:\n" +
 			"    " + installScript + "\n" +
 			"  or by hand:\n" +
-			"    1. download zero-desktop_<version>_darwin_<arm64|amd64>.zip from " + releasesURL + "\n" +
-			"    2. move zero-desktop.app to Applications\n" +
-			"    3. builds are ad-hoc signed: on first launch right-click zero-desktop and choose Open\n" +
-			"       (or run: xattr -dr com.apple.quarantine /Applications/zero-desktop.app)\n" +
+			"    1. download zero-app_<version>_darwin_<arm64|amd64>.zip from " + releasesURL + "\n" +
+			"    2. move Zero.app to Applications\n" +
+			"    3. builds are ad-hoc signed: on first launch right-click Zero and choose Open\n" +
+			"       (or run: xattr -dr com.apple.quarantine /Applications/Zero.app)\n" +
 			footer
 	case "linux":
-		return "  install the zero desktop app (needs WebKitGTK 4.1):\n" +
+		return "  install the Zero app (needs WebKitGTK 4.1):\n" +
 			"    " + installScript + "\n" +
-			"  the script registers zero:// links; a hand-unpacked zero-desktop_<version>_linux_<amd64|arm64>.tar.gz from\n" +
+			"  the script registers zero:// links; a hand-unpacked zero-app_<version>_linux_<amd64|arm64>.tar.gz from\n" +
 			"  " + releasesURL + " does not.\n" +
 			footer
 	default:
-		return "  the zero desktop app is not available on this OS.\n"
+		return "  the Zero app is not available on this OS.\n"
 	}
 }
