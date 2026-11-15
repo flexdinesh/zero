@@ -148,3 +148,4 @@ rewriting history; update `Status` on the old record.
 | [0144](0144-docs-home-feature-index.md) | Docs home feature index | Accepted; supersedes 0142's docs home features list |
 | [0145](0145-quick-open-file-popup.md) | Quick Open file popup | Accepted; amends 0006, 0014 |
 | [0146](0146-in-app-open-folder-and-stop-serving.md) | In-app Open folder, unreadable folders, and Stop serving | Accepted; supersedes 0061's no root removal and kept missing roots, 0081's `openFolder` |
+| [0147](0147-zero-update.md) | `zero update` and the update notice | Accepted; extends 0073, 0079, 0118, 0136; revises 0073 checksums |

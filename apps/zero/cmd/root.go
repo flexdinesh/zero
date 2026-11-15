@@ -74,15 +74,19 @@ func newNamedRootCommand(name cliName, runApp, runBrowser runner) *cobra.Command
 	command.Version = version.String()
 	command.SetVersionTemplate("{{.Version}}\n")
 	command.CompletionOptions.DisableDefaultCmd = true
-	command.AddCommand(newServeCommand("browser [path]", runBrowser, nil))
-	command.AddCommand(newConnectCommand())
-	command.AddCommand(newAttachCommand(runAttach))
+	// The update notice (decision 0147) shows on interactive commands only.
+	command.PersistentPreRun = func(command *cobra.Command, _ []string) { updateNotice(command, defaultUpdateDeps()) }
+	withUpdateNotice(command)
+	command.AddCommand(withUpdateNotice(newServeCommand("browser [path]", runBrowser, nil)))
+	command.AddCommand(withUpdateNotice(newConnectCommand()))
+	command.AddCommand(withUpdateNotice(newAttachCommand(runAttach)))
 	command.AddCommand(newServeStdioCommand())
 	command.AddCommand(newConnectionCommand())
-	command.AddCommand(newRemoteCommand(name))
-	command.AddCommand(newWalkthroughCommand(publishWalkthrough))
-	command.AddCommand(newFeedbackCommand())
+	command.AddCommand(withUpdateNotice(newRemoteCommand(name)))
+	command.AddCommand(withUpdateNotice(newWalkthroughCommand(publishWalkthrough)))
+	command.AddCommand(withUpdateNotice(newFeedbackCommand()))
 	command.AddCommand(newDaemonCommand())
+	command.AddCommand(newUpdateCommand())
 	return command
 }
 

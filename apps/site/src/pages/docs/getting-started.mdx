@@ -62,8 +62,21 @@ names.
 
 ### Updates and existing installs
 
-Quit the desktop app, then run the script again to update; it stops while the
-app runs. A running Zero daemon keeps serving the version that started it, so
+```bash
+zero update
+```
+
+`zero update` runs the latest release's install script again, updating the CLI
+and, when the installer put it there, the desktop app; `zero update --cli-only`
+updates the CLI alone and `zero update --check` only reports. Installs the script
+did not make (built from source, or copied by hand) print how to update instead.
+Interactive commands print a one-line notice when a newer release is out; they
+check at most once a day in the background. Set `ZERO_NO_UPDATE_CHECK=1` to hide
+it. The installer verifies every download against the release's
+`checksums.txt`.
+
+Quit the desktop app before updating, or rerun the install script yourself; it
+stops while the app runs. A running Zero daemon keeps serving the version that started it, so
 the script stops it once the update is installed; the next `zero` starts the
 new one. The installer remembers the chosen CLI name across updates, so no
 collision prompt is needed for an installer-owned command. A successful install with a different `--name`

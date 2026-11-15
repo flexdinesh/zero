@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile, spawn } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { access, chmod, lstat, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
@@ -211,9 +212,21 @@ async function createSandbox(
   }
 }
 
+// writeChecksums writes checksums.txt over every release asset, as build.yml
+// does with shasum -a 256.
+async function writeChecksums(sandbox: Sandbox): Promise<void> {
+  const release = sandbox.env.STUB_RELEASE_DIR ?? ''
+  const lines: string[] = []
+  for (const name of (await readdir(release)).sort()) {
+    if (!/^zero(-desktop)?_.*\.(tar\.gz|zip)$/.test(name)) continue
+    lines.push(`${createHash('sha256').update(await readFile(join(release, name))).digest('hex')}  ${name}\n`)
+  }
+  await writeFile(join(release, 'checksums.txt'), lines.join(''))
+}
+
 // createRelease writes a release's assets for <os>/<arch> (linux/amd64 by
 // default), named for version (0.1.7 by default; install-dev.sh builds
-// 0.0.0-dev.<branch>): the CLI archive.
+// 0.0.0-dev.<branch>): the CLI archive and checksums.txt.
 async function createRelease(
   sandbox: Sandbox,
   options: { arch?: string; os?: string; version?: string } = {},
@@ -231,6 +244,7 @@ async function createRelease(
     })
   })
   await rm(join(release, name), { recursive: true })
+  await writeChecksums(sandbox)
 }
 
 // Minimal stored ZIP writer, including Unix modes. Tests validate real ZIPs
@@ -276,7 +290,7 @@ function zipFiles(files: { name: string; content: string; mode?: number }[]): Bu
 
 // createDesktopRelease writes the desktop app's assets for version: the Linux
 // archive for arch (the app, its bundled zero, and its icon) and the
-// darwin/arm64 zip.
+// darwin/arm64 zip, plus checksums.txt.
 async function createDesktopRelease(sandbox: Sandbox, options: { arch?: string; version?: string } = {}): Promise<void> {
   const arch = options.arch ?? 'amd64'
   const version = options.version ?? '0.1.7'
@@ -296,6 +310,7 @@ async function createDesktopRelease(sandbox: Sandbox, options: { arch?: string; 
     { name: 'zero-desktop.app/Contents/MacOS/zero-desktop', content: '#!/bin/sh\nexit 1\n' },
     { name: 'zero-desktop.app/Contents/Resources/bin/zero', content: fakeZero(version) },
   ]))
+  await writeChecksums(sandbox)
 }
 
 // createFullRelease writes everything a default install downloads on Linux.
@@ -573,6 +588,8 @@ for (const { script, version, cliOnly } of CHANNELS) {
           execFile('tar', ['-czf', desktopArchive, '-C', empty, '.'], (error) => error === null ? resolve() : reject(error))
         })
       }
+      // Correct checksums: the archive checks themselves must reject it.
+      await writeChecksums(sandbox)
       const result = await run(script, sandbox, {}, ['--name', 'new-zero'])
       assert.notEqual(result.code, 0, failure)
       assert.equal(await readFile(recordPath(sandbox), 'utf8'), record)
@@ -852,12 +869,86 @@ void test('unsafe tar and ZIP members fail before installing either component', 
         execFile('tar', ['-czf', join(release, 'zero-desktop_0.1.7_linux_amd64.tar.gz'), '-C', staging, ...args], (error) => error === null ? resolve() : reject(error))
       })
     }
+    await writeChecksums(sandbox)
     const result = await run('install.sh', sandbox, darwin ? { STUB_UNAME_S: 'Darwin', STUB_UNAME_M: 'arm64' } : {})
     assert.notEqual(result.code, 0, format)
     assert.match(result.stderr, /unsafe archive/, format)
     assert.equal(await exists(cliPath(sandbox)), false)
     assert.equal(await exists(recordPath(sandbox)), false)
     assert.equal(await exists(join(sandbox.home, '.local/share')), false)
+  }
+})
+
+// --- checksums.txt ---
+
+const CHECKSUMS_CLI = 'zero_0.1.7_linux_amd64.tar.gz'
+const CHECKSUMS_DESKTOP = 'zero-desktop_0.1.7_linux_amd64.tar.gz'
+
+void test('install.sh: downloads checksums.txt once and accepts a binary-mode marker', async (t) => {
+  const sandbox = await createSandbox(t.after.bind(t))
+  await createFullRelease(sandbox)
+  const checksums = join(sandbox.env.STUB_RELEASE_DIR ?? '', 'checksums.txt')
+  await writeFile(checksums, (await readFile(checksums, 'utf8')).replace(`  ${CHECKSUMS_DESKTOP}`, ` *${CHECKSUMS_DESKTOP}`))
+  assertOk(await run('install.sh', sandbox))
+  assert.ok(await isExecutable(cliPath(sandbox)))
+  assert.ok(await isExecutable(join(sandbox.home, '.local/share/zero-desktop/app/zero-desktop')))
+  const log = await readFile(sandbox.log, 'utf8')
+  assert.equal(log.match(/releases\/download\/v0\.1\.7\/checksums\.txt/g)?.length, 1, log)
+})
+
+void test('install.sh: missing, mismatched, absent, duplicate, or malformed checksums install nothing', async (t) => {
+  const cases = [
+    { failure: 'no-file', asset: CHECKSUMS_CLI, args: [] },
+    { failure: 'no-file', asset: CHECKSUMS_CLI, args: CLI_ONLY },
+    ...['mismatch', 'no-line', 'duplicate', 'malformed'].flatMap((failure) => [
+      { failure, asset: CHECKSUMS_CLI, args: [] },
+      { failure, asset: CHECKSUMS_DESKTOP, args: [] },
+      { failure, asset: CHECKSUMS_CLI, args: CLI_ONLY },
+    ]),
+  ]
+  for (const { failure, asset, args } of cases) {
+    const label = `${failure} ${asset} ${args.join(' ')}`
+    const sandbox = await createSandbox(t.after.bind(t))
+    await createFullRelease(sandbox)
+    assertOk(await run('install.sh', sandbox))
+    const app = join(sandbox.home, '.local/share/zero-desktop/app/zero-desktop')
+    const record = await readFile(recordPath(sandbox), 'utf8')
+    const cli = await readFile(cliPath(sandbox), 'utf8')
+    const desktop = await readFile(app, 'utf8')
+    // A newer release, so an unchanged installation proves nothing installed.
+    await createFullRelease(sandbox, { version: '0.1.8' })
+    const release = sandbox.env.STUB_RELEASE_DIR ?? ''
+    const checksums = join(release, 'checksums.txt')
+    const target = asset.replace('0.1.7', '0.1.8')
+    const lines = (await readFile(checksums, 'utf8')).split('\n').filter((line) => line !== '')
+    const line = lines.find((entry) => entry.endsWith(`  ${target}`)) ?? ''
+    const others = lines.filter((entry) => entry !== line)
+    let message = ''
+    if (failure === 'no-file') {
+      await rm(checksums)
+      message = 'could not download checksums.txt from zero v0.1.8'
+    } else if (failure === 'mismatch') {
+      // Corrupt bytes: the checksum, not the archive check, must reject them.
+      await writeFile(join(release, target), 'bad')
+      message = `${target} does not match its checksum in zero v0.1.8`
+    } else if (failure === 'no-line') {
+      await writeFile(checksums, `${others.join('\n')}\n`)
+      message = `checksums.txt of zero v0.1.8 has no line for ${target}`
+    } else if (failure === 'duplicate') {
+      await writeFile(checksums, `${[...others, line, line].join('\n')}\n`)
+      message = `checksums.txt of zero v0.1.8 has 2 lines for ${target}`
+    } else {
+      await writeFile(checksums, `${[...others, `${line.slice(0, 63).toUpperCase()}F  ${target}`].join('\n')}\n`)
+      message = `checksums.txt of zero v0.1.8 has a malformed digest for ${target}`
+    }
+    const result = await run('install.sh', sandbox, { STUB_LATEST: 'https://github.com/flexdinesh/zero/releases/tag/v0.1.8' }, [...args, '--name', 'new-zero'])
+    assert.notEqual(result.code, 0, label)
+    assert.ok(result.stderr.includes(message), `${label}\n${result.stderr}`)
+    assert.doesNotMatch(result.stderr, /invalid archive|unsafe archive/, label)
+    assert.equal(await readFile(recordPath(sandbox), 'utf8'), record, label)
+    assert.equal(await readFile(cliPath(sandbox), 'utf8'), cli, label)
+    assert.equal(await readFile(app, 'utf8'), desktop, label)
+    assert.equal(await exists(cliPath(sandbox, 'new-zero')), false, label)
   }
 })
 
