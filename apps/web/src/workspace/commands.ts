@@ -20,6 +20,7 @@ export type CommandAction =
   | { kind: "open-welcome" }
   | { kind: "show-file-history" }
   | { kind: "show-line-blame" }
+  | { kind: "report-problem" }
 
 export interface Command {
   id: string
@@ -65,6 +66,7 @@ export const commands: readonly Command[] = [
   { id: "sourceControl.showFileHistory", category: "Source Control", title: "Show File History", action: { kind: "show-file-history" } },
   { id: "sourceControl.showLineBlame", category: "Source Control", title: "Show Line Blame", action: { kind: "show-line-blame" } },
   { id: "help.welcome", category: "Help", title: "Welcome", action: { kind: "open-welcome" } },
+  { id: "help.reportProblem", category: "Help", title: "Report a Problem…", action: { kind: "report-problem" } },
 ]
 
 // availableCommands drops the commands of settings this client does not show.

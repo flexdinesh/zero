@@ -1,5 +1,5 @@
 import {
-  ALargeSmallIcon, ArrowUpRightIcon, BracesIcon, FileSearchIcon, FolderGit2Icon, FolderOpenIcon, FunnelIcon, GitBranchIcon, PaletteIcon, RouteIcon,
+  ALargeSmallIcon, ArrowUpRightIcon, BracesIcon, FileSearchIcon, FolderGit2Icon, FolderOpenIcon, FunnelIcon, GitBranchIcon, LifeBuoyIcon, PaletteIcon, RouteIcon,
   SearchIcon, SquareTerminalIcon, XIcon,
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
@@ -38,6 +38,7 @@ const icons: Record<WelcomeAction, ReactNode> = {
   "color-theme": <PaletteIcon aria-hidden="true" />,
   "font-size": <ALargeSmallIcon aria-hidden="true" />,
   "review-uncommitted": <GitBranchIcon aria-hidden="true" />,
+  "report-problem": <LifeBuoyIcon aria-hidden="true" />,
 }
 
 type Load =
@@ -100,9 +101,12 @@ export function WelcomeTab({ facts, onAction, onOpenProject, onStartupSetting, p
           <section className="welcome-section" aria-labelledby="welcome-guide">
             <h2 id="welcome-guide">What you can do</h2>
             <EntryList entries={guideEntries(mac)} onAction={onAction} />
-            <a className="welcome-docs" href={documentationUrl} target="_blank" rel="noreferrer">
-              Documentation<ArrowUpRightIcon aria-hidden="true" /><span className="visually-hidden"> (opens in a new tab)</span>
-            </a>
+            <p className="welcome-help">
+              <a className="welcome-docs" href={documentationUrl} target="_blank" rel="noreferrer">
+                Documentation<ArrowUpRightIcon aria-hidden="true" /><span className="visually-hidden"> (opens in a new tab)</span>
+              </a>
+              <Button variant="link" size="inline" className="welcome-report" onClick={() => onAction("report-problem")}>Report a problem…</Button>
+            </p>
           </section>
         </div>
       </div>

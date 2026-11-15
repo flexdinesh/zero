@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"sync"
@@ -43,6 +44,11 @@ type Config struct {
 	// RootControl opens and stops serving roots for clients (decision
 	// 0146); nil serves Roots as they are.
 	RootControl app.RootControl
+	// Server describes the running server for problem reports (decision
+	// 0152).
+	Server app.ServerInfo
+	// Log records what the web app logs; nil discards.
+	Log *slog.Logger
 }
 
 // Runtime is the composed web application.
@@ -57,7 +63,7 @@ type Runtime struct {
 // New builds the web app over document.Builtins(); language servers, the
 // watch hub, and the walkthrough service use web.New's defaults.
 func New(config Config) (*Runtime, error) {
-	app, err := web.New(web.Config{Roots: config.Roots, ScanDepth: config.ScanDepth, Depth: config.Depth, Types: document.Builtins(), OpenBrowser: config.OpenBrowser, SessionKey: config.SessionKey, Presence: config.Presence, RootControl: config.RootControl})
+	app, err := web.New(web.Config{Roots: config.Roots, ScanDepth: config.ScanDepth, Depth: config.Depth, Types: document.Builtins(), OpenBrowser: config.OpenBrowser, SessionKey: config.SessionKey, Presence: config.Presence, RootControl: config.RootControl, Server: config.Server, Log: config.Log})
 	if err != nil {
 		return nil, fmt.Errorf("create web interface: %w", err)
 	}

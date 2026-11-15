@@ -20,7 +20,7 @@ import (
 // preloadScript is window.zeroDesktop (decisions 0081, 0098) over mygo's IPC,
 // on the app's origins only. The UI feature-detects every method. A remote
 // server's page gets what its window needs, nothing of this machine: its files
-// are elsewhere. The methods check again, since a page can call mygo directly.
+// are elsewhere, and its problem report carries none of this app's logs. The methods check again, since a page can call mygo directly.
 const preloadScript = `(() => {
   if (location.protocol !== "` + proxy.Scheme + `:") return
   const call = (method, ...args) => window.mygo.call("Bridge." + method, ...args)
@@ -35,6 +35,7 @@ const preloadScript = `(() => {
     version: 2,
     ...window_,
     revealPath(project, path) { return call("RevealPath", project, path) },
+    diagnostics() { return call("Diagnostics") },
   } : { version: 2, ...window_ })
 })()`
 
@@ -112,6 +113,16 @@ func (b *bridgeService) SetAppearance(ctx context.Context, value any) error {
 	}
 	b.host.setAppearance(hostOf(mygo.CallerPage(ctx).URL()), window, source)
 	return nil
+}
+
+// Diagnostics answers the app's part of a problem report (decision 0152),
+// to the local window only: a remote server is not trusted with this
+// machine's logs.
+func (b *bridgeService) Diagnostics(ctx context.Context) (bridge.Diagnostics, error) {
+	if _, ok := callerWindow(ctx, isLocal); !ok {
+		return bridge.Diagnostics{}, errRefused
+	}
+	return b.host.diagnostics(), nil
 }
 
 // RevealPath shows a project file in the file manager; false when refused,
@@ -205,6 +216,7 @@ func (h *host) menu() *mygo.Menu {
 		{Role: mygo.RoleViewMenu},
 		h.goMenu(runtime.GOOS),
 		h.windowMenu(runtime.GOOS),
+		h.helpMenu(),
 	})
 }
 

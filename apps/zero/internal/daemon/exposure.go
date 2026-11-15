@@ -49,6 +49,9 @@ func (e *exposures) listening() bool {
 	return false
 }
 
+// serving names the exposure serving, or "", for problem reports.
+func (e *exposures) serving() string { return e.Status().Exposure }
+
 // Status implements RemoteControl: the exposure serving, if any.
 func (e *exposures) Status() contract.DaemonRemote {
 	for _, exposure := range e.list {

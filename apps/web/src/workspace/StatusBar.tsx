@@ -41,9 +41,11 @@ interface StatusBarProps {
   onSearch(): void
   onSettings(): void
   onHome?(): void
+  // onReport opens Report a Problem from the error the panel shows.
+  onReport?(): void
 }
 
-export function StatusBar({ detail, diff, isLoading, error, lines, live, navigation, onSearch, onSettings, onHome, page }: StatusBarProps) {
+export function StatusBar({ detail, diff, isLoading, error, lines, live, navigation, onSearch, onSettings, onHome, onReport, page }: StatusBarProps) {
   const metrics = useProcessMetrics()
   const liveState = live ? liveIndicator(live) : null
   const pathCopy = useClipboardCopy()
@@ -75,6 +77,7 @@ export function StatusBar({ detail, diff, isLoading, error, lines, live, navigat
           <div className="ui-popover status-process-panel">
             <strong>Zero process</strong>
             {error && <p>{error}</p>}
+            {error && onReport && <Button variant="link" size="inline" className="status-report" onClick={onReport}>Report a problem…</Button>}
             {metrics ? <p>{processTitle?.split("\n").slice(1).map((line) => <span key={line}>{line}</span>)}</p>
               : <p>Process metrics unavailable.</p>}
           </div>

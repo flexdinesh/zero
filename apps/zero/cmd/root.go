@@ -15,12 +15,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/flexdinesh/zero/internal/app"
 	"github.com/flexdinesh/zero/internal/browser"
 	"github.com/flexdinesh/zero/internal/control"
 	"github.com/flexdinesh/zero/internal/daemon"
 	"github.com/flexdinesh/zero/internal/projects"
 	"github.com/flexdinesh/zero/internal/runtime"
 	"github.com/flexdinesh/zero/internal/version"
+	"github.com/flexdinesh/zero/pkg/contract"
 	"github.com/spf13/cobra"
 )
 
@@ -202,7 +204,8 @@ func run(ctx context.Context, opts options, stdin io.Reader, stdout, stderr io.W
 			return err
 		}
 	}
-	rt, err := runtime.New(runtime.Config{Roots: rootSet, ScanDepth: opts.scanDepth, Depth: opts.depth, OpenBrowser: openBrowser})
+	rt, err := runtime.New(runtime.Config{Roots: rootSet, ScanDepth: opts.scanDepth, Depth: opts.depth, OpenBrowser: openBrowser,
+		Server: app.ServerInfo{Mode: contract.DiagnosticsBrowser, InstallMethod: installMethodName}})
 	if err != nil {
 		return err
 	}

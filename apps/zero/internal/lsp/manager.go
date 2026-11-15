@@ -3,6 +3,7 @@ package lsp
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -54,6 +55,8 @@ type Options struct {
 	Idle time.Duration
 	// LookPath finds a server binary; nil searches PATH and install dirs.
 	LookPath func(name string) (string, bool)
+	// Log records server starts and failures (decision 0152); nil discards.
+	Log *slog.Logger
 }
 
 type clientKey struct {
@@ -72,6 +75,7 @@ type Manager struct {
 	servers  []Server
 	idle     time.Duration
 	lookPath func(string) (string, bool)
+	log      *slog.Logger
 
 	mu       sync.Mutex
 	found    map[clientKey]ResolvedServer // resolved command by server and project
@@ -90,7 +94,11 @@ func NewManager(servers []Server, options Options) *Manager {
 	if options.LookPath == nil {
 		options.LookPath = lookPath
 	}
+	if options.Log == nil {
+		options.Log = slog.New(slog.DiscardHandler)
+	}
 	return &Manager{
+		log:      options.Log,
 		servers:  servers,
 		idle:     options.Idle,
 		lookPath: options.LookPath,
@@ -210,6 +218,7 @@ func (m *Manager) acquire(root, family string) (*client, string, error) {
 	m.clients[key] = c
 	delete(m.failures, key)
 	c.start(resolved.Path)
+	m.log.Info("language server started", "server", server.Name, "root", root, "path", resolved.Path)
 	m.acquireLocked(key)
 	return c, server.Families[family], nil
 }
@@ -264,6 +273,7 @@ func (m *Manager) dropLocked(key clientKey, c *client) {
 	}
 	if err := c.failed(); err != nil {
 		m.failures[key] = failure{at: time.Now(), message: err.Error()}
+		m.log.Warn("language server failed", "server", key.server, "root", key.root, "error", err)
 	}
 	go c.stop()
 }

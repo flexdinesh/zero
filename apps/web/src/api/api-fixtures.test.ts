@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises"
 import test from "node:test"
 
 import {
-  isBlameResponse, isBranchFilesResponse, isChangesResponse, isCommitFilesResponse, isCommitsResponse, isCompareStatsResponse, isDiffResponse,
+  isBlameResponse, isBranchFilesResponse, isDiagnostics, isChangesResponse, isCommitFilesResponse, isCommitsResponse, isCompareStatsResponse, isDiffResponse,
   isDirectoriesResponse, isErrorResponse, isFeedback, isFeedbackSummary, isFormatResult, isNavigationResult, isNavigationStatus, isPageData, isProcessMetrics,
   isProjectsResponse, isRangeFilesResponse, isRefsResponse, isSearchDocumentsResponse, isStackResponse, isWalkthrough,
   isWalkthroughSummary, type DiffResponse, type PageData,
@@ -26,6 +26,7 @@ async function fixture(name: string): Promise<unknown> {
 test("frontend API fixtures satisfy runtime contracts", async () => {
   assert.equal(isProcessMetrics(await fixture("metrics.json")), true)
   assert.equal(isProcessMetrics(await fixture("metrics-go.json")), true)
+  assert.equal(isDiagnostics(await fixture("diagnostics.json")), true)
   assert.equal(isSearchDocumentsResponse(await fixture("search-documents.json")), true)
   assert.equal(isProjectsResponse(await fixture("projects.json")), true)
   assert.equal(isDirectoriesResponse(await fixture("directories.json")), true)

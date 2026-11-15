@@ -2,8 +2,7 @@ package daemon
 
 import (
 	"context"
-	"fmt"
-	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"strconv"
@@ -38,7 +37,7 @@ type tailscaleServer struct {
 	idle     *idleTracker
 	exit     func()
 	after    timerFunc
-	log      io.Writer
+	log      *slog.Logger
 	lifetime *uiLifetime
 
 	// starting serializes starts, which wait on Tailscale without holding mu.
@@ -64,10 +63,10 @@ func (s *tailscaleServing) close() {
 	s.bound.Close()
 }
 
-func newTailscaleServer(rt *runtime.Runtime, client *tailscale.Client, policy Lifetime, idle *idleTracker, exit func(), log io.Writer) *tailscaleServer {
+func newTailscaleServer(rt *runtime.Runtime, client *tailscale.Client, policy Lifetime, idle *idleTracker, exit func(), log *slog.Logger) *tailscaleServer {
 	t := &tailscaleServer{runtime: rt, client: client, policy: policy, idle: idle, exit: exit, after: realTimer, log: log}
 	t.lifetime = &uiLifetime{after: t.after, fire: func() {
-		_, _ = fmt.Fprintln(t.log, "tailscale serve closing: no UI connected")
+		t.log.Info("tailscale serve closing: no UI connected")
 		t.closeListener()
 	}}
 	return t
@@ -123,7 +122,7 @@ func (t *tailscaleServer) Start(request contract.DaemonRemoteRequest) (contract.
 		return contract.DaemonRemote{}, err
 	}
 	// Logged before the wait for a UI starts, which logs when it ends.
-	_, _ = fmt.Fprintf(t.log, "tailscale serving https://%s/\n", net.JoinHostPort(serving.name, strconv.Itoa(port)))
+	t.log.Info("tailscale serving", "url", "https://"+net.JoinHostPort(serving.name, strconv.Itoa(port))+"/")
 	t.mu.Lock()
 	old := t.serving
 	t.serving = serving
@@ -180,7 +179,7 @@ func (t *tailscaleServer) watch(serving *tailscaleServing) {
 	current := t.serving == serving
 	t.mu.Unlock()
 	if current {
-		_, _ = fmt.Fprintf(t.log, "tailscale serve stopped: %v\n", err)
+		t.log.Warn("tailscale serve stopped", "error", err)
 		t.closeListener()
 	}
 }

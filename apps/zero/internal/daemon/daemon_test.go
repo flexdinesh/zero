@@ -8,15 +8,19 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/flexdinesh/zero/pkg/contract"
 )
 
 type testDaemon struct {
@@ -42,7 +46,7 @@ func startDaemon(t *testing.T, config Config) *testDaemon {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	var log bytes.Buffer
-	config.Log = &log
+	config.Log = slog.New(slog.NewTextHandler(&log, nil))
 	d := &testDaemon{socket: config.Socket, rootsFile: config.RootsFile, client: NewClient(config.Socket), cancel: cancel, done: make(chan error, 1), log: &log}
 	go func() { d.done <- Run(ctx, config) }()
 	t.Cleanup(func() {
@@ -148,7 +152,7 @@ func TestRunServesStatusRootsAndWebRoutes(t *testing.T) {
 	if !reflect.DeepEqual(roots, rootsResponse{Roots: []string{work, personal}, Skipped: []string{}}) {
 		t.Fatalf("roots = %+v", roots)
 	}
-	if !strings.Contains(d.log.String(), "no longer serving missing root "+missing) {
+	if !strings.Contains(d.log.String(), `msg="no longer serving missing root" root=`+missing) {
 		t.Fatalf("log = %q, want dropped root", d.log.String())
 	}
 	if saved, err := LoadRoots(config.RootsFile); err != nil || !reflect.DeepEqual(saved, []string{work, personal}) {
@@ -275,7 +279,7 @@ func TestStopEndsRunAndRemovesSocket(t *testing.T) {
 	if _, err := d.client.Status(context.Background()); !errors.Is(err, ErrNotRunning) {
 		t.Fatalf("Status() after stop = %v, want ErrNotRunning", err)
 	}
-	if !strings.Contains(d.log.String(), "stopped: stop requested") {
+	if !strings.Contains(d.log.String(), `msg="zero daemon stopped" reason="stop requested"`) {
 		t.Fatalf("log = %q", d.log.String())
 	}
 	if err := d.client.Stop(context.Background()); err != nil {
@@ -290,7 +294,7 @@ func TestRunExitsWhenIdle(t *testing.T) {
 	if err := d.wait(t); err != nil {
 		t.Fatalf("Run() = %v, want nil", err)
 	}
-	if !strings.Contains(d.log.String(), "stopped: idle") {
+	if !strings.Contains(d.log.String(), `msg="zero daemon stopped" reason=idle`) {
 		t.Fatalf("log = %q", d.log.String())
 	}
 }
@@ -422,5 +426,27 @@ func TestClientRejectsNonDaemonAnswers(t *testing.T) {
 	t.Cleanup(func() { _ = server.Close() })
 	if _, err := NewClient(socket).Status(context.Background()); err == nil || errors.Is(err, ErrNotRunning) || !strings.Contains(err.Error(), socket) {
 		t.Fatalf("Status() = %v, want error naming the socket", err)
+	}
+}
+
+// The daemon's problem report names it and carries its log file's lines.
+func TestDaemonReportsItsDiagnostics(t *testing.T) {
+	config := daemonConfig(t)
+	config.LogFile = filepath.Join(t.TempDir(), "daemon.log")
+	if err := os.WriteFile(config.LogFile, []byte("earlier line\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	config.InstallMethod = func() string { return "dev" }
+	d := startDaemon(t, config)
+	code, body := d.request(t, http.MethodGet, "/api/diagnostics", nil, "")
+	var report contract.Diagnostics
+	if err := json.Unmarshal(body, &report); err != nil || code != http.StatusOK {
+		t.Fatalf("GET /api/diagnostics = %d %s", code, body)
+	}
+	if report.Mode != contract.DiagnosticsDaemon || report.Protocol != ProtocolVersion || !report.LogsKept || report.InstallMethod != "dev" || report.Exposure != "" {
+		t.Errorf("report = %+v", report)
+	}
+	if !slices.Contains(report.LogLines, "earlier line") {
+		t.Errorf("log lines = %q, want the log file's", report.LogLines)
 	}
 }

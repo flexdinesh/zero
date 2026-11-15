@@ -303,6 +303,11 @@ func (c *HTTP) Metrics(ctx context.Context) (contract.ProcessMetrics, error) {
 	return response, c.getJSON(ctx, "/api/metrics", nil, &response)
 }
 
+func (c *HTTP) Diagnostics(ctx context.Context) (contract.Diagnostics, error) {
+	var response contract.Diagnostics
+	return response, c.getJSON(ctx, "/api/diagnostics", nil, &response)
+}
+
 func (c *HTTP) Walkthroughs(ctx context.Context, project string) ([]contract.WalkthroughSummary, error) {
 	var summaries []contract.WalkthroughSummary
 	return summaries, c.getJSON(ctx, "/api/walkthroughs", url.Values{"project": {project}}, &summaries)

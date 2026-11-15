@@ -8,8 +8,10 @@ import { ThemeProvider } from "./settings/ThemeProvider.tsx"
 import { router } from "./router.tsx"
 import { initializeSettings } from "./settings/settings.ts"
 import { initializeTheme } from "./settings/theme.ts"
+import { watchUncaughtErrors } from "./lib/ui-errors.ts"
 import "./style.css"
 
+watchUncaughtErrors()
 const initialTheme = initializeTheme()
 const initialSettings = initializeSettings()
 const root = document.querySelector("#root")

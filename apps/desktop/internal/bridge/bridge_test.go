@@ -217,3 +217,17 @@ func TestResolveReveal(t *testing.T) {
 		}
 	}
 }
+
+// The app's report is redacted and never carries null lines.
+func TestNewDiagnosticsRedacts(t *testing.T) {
+	got := NewDiagnostics("1.2.3", "abc", "/home/u/.local/state/zero/logs", []string{"opened /home/u/src"}, nil, "/home/u")
+	if got.LogDir != "~/.local/state/zero/logs" || len(got.LogLines) != 1 || got.LogLines[0] != "opened ~/src" {
+		t.Errorf("NewDiagnostics = %+v", got)
+	}
+	if got.CrashLines == nil || len(got.CrashLines) != 0 {
+		t.Errorf("crash lines = %#v, want empty", got.CrashLines)
+	}
+	if got.Version != "1.2.3" || got.Commit != "abc" {
+		t.Errorf("build = %q %q", got.Version, got.Commit)
+	}
+}

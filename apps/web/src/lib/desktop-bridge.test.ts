@@ -122,3 +122,11 @@ test("invalid versions and non-objects are no bridge", () => {
 test("without a window there is no bridge", () => {
   assert.equal(desktopBridge(), null)
 })
+
+test("diagnostics resolves a valid report and null for an invalid one, a refusal, or no method", async () => {
+  const report = { version: "1.0.0", commit: "abc", logDir: "~/.local/state/zero/logs", logLines: ["started"], crashLines: [] }
+  assert.deepEqual(await readDesktopBridge({ version: 2, diagnostics: () => Promise.resolve(report) })?.diagnostics?.(), report)
+  assert.equal(await readDesktopBridge({ version: 2, diagnostics: () => Promise.resolve({ ...report, logLines: [1] }) })?.diagnostics?.(), null)
+  assert.equal(await readDesktopBridge({ version: 2, diagnostics: () => Promise.reject(new Error("refused")) })?.diagnostics?.(), null)
+  assert.equal(readDesktopBridge({ version: 2 })?.diagnostics, null)
+})

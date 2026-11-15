@@ -344,6 +344,28 @@ func TestMetricsOnEveryTransport(t *testing.T) {
 	}
 }
 
+// TestDiagnosticsOnEveryTransport reports the same server on each
+// transport; uptime moves between reports, so it is left out.
+func TestDiagnosticsOnEveryTransport(t *testing.T) {
+	f := newFixture(t)
+	var first contract.Diagnostics
+	for i, transport := range f.transports {
+		report, err := transport.client.Diagnostics(context.Background())
+		if err != nil {
+			t.Fatalf("Diagnostics over %s: %v", transport.name, err)
+		}
+		report.UptimeSeconds = 0
+		if report.Mode != contract.DiagnosticsBrowser || report.Version == "" || report.Roots < 1 || report.LogLines == nil || report.CrashLines == nil {
+			t.Errorf("Diagnostics over %s = %+v", transport.name, report)
+		}
+		if i == 0 {
+			first = report
+		} else if !reflect.DeepEqual(report, first) {
+			t.Errorf("Diagnostics over %s = %+v, want %+v", transport.name, report, first)
+		}
+	}
+}
+
 func TestEventsParityAcrossTransports(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()

@@ -210,6 +210,8 @@ export function mockFixtureName(method: string, rawURL: string): MockFixture | u
   switch (url.pathname) {
     case "/metrics":
       return { name: "metrics.json", status: 200 }
+    case "/diagnostics":
+      return { name: "diagnostics.json", status: 200 }
     case "/search-documents":
       return { name: "search-documents.json", status: 200 }
     case "/projects":

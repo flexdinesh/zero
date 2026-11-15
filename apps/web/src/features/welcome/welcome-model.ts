@@ -16,6 +16,7 @@ export type WelcomeAction =
   | "color-theme"
   | "font-size"
   | "review-uncommitted"
+  | "report-problem"
 
 export interface WelcomeEntry {
   action: WelcomeAction

@@ -1,6 +1,8 @@
 // http.ts is the browser's one JSON transport: every API read goes through
 // fetchJSON, which turns each way a request can fail into a user-facing Error.
 
+import { requestPath, uiErrors } from "../lib/ui-errors.ts"
+
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
@@ -44,6 +46,14 @@ export function failureReason(failure: RequestFailure): string {
     case "invalid":
       return "the server sent an invalid response"
   }
+}
+
+// recorded notes a failed request for a problem report (decision 0152):
+// its method, path without the query, status, and message.
+function recorded(method: string, url: string, error: RequestError): RequestError {
+  const status = error.failure.kind === "unreachable" ? "no response" : String(error.failure.status)
+  uiErrors.record(`${method} ${requestPath(url)} (${status}): ${error.message}`)
+  return error
 }
 
 export interface FetchJSONOptions {
@@ -107,7 +117,7 @@ async function requestJSON<T>(
   valid: (value: unknown) => value is T,
   describe: (failure: RequestFailure) => string,
 ): Promise<T> {
-  const fail = (failure: RequestFailure) => new RequestError(describe(failure), failure)
+  const fail = (failure: RequestFailure) => recorded(init.method ?? "GET", url, new RequestError(describe(failure), failure))
   let response: Response
   try {
     response = await fetch(url, init)
@@ -131,7 +141,7 @@ async function requestJSON<T>(
 // deleteResource deletes url, expecting 204 No Content. Failures reject as
 // fetchJSON's do.
 export async function deleteResource(url: string, options: FetchJSONOptions, describe: (failure: RequestFailure) => string): Promise<void> {
-  const fail = (failure: RequestFailure) => new RequestError(describe(failure), failure)
+  const fail = (failure: RequestFailure) => recorded("DELETE", url, new RequestError(describe(failure), failure))
   let response: Response
   try {
     response = await fetch(url, { method: "DELETE", headers: { Accept: "application/json", ...options.headers }, signal: options.signal })

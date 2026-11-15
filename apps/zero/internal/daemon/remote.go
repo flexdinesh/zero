@@ -2,8 +2,7 @@ package daemon
 
 import (
 	"errors"
-	"fmt"
-	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -155,7 +154,7 @@ type remoteServer struct {
 	idle         *idleTracker
 	exit         func()
 	after        timerFunc
-	log          io.Writer
+	log          *slog.Logger
 	lifetime     *uiLifetime
 
 	mu       sync.Mutex
@@ -165,10 +164,10 @@ type remoteServer struct {
 	port     int
 }
 
-func newRemoteServer(rt *runtime.Runtime, web http.Handler, identityFile string, policy Lifetime, idle *idleTracker, exit func(), log io.Writer) *remoteServer {
+func newRemoteServer(rt *runtime.Runtime, web http.Handler, identityFile string, policy Lifetime, idle *idleTracker, exit func(), log *slog.Logger) *remoteServer {
 	r := &remoteServer{runtime: rt, web: web, identityFile: identityFile, policy: policy, idle: idle, exit: exit, after: realTimer, log: log}
 	r.lifetime = &uiLifetime{after: r.after, fire: func() {
-		_, _ = fmt.Fprintln(r.log, "remote listener closing: no UI connected")
+		r.log.Info("remote listener closing: no UI connected")
 		r.closeListener()
 	}}
 	return r
@@ -251,7 +250,7 @@ func (r *remoteServer) listenLocked(host string, port *int) error {
 	}
 	// A failure only means the next start may pick another port.
 	if err := r.identity.RememberPort(bound); err != nil {
-		_, _ = fmt.Fprintf(r.log, "remember remote port: %v\n", err)
+		r.log.Warn("could not remember remote port", "error", err)
 	}
 	served, err := r.runtime.Bind(runtime.Binding{
 		Listener:     listener,
@@ -263,7 +262,7 @@ func (r *remoteServer) listenLocked(host string, port *int) error {
 		return &app.Error{Kind: contract.KindUnavailable, Message: err.Error()}
 	}
 	r.bound, r.host, r.port = served, host, bound
-	_, _ = fmt.Fprintf(r.log, "remote listener on port %d\n", bound)
+	r.log.Info("remote listener on port", "port", bound)
 	return nil
 }
 

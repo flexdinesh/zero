@@ -2,9 +2,8 @@ package daemon
 
 import (
 	"errors"
-	"fmt"
-	"io"
 	"io/fs"
+	"log/slog"
 	"path/filepath"
 	"slices"
 	"sync"
@@ -35,7 +34,7 @@ func NewRoots(set *projects.RootSet, skipped []string, file string) *Roots {
 // exists stops being served: it is dropped and the file saved without it
 // (decision 0146). Other roots that fail to load, such as overlapping ones,
 // are skipped and kept. Each is logged.
-func LoadedRoots(file string, log io.Writer) (*Roots, error) {
+func LoadedRoots(file string, log *slog.Logger) (*Roots, error) {
 	saved, err := LoadRoots(file)
 	if err != nil {
 		return nil, err
@@ -48,17 +47,17 @@ func LoadedRoots(file string, log io.Writer) (*Roots, error) {
 		switch {
 		case err == nil:
 		case errors.Is(err, fs.ErrNotExist):
-			_, _ = fmt.Fprintf(log, "no longer serving missing root %s\n", root)
+			log.Info("no longer serving missing root", "root", root)
 			dropped = true
 		default:
-			_, _ = fmt.Fprintf(log, "skipping root %s: %v\n", root, err)
+			log.Warn("skipping root", "root", root, "error", err)
 			skipped = append(skipped, root)
 		}
 	}
 	roots := NewRoots(set, skipped, file)
 	if dropped {
 		if err := roots.save(); err != nil {
-			_, _ = fmt.Fprintf(log, "could not save roots: %v\n", err)
+			log.Warn("could not save roots", "error", err)
 		}
 	}
 	return roots, nil

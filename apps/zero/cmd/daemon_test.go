@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	goruntime "runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	"github.com/flexdinesh/zero/internal/daemon"
+	"github.com/flexdinesh/zero/pkg/logfile"
 )
 
 func executeDaemon(t *testing.T, args ...string) (string, daemonOptions, error) {
@@ -242,5 +244,43 @@ func TestDaemonRunArgsForwardOnlyNonDefaults(t *testing.T) {
 				t.Fatalf("daemonRunArgs = %q, want %q", got, test.want)
 			}
 		})
+	}
+}
+
+// The default socket's daemon logs in the user's log directory; a daemon on
+// another socket logs beside it, so isolated daemons keep their own logs.
+func TestDaemonLogDirectory(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	defaultSocket, err := daemon.DefaultSocket()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := logfile.DefaultDir(goruntime.GOOS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := daemonLogDir(defaultSocket); err != nil || got != want {
+		t.Errorf("default socket logs in %q, %v; want %q", got, err, want)
+	}
+	if got, err := daemonLogDir("/tmp/dev/daemon.sock"); err != nil || got != "/tmp/dev/logs" {
+		t.Errorf("other socket logs in %q, %v; want /tmp/dev/logs", got, err)
+	}
+}
+
+// openDaemonLog writes the daemon's lines to stderr and daemon.log.
+func TestOpenDaemonLogWritesBoth(t *testing.T) {
+	t.Setenv("ZERO_LOG", "")
+	socket := filepath.Join(t.TempDir(), "daemon.sock")
+	var stderr bytes.Buffer
+	logs := openDaemonLog(socket, &stderr)
+	logs.logger.Info("hello from the daemon")
+	logs.close()
+	want := filepath.Join(filepath.Dir(socket), "logs", "daemon.log")
+	if logs.file != want {
+		t.Fatalf("log file = %q, want %q", logs.file, want)
+	}
+	data, err := os.ReadFile(logs.file)
+	if err != nil || !strings.Contains(string(data), `msg="hello from the daemon"`) || !strings.Contains(stderr.String(), "hello from the daemon") {
+		t.Errorf("file = %q, %v; stderr = %q", data, err, stderr.String())
 	}
 }

@@ -256,6 +256,10 @@
   display: block;
 }
 
+.status-process-panel .status-report {
+  margin-top: var(--space-2);
+}
+
 .status-navigation summary {
   color: var(--color-text-muted);
 }

@@ -65,3 +65,8 @@ test("Go Back, Go Forward, and Recent Locations are Navigation commands", () => 
   assert.deepEqual(recent?.command.action, { kind: "recent-locations" })
   assert.equal(recent?.command.shortcut, undefined)
 })
+
+test("typing report finds Report a Problem in Help on every client", () => {
+  assert.deepEqual(matchCommands(commands, "report problem").map((match) => match.command.id), ["help.reportProblem"])
+  assert.ok(availableCommands(false).some((command) => command.id === "help.reportProblem"))
+})

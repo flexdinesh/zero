@@ -54,6 +54,9 @@ type Config struct {
 	// RootControl opens folders anywhere on the host and stops serving
 	// roots (decision 0146); nil serves Roots as they are.
 	RootControl RootControl
+	// Server describes the running server for problem reports (decision
+	// 0152).
+	Server ServerInfo
 }
 
 // App holds the domain services. Each is safe for concurrent use.
@@ -64,6 +67,7 @@ type App struct {
 	SourceControl *SourceControl
 	Navigation    *Navigation
 	Metrics       *Metrics
+	Diagnostics   *Diagnostics
 	Walkthroughs  *Walkthroughs
 	Feedback      *Feedback
 }
@@ -112,6 +116,7 @@ func New(config Config) (*App, error) {
 		SourceControl: &SourceControl{state: shared, blames: newBlameCache()},
 		Navigation:    &Navigation{state: shared, servers: config.LanguageServers},
 		Metrics:       &Metrics{},
+		Diagnostics:   newDiagnostics(shared),
 		Walkthroughs:  walkthroughs,
 		Feedback:      reviews,
 	}, nil

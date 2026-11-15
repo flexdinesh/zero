@@ -115,11 +115,19 @@
   font-size: var(--text-label);
 }
 
+.welcome-help {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+  font-size: var(--text-label);
+}
+
 .welcome-docs {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  margin-top: var(--space-5);
   color: var(--color-accent);
   font-size: var(--text-label);
   text-decoration: none;
