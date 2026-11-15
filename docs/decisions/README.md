@@ -152,3 +152,4 @@ rewriting history; update `Status` on the old record.
 | [0148](0148-remote-version-mismatch.md) | Client and server versions in remote workflows | Accepted; extends 0098, 0127, 0128 |
 | [0150](0150-remote-connect-copy.md) | Copy the connect command on `--remote` | Accepted; extends 0098 |
 | [0151](0151-desktop-app-named-zero.md) | Desktop app named Zero; process names | Accepted; supersedes 0095's and 0118's desktop names; revises 0101's PATH launcher |
+| [0152](0152-persistent-logs-and-problem-reports.md) | Persistent logs and Report a Problem | Accepted; extends 0061, 0080, 0081, 0094 |

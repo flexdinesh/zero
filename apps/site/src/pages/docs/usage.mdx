@@ -137,6 +137,21 @@ zero daemon stop
 `zero daemon ensure` starts it unless it is running; `--json` prints status
 as JSON.
 
+## Logs and problem reports
+
+The daemon keeps a log, `daemon.log`, in `~/.local/state/zero/logs` on Linux
+(`$XDG_STATE_HOME/zero/logs` when set) and `~/Library/Logs/zero` on macOS. It
+records startup, failed requests, language server failures, and the stop
+reason, never file contents. Each log stays under 10 MiB. Set `ZERO_LOG=debug`
+to also log every request; the daemon reads it when it starts.
+
+**Help: Report a Problem…** in the command palette (also on Welcome and in the
+status bar's error panel) shows a report of your build, system, recent log
+lines, and this window's recent errors. Your home directory and connection
+tokens are hidden; read the report before you share it. **Copy report** copies
+it, and **Open GitHub issue** starts an issue with the system details. Nothing
+is sent until you paste it.
+
 ## Update
 
 ```bash
