@@ -31,10 +31,12 @@ export function removeRoot(root: string, signal?: AbortSignal): Promise<RemovedR
 }
 
 // Landing is what a URL without a project shows (decision 0153): the only
-// project there is, or the choice among them.
+// project there is, the choice among them, or, serving no folder, the
+// workspace's no-folder state.
 export type Landing =
   | { kind: "open"; project: string }
   | { kind: "choose" }
+  | { kind: "none" }
 
 // defaultProject is the first served root, always listed as a project.
 export function defaultProject(projects: ProjectsResponse): string {
@@ -44,6 +46,7 @@ export function defaultProject(projects: ProjectsResponse): string {
 // landing opens the one available project and otherwise asks: a link that
 // names no project never opens one the user did not choose.
 export function landing(projects: ProjectsResponse): Landing {
+  if (projects.roots.length === 0) return { kind: "none" }
   const available = projects.projects.filter((project) => project.available)
   const only = available.length === 1 ? available[0] : undefined
   return only ? { kind: "open", project: only.id } : { kind: "choose" }

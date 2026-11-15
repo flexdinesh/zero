@@ -38,8 +38,9 @@ and opening the last one there hid the choice from the person.
 
 ### A link without a project asks
 
-- `/` without a project opens the only available project. Otherwise it shows
-  **Choose a project**, in every window (local or remote, desktop or browser),
+- `/` without a project opens the only available project, and on a server
+  that serves no folder keeps the workspace's “No folder is open.” state.
+  Otherwise it shows **Choose a project**, in every window (local or remote, desktop or browser),
   and loads no project until one is picked:
   - a flat page on the document surface: “Choose a project” at the preview h1
     size, “Serving N folders.”, then Welcome's project list (the picker's rows,
@@ -63,6 +64,9 @@ and opening the last one there hid the choice from the person.
 - Clients without this change reject strings that carry a path (“not a zero
   connection string”); the build mismatch notice of 0148 already asks to
   update.
+- Running a connect string again while its connection's window is open loads
+  the string's project in that window, as a local `zero <path>` does, instead
+  of only bringing it forward (0098).
 - Opening the desktop app with no link, or a bookmarked `/`, asks instead of
   reopening the last project; the last one is a keystroke (Enter).
 - With one available project, a folder last opened by hand within it no longer

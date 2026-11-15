@@ -37,6 +37,10 @@ test("with no available project, the URL asks so the problems show", () => {
   assert.deepEqual(landing({ ...projects, projects: [] }), { kind: "choose" })
 })
 
+test("serving no folder keeps the workspace's no-folder state", () => {
+  assert.deepEqual(landing({ ...projects, roots: [], projects: [] }), { kind: "none" })
+})
+
 test("last opened is the project remembered under the session key", () => {
   const memory = rememberProject(rememberProject(emptyMemory, sessionKey, "/work/api", [], null), "daemon", "/home", [], null)
   assert.equal(lastOpened({ ...projects, sessionKey: "daemon" }, memory), "/home")

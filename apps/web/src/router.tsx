@@ -12,7 +12,7 @@ import { isAbort } from "./api/http.ts"
 import { loadPage } from "./api/page-data.ts"
 import { parseDiffLineAnchor } from "./features/source-control/diff-line-selection.ts"
 import { ChooseProject } from "./features/projects/ChooseProject.tsx"
-import { defaultProject, fetchProjects, landing } from "./api/projects-data.ts"
+import { defaultProject, fetchProjects, landing, type Landing } from "./api/projects-data.ts"
 import { compareSearch, legacyCompare, reviewFragment, routeCompare } from "./features/source-control/compare.ts"
 import { isCommitHash } from "./lib/commit-hash.ts"
 import { routeAt } from "./workspace/workspace-tabs.ts"
@@ -82,13 +82,20 @@ function withProject(search: PageSearch, project: string): PageSearch {
   return { project, ...rest }
 }
 
+// choosing is the index route's loader data while it asks for a project.
+const choosing = { choosing: true }
+
+function isChoosing(value: unknown): boolean {
+  return typeof value === "object" && value !== null && "choosing" in value && value.choosing === true
+}
+
 function RoutedApp() {
   // Committed (not pending) search: the workspace switches once the new
   // project's page has loaded, then remounts without the old project's state.
   const project = useSearch({ strict: false, select: (search) => typeof search.project === "string" ? search.project : "" })
   // The index route without a project asks which to open (decision 0153).
-  const choosing = useRouterState({ select: (state) => !project && state.matches.some((match) => match.routeId === indexRoute.id) })
-  if (choosing) return <ChooseProject />
+  const asking = useRouterState({ select: (state) => state.matches.some((match) => match.routeId === indexRoute.id && isChoosing(match.loaderData)) })
+  if (asking) return <ChooseProject />
   return <App key={project} project={project} />
 }
 
@@ -103,25 +110,26 @@ const indexRoute = createRoute({
   // Without a project, open the only one there is; otherwise the page asks
   // which (decision 0153). When projects cannot be listed, it asks too and
   // reports why.
+  // Serving no folder keeps the workspace's no-folder state.
   beforeLoad: async ({ search, abortController }) => {
-    if (search.project) return
-    let project = ""
+    if (search.project) return { choose: false }
+    let chosen: Landing = { kind: "choose" }
     try {
-      const chosen = landing(await fetchProjects(abortController.signal))
-      if (chosen.kind === "open") project = chosen.project
+      chosen = landing(await fetchProjects(abortController.signal))
     } catch (error: unknown) {
       if (isAbort(error)) throw error
     }
-    if (project) throw redirect({ to: "/", search: withProject(search, project), replace: true })
+    if (chosen.kind === "open") throw redirect({ to: "/", search: withProject(search, chosen.project), replace: true })
+    return { choose: chosen.kind === "choose" }
   },
   loaderDeps: ({ search }) => ({ project: search.project ?? "" }),
   // Choosing a project loads no page.
-  loader: ({ abortController, deps }) => deps.project ? loadPage({
+  loader: ({ abortController, context, deps }) => context.choose ? choosing : loadPage({
     pathname: "/",
     project: deps.project,
     selected: "",
     signal: abortController.signal,
-  }) : null,
+  }),
 })
 
 const viewRoute = createRoute({

@@ -31,6 +31,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/flexdinesh/zero/pkg/connection"
 )
 
 const (
@@ -750,6 +752,12 @@ func TestWebViewApp(t *testing.T) {
 		if text == "" {
 			t.Fatalf("no connect string in %q", printed)
 		}
+		// The string names the project --remote started with (decision 0153).
+		invite, err := connection.ParseInvite(text)
+		if err != nil || invite.Project != served {
+			t.Fatalf("connect string %q = %+v, %v; want project %s", text, invite, err, served)
+		}
+		secret := invite.Endpoint.Credential.Encode()
 
 		app := w.launch()
 		defer app.stop()
@@ -769,7 +777,7 @@ func TestWebViewApp(t *testing.T) {
 		}
 		output := connect()
 		match := connectionLink.FindStringSubmatch(output)
-		if match == nil || !strings.Contains(output, "connected to ") || strings.Contains(output, text[strings.LastIndex(text, "/")+1:]) {
+		if match == nil || !strings.Contains(output, "connected to ") || strings.Contains(output, secret) {
 			t.Fatalf("zero connect printed %q", output)
 		}
 		id := match[1]
@@ -778,6 +786,7 @@ func TestWebViewApp(t *testing.T) {
 			t.Fatal("the connection opened in the local window")
 		}
 		app.target = remote
+		app.waitEval("the string's project in the window", `return new URLSearchParams(location.search).get("project") === `+strconv.Quote(served))
 		app.waitEval("the remote project's tree", treeShows("README.md"))
 		app.capture("remote-window.png")
 
@@ -801,7 +810,7 @@ func TestWebViewApp(t *testing.T) {
 		if got := app.eval(`try { await fetch("zero-app://local/api/projects"); return "read" } catch { return "blocked" }`); got != "blocked" {
 			t.Errorf("a remote page reached the local daemon: %v", got)
 		}
-		if strings.Contains(fmt.Sprint(app.eval(`return document.documentElement.outerHTML`)), text[strings.LastIndex(text, "/")+1:]) {
+		if strings.Contains(fmt.Sprint(app.eval(`return document.documentElement.outerHTML`)), secret) {
 			t.Error("the credential is in the page")
 		}
 
@@ -866,13 +875,11 @@ func TestWebViewApp(t *testing.T) {
 			}
 		})
 
-		// Connecting again brings the window forward and keeps what it shows.
-		app.eval(`window.__stamp = 1; return true`)
+		// Connecting again brings the connection's one window forward on the
+		// string's project, as a local `zero <path>` does (decision 0153).
+		app.eval(`history.replaceState(null, "", "/view?" + new URLSearchParams({ project: "elsewhere" }).toString()); return true`)
 		connect()
-		time.Sleep(time.Second)
-		if got := app.eval(`return window.__stamp`); got != float64(1) {
-			t.Errorf("connecting again reloaded the window: %v", got)
-		}
+		app.waitEval("the string's project after connecting again", `return new URLSearchParams(location.search).get("project") === `+strconv.Quote(served))
 		if got := app.windowCount(); got != 2 {
 			t.Errorf("%d windows after connecting again, want 2", got)
 		}
