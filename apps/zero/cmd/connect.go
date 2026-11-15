@@ -10,7 +10,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flexdinesh/zero/internal/daemon"
 	"github.com/flexdinesh/zero/internal/desktopapp"
+	"github.com/flexdinesh/zero/internal/version"
 	"github.com/flexdinesh/zero/pkg/connection"
 	"github.com/flexdinesh/zero/pkg/contract"
 	"github.com/spf13/cobra"
@@ -88,6 +90,9 @@ func runConnect(ctx context.Context, opts connectOptions, stdout, stderr io.Writ
 	if err != nil {
 		return connectFailure(err, endpoint, opts.cliName)
 	}
+	if err := checkServerVersion(info, opts.cliName, stderr); err != nil {
+		return err
+	}
 	path, err := deps.storePath()
 	if err != nil {
 		return err
@@ -156,4 +161,24 @@ A firewall may block the port. To tunnel instead:
 %s`, hosts, endpoint.Port, endpoint.Port, endpoint.Port, name, serverCLIHint)
 	}
 	return err
+}
+
+// localRemoteInfo describes this build as a server describes itself.
+func localRemoteInfo() contract.RemoteInfo {
+	return contract.RemoteInfo{Protocol: daemon.ProtocolVersion, Version: version.Number(), Commit: version.Commit}
+}
+
+// checkServerVersion warns on stderr when the server runs another build, and
+// refuses one that speaks another protocol (decision 0148).
+func checkServerVersion(server contract.RemoteInfo, name cliName, stderr io.Writer) error {
+	local := localRemoteInfo()
+	compat := connection.Compare(local, server)
+	warning := connection.VersionWarning(compat, local, server, name.String())
+	if compat == connection.CompatIncompatible {
+		return errors.New(warning)
+	}
+	if warning != "" {
+		_, _ = fmt.Fprintf(stderr, "warning: %s\n", warning)
+	}
+	return nil
 }

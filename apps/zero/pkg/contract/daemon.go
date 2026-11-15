@@ -55,6 +55,9 @@ type RemoteInfo struct {
 	Version  string `json:"version"`
 	// Name labels the connection: the machine's host name.
 	Name string `json:"name"`
+	// Commit is the build's commit, when stamped; older servers omit it
+	// (decision 0148).
+	Commit string `json:"commit,omitempty"`
 }
 
 // DaemonRemoteRequest is the body of POST /_daemon/remote. Exposure is a

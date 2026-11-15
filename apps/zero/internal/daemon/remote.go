@@ -279,7 +279,7 @@ func remoteInfo() contract.RemoteInfo {
 	if err != nil {
 		name = "zero"
 	}
-	return contract.RemoteInfo{Protocol: ProtocolVersion, Version: version.Number(), Name: name}
+	return contract.RemoteInfo{Protocol: ProtocolVersion, Version: version.Number(), Name: name, Commit: version.Commit}
 }
 
 // Stop implements RemoteControl.

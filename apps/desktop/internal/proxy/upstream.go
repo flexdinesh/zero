@@ -3,6 +3,7 @@ package proxy
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/flexdinesh/zero/apps/desktop/internal/connect"
 	"github.com/flexdinesh/zero/pkg/connection"
+	"github.com/flexdinesh/zero/pkg/contract"
 )
 
 // Failure is a request that got no answer: JSON for the page's requests, a
@@ -68,6 +70,26 @@ type Connections struct {
 
 	mu      sync.Mutex
 	remotes map[string]*Remote
+	// versions compares each server's build with this app's (decision 0148);
+	// nil checks nothing.
+	versions *VersionCheck
+}
+
+// VersionCheck compares a saved connection's server build with the app's
+// once per server, on its first page load.
+type VersionCheck struct {
+	// Local describes the app's build as a server describes itself.
+	Local contract.RemoteInfo
+	// Warn tells a person about a difference; refusals become the page.
+	Warn func(host, label string, server contract.RemoteInfo, warning string)
+}
+
+// CheckVersions makes servers created from now on compare their build with
+// the app's.
+func (c *Connections) CheckVersions(check VersionCheck) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.versions = &check
 }
 
 // NewConnections returns the app's connections. zero is the zero binary that
@@ -148,6 +170,7 @@ func (c *Connections) remote(host string, reread bool) (*Remote, error) {
 	if err != nil {
 		return nil, err
 	}
+	created.versions = c.versions
 	if existing != nil {
 		existing.Close()
 	}
@@ -307,6 +330,13 @@ type Remote struct {
 	saved     connection.Saved
 	base      string
 	transport http.RoundTripper
+	versions  *VersionCheck
+
+	// versionMu guards checked and refusal: the build check runs once, on
+	// the first page load that reaches the server.
+	versionMu sync.Mutex
+	checked   bool
+	refusal   *Failure
 }
 
 func newRemote(saved connection.Saved, zero string) (*Remote, error) {
@@ -342,8 +372,70 @@ func (r *Remote) Close() {
 	}
 }
 
+// versionTimeout bounds the build check's request.
+const versionTimeout = 5 * time.Second
+
+// checkVersion compares the server's build with the app's once. A server that
+// speaks another protocol is refused for good; any other difference warns. A
+// server that does not answer is checked again on the next page load.
+func (r *Remote) checkVersion(ctx context.Context, document bool) *Failure {
+	if r.versions == nil {
+		return nil
+	}
+	r.versionMu.Lock()
+	defer r.versionMu.Unlock()
+	if r.checked || !document {
+		return r.refusal
+	}
+	server, err := r.remoteInfo(ctx)
+	if err != nil {
+		return nil
+	}
+	r.checked = true
+	local := r.versions.Local
+	compat := connection.Compare(local, server)
+	warning := connection.VersionWarning(compat, local, server, "zero")
+	switch {
+	case compat == connection.CompatIncompatible:
+		r.refusal = &Failure{
+			Status:      http.StatusBadGateway,
+			Code:        "remoteIncompatible",
+			Title:       r.saved.Label + " runs a zero this app cannot use",
+			Detail:      warning,
+			jsonMessage: warning,
+		}
+	case warning != "" && r.versions.Warn != nil:
+		go r.versions.Warn(r.saved.ID, r.saved.Label, server, warning)
+	}
+	return r.refusal
+}
+
+// remoteInfo asks the server to describe itself.
+func (r *Remote) remoteInfo(ctx context.Context) (contract.RemoteInfo, error) {
+	ctx, cancel := context.WithTimeout(ctx, versionTimeout)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, r.base+contract.RemoteInfoPath, nil)
+	if err != nil {
+		return contract.RemoteInfo{}, err
+	}
+	request.Host = "localhost"
+	response, err := r.transport.RoundTrip(request)
+	if err != nil {
+		return contract.RemoteInfo{}, err
+	}
+	defer response.Body.Close()
+	var info contract.RemoteInfo
+	if response.StatusCode != http.StatusOK || json.NewDecoder(io.LimitReader(response.Body, 64<<10)).Decode(&info) != nil || info.Protocol <= 0 {
+		return contract.RemoteInfo{}, errors.New("the server did not describe itself")
+	}
+	return info, nil
+}
+
 // Send implements Upstream.
 func (r *Remote) Send(request *http.Request, body []byte, document bool) (*http.Response, error) {
+	if refusal := r.checkVersion(request.Context(), document); refusal != nil {
+		return nil, refusal
+	}
 	upstream, err := upstreamRequest(request, r.base, body)
 	if err != nil {
 		return nil, r.unreachable(err)
