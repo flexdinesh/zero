@@ -10,6 +10,9 @@ var (
 	Version = "dev"
 	Commit  = ""
 	Date    = ""
+	// InstallMethod names the package manager that built this binary, for
+	// `zero update` (decision 0147). Empty for release and source builds.
+	InstallMethod = ""
 
 	readBuildInfo = debug.ReadBuildInfo
 )

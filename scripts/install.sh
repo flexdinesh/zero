@@ -8,11 +8,11 @@
 # zero and zero-desktop go on PATH in ~/.local/bin (or ~/bin when that is on
 # PATH). Linux: the app goes to ~/.local/share/zero-desktop/app with a desktop
 # entry for zero:// links and an icon. macOS: zero-desktop.app in /Applications
-# (or ~/Applications). --cli-only writes only the zero binary. A running daemon
-# is stopped after installing, so the next zero serves this version (decision
-# 0136). Any branch or
-# commit, built from source: scripts/install-dev.sh. Remove with
-# scripts/uninstall.sh.
+# (or ~/Applications). --cli-only writes only the zero binary. Every download
+# must match the release's checksums.txt before anything unpacks or installs.
+# A running daemon is stopped after installing, so the next zero serves this
+# version (decision 0136). Any branch or commit, built from source:
+# scripts/install-dev.sh. Remove with scripts/uninstall.sh.
 
 
 
@@ -624,10 +624,39 @@ release_url() {
   printf 'https://github.com/%s/releases/download/%s/%s' "$REPO" "$TAG" "$1"
 }
 
+# fetch_checksums downloads release TAG's checksums.txt once.
+fetch_checksums() {
+  if [ -f "$TMP/checksums.txt" ]; then return 0; fi
+  fetch "$(release_url checksums.txt)" "$TMP/checksums.txt" ||
+    fail "could not download checksums.txt from zero $TAG; nothing installed"
+}
+
+# verify_asset FILE NAME requires exactly one checksums.txt line for NAME
+# (shasum -a 256 format) whose digest is FILE's sha256.
+verify_asset() {
+  fetch_checksums
+  expected=""
+  matches=0
+  while read -r line_digest line_name line_extra; do
+    [ -z "$line_extra" ] || continue
+    [ "${line_name#\*}" = "$2" ] || continue
+    matches=$((matches + 1))
+    expected="$line_digest"
+  done <"$TMP/checksums.txt"
+  [ "$matches" -gt 0 ] || fail "checksums.txt of zero $TAG has no line for $2; nothing installed"
+  [ "$matches" -eq 1 ] || fail "checksums.txt of zero $TAG has $matches lines for $2; nothing installed"
+  case "$expected" in *[!0-9a-f]*) expected="" ;; esac
+  [ "${#expected}" -eq 64 ] || fail "checksums.txt of zero $TAG has a malformed digest for $2; nothing installed"
+  actual="$(hash <"$1")" || fail "cannot hash $2"
+  [ "$actual" = "$expected" ] || fail "$2 does not match its checksum in zero $TAG; nothing installed"
+}
+
 download_cli() {
   name="zero_${VERSION}_${OS}_${ARCH}"
   step "downloading zero $TAG ($OS/$ARCH)"
+  fetch_checksums
   fetch "$(release_url "$name.tar.gz")" "$TMP/$name.tar.gz" || fail "could not download $name.tar.gz from zero $TAG"
+  verify_asset "$TMP/$name.tar.gz" "$name.tar.gz"
   unpack_cli "$TMP/$name.tar.gz"
 }
 
@@ -637,6 +666,7 @@ download_desktop() {
   step "downloading the zero desktop app $TAG ($OS/$ARCH)"
   fetch "$(release_url "$package")" "$TMP/$package" ||
     fail "zero $TAG has no $package; install the CLI alone with --cli-only"
+  verify_asset "$TMP/$package" "$package"
   unpack_desktop "$TMP/$package"
 }
 # shared:release:end

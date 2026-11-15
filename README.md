@@ -32,7 +32,7 @@ The canonical command is `zero`. If it collides, the installer offers available
 `zero` in commands below. See [installation details](apps/site/src/pages/docs/getting-started.mdx#command-name-collisions),
 including the limit on detecting shell aliases and functions.
 
-Run a script again to update. Existing srcz installs and data stay untouched;
+Update with `zero update` (or run the script again). Existing srcz installs and data stay untouched;
 Zero starts with fresh settings, tabs, roots, connections, and walkthroughs.
 An alternate CLI name leaves the desktop app, protocols, and config names canonical.
 Latest `main` builds: see [development](docs/development.md#install-from-main).
