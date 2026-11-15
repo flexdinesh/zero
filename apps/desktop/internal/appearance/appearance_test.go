@@ -26,7 +26,7 @@ func TestWindowBackgroundFallsBackToTheDefault(t *testing.T) {
 }
 
 func TestStoreRemembersLooksAcrossOpens(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "zero-desktop", "appearance.json")
+	path := filepath.Join(t.TempDir(), "Zero", "appearance.json")
 	store := Open(path)
 	if err := store.SetBackground("local", "#101019"); err != nil {
 		t.Fatal(err)

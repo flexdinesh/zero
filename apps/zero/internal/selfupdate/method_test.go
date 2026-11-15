@@ -22,7 +22,7 @@ func newInstall(t *testing.T) install {
 		home:   home,
 		config: filepath.Join(home, ".config", "zero"),
 		cli:    filepath.Join(home, ".local", "bin", "zero"),
-		app:    filepath.Join(home, ".local", "share", "zero-desktop", "app"),
+		app:    filepath.Join(home, ".local", "share", "zero-app", "app"),
 	}
 	in.bundled = filepath.Join(in.app, "bin", "zero")
 	for _, path := range []string{in.cli, in.bundled} {
@@ -102,6 +102,8 @@ func TestDetectRejectsMalformedRecords(t *testing.T) {
 		"wrong header":     {"zero-install-v2", "name\tzero", cliRow},
 		"missing name":     {"zero-install-v1", cliRow},
 		"invalid name":     {"zero-install-v1", "name\t../zero", cliRow},
+		"app name":         {"zero-install-v1", "name\tzero-app", cliRow},
+		"old app name":     {"zero-install-v1", "name\tzero-desktop", cliRow},
 		"extra field":      {"zero-install-v1", "name\tzero", cliRow + "\textra"},
 		"duplicate role":   {"zero-install-v1", "name\tzero", cliRow, cliRow},
 		"unknown role":     {"zero-install-v1", "name\tzero", "tool\t/x\tf:00:1", cliRow},

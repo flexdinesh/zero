@@ -221,3 +221,26 @@ func TestDaemonEnsureForwardsRootsFile(t *testing.T) {
 		t.Fatalf("roots = %v, want %s from --roots-file", status.Roots, root)
 	}
 }
+
+func TestDaemonRunArgsForwardOnlyNonDefaults(t *testing.T) {
+	const socket = "/run/user/1000/zero/daemon.sock"
+	defaults := daemonOptions{socket: socket, depth: defaultDepth, scanDepth: defaultScanDepth, idleExit: daemon.DefaultIdleExit}
+	for _, test := range []struct {
+		name          string
+		opts          daemonOptions
+		defaultSocket string
+		want          string
+	}{
+		{"defaults", defaults, socket, "daemon run"},
+		{"unknown default socket", defaults, "", "daemon run --socket " + socket},
+		{"other socket", daemonOptions{socket: "/tmp/d.sock", depth: defaultDepth, scanDepth: defaultScanDepth, idleExit: daemon.DefaultIdleExit}, socket, "daemon run --socket /tmp/d.sock"},
+		{"every flag", daemonOptions{socket: socket, depth: 2, scanDepth: 3, idleExit: 0, rootsFile: "/tmp/roots.json"}, socket,
+			"daemon run --depth 2 --scan-depth 3 --idle-exit 0s --roots-file /tmp/roots.json"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := strings.Join(daemonRunArgs(test.opts, test.defaultSocket), " "); got != test.want {
+				t.Fatalf("daemonRunArgs = %q, want %q", got, test.want)
+			}
+		})
+	}
+}

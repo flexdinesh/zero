@@ -6,8 +6,8 @@
 #
 # ARCHES is a space-separated list, amd64 and arm64 by default.
 # ARCHIVES holds zero_<VERSION>_<os>_<arch>.tar.gz (build.yml's cli job).
-# Writes zero-desktop_<VERSION>_linux_<arch>.tar.gz (mygo's archive) or
-# zero-desktop_<VERSION>_darwin_<arch>.zip (the ad-hoc signed app) to OUT.
+# Writes zero-app_<VERSION>_linux_<arch>.tar.gz (mygo's archive) or
+# zero-app_<VERSION>_darwin_<arch>.zip (the ad-hoc signed app) to OUT.
 # Runs from the repository root with Go 1.27 (apps/desktop/go.mod) and jq.
 set -eu
 
@@ -42,9 +42,9 @@ for arch in $arches; do
   export MYGO_LDFLAGS="-X main.version=$version -X main.commit=$commit"
   if [ "$os" = linux ]; then
     go tool mygo build -platform "linux/$arch"
-    mv "build/linux-$arch/zero-desktop-$version-linux-$arch.tar.gz" "$out/zero-desktop_${version}_linux_${arch}.tar.gz"
+    mv "build/linux-$arch/zero-app-$version-linux-$arch.tar.gz" "$out/zero-app_${version}_linux_${arch}.tar.gz"
   else
     go tool mygo build -platform "darwin/$arch" -skip-dmg
-    ditto -c -k --keepParent "build/darwin-$arch/zero-desktop.app" "$out/zero-desktop_${version}_darwin_${arch}.zip"
+    ditto -c -k --keepParent "build/darwin-$arch/Zero.app" "$out/zero-app_${version}_darwin_${arch}.zip"
   fi
 done

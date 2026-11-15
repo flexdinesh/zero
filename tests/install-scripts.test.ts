@@ -45,7 +45,7 @@ const STUBS: Record<string, string[]> = {
     '  esac',
     'fi',
   ],
-  // macOS only: extracts a release zip as zero-desktop.app, or copies a
+  // macOS only: extracts a release zip as Zero.app, or copies a
   // directory.
   ditto: [
     'echo "ditto $*" >> "$STUB_LOG"',
@@ -132,7 +132,7 @@ const STUBS: Record<string, string[]> = {
     'if [ "$1 $2" = "run dist" ]; then',
     '  [ -z "${STUB_DIST_FAIL:-}" ] || exit 1',
     '  mkdir -p "$ZERO_DIST_OUT"',
-    '  for file in "$STUB_RELEASE_DIR/zero_${ZERO_DIST_VERSION}_"* "$STUB_RELEASE_DIR/zero-desktop_${ZERO_DIST_VERSION}_"*; do',
+    '  for file in "$STUB_RELEASE_DIR/zero_${ZERO_DIST_VERSION}_"* "$STUB_RELEASE_DIR/zero-app_${ZERO_DIST_VERSION}_"*; do',
     '    if [ -f "$file" ]; then cp "$file" "$ZERO_DIST_OUT/"; fi',
     '  done',
     'fi',
@@ -218,7 +218,7 @@ async function writeChecksums(sandbox: Sandbox): Promise<void> {
   const release = sandbox.env.STUB_RELEASE_DIR ?? ''
   const lines: string[] = []
   for (const name of (await readdir(release)).sort()) {
-    if (!/^zero(-desktop)?_.*\.(tar\.gz|zip)$/.test(name)) continue
+    if (!/^zero(-app|-desktop)?_.*\.(tar\.gz|zip)$/.test(name)) continue
     lines.push(`${createHash('sha256').update(await readFile(join(release, name))).digest('hex')}  ${name}\n`)
   }
   await writeFile(join(release, 'checksums.txt'), lines.join(''))
@@ -290,25 +290,28 @@ function zipFiles(files: { name: string; content: string; mode?: number }[]): Bu
 
 // createDesktopRelease writes the desktop app's assets for version: the Linux
 // archive for arch (the app, its bundled zero, and its icon) and the
-// darwin/arm64 zip, plus checksums.txt.
-async function createDesktopRelease(sandbox: Sandbox, options: { arch?: string; version?: string } = {}): Promise<void> {
+// darwin/arm64 zip, plus checksums.txt. legacy names them as releases before
+// decision 0151 did: zero-desktop_* holding zero-desktop and zero-desktop.app.
+async function createDesktopRelease(sandbox: Sandbox, options: { arch?: string; version?: string; legacy?: boolean } = {}): Promise<void> {
   const arch = options.arch ?? 'amd64'
   const version = options.version ?? '0.1.7'
+  const slug = options.legacy === true ? 'zero-desktop' : 'zero-app'
+  const bundle = options.legacy === true ? 'zero-desktop' : 'Zero'
   const release = sandbox.env.STUB_RELEASE_DIR ?? ''
   const staging = join(release, 'desktop-staging')
-  await writeExecutable(join(staging, 'zero-desktop'), `#!/bin/sh\necho "zero-desktop ${version} abc123"\n`)
+  await writeExecutable(join(staging, slug), `#!/bin/sh\necho "${slug} ${version} abc123"\n`)
   await writeExecutable(join(staging, 'bin', 'zero'), fakeZero(`${version} (abc123)`))
-  await writeFile(join(staging, 'zero-desktop.png'), 'desktop png')
+  await writeFile(join(staging, `${slug}.png`), 'desktop png')
   await new Promise<void>((resolve, reject) => {
-    execFile('tar', ['-czf', join(release, `zero-desktop_${version}_linux_${arch}.tar.gz`), '-C', staging, '.'], (error) => {
+    execFile('tar', ['-czf', join(release, `${slug}_${version}_linux_${arch}.tar.gz`), '-C', staging, '.'], (error) => {
       if (error === null) resolve()
       else reject(error)
     })
   })
   await rm(staging, { recursive: true })
-  await writeFile(join(release, `zero-desktop_${version}_darwin_arm64.zip`), zipFiles([
-    { name: 'zero-desktop.app/Contents/MacOS/zero-desktop', content: '#!/bin/sh\nexit 1\n' },
-    { name: 'zero-desktop.app/Contents/Resources/bin/zero', content: fakeZero(version) },
+  await writeFile(join(release, `${slug}_${version}_darwin_arm64.zip`), zipFiles([
+    { name: `${bundle}.app/Contents/MacOS/${bundle}`, content: '#!/bin/sh\nexit 1\n' },
+    { name: `${bundle}.app/Contents/Resources/bin/zero`, content: fakeZero(version) },
   ]))
   await writeChecksums(sandbox)
 }
@@ -426,21 +429,26 @@ for (const { script, version, cliOnly } of CHANNELS) {
   void test(`${script}: installs both components, records ownership, keeps canonical identity`, async (t) => {
     const sandbox = await createSandbox(t.after.bind(t), { homeName: 'home 50%' })
     await createFullRelease(sandbox, { version })
-    const state = join(sandbox.home, '.local/share/zero-desktop/localstorage/page.localstorage')
+    const state = join(sandbox.home, '.local/share/zero-app/localstorage/page.localstorage')
     await writeExecutable(state, 'tabs')
     assertOk(await run(script, sandbox, {}, ['--name', 'my-zero']))
-    const app = join(sandbox.home, '.local/share/zero-desktop/app')
+    const app = join(sandbox.home, '.local/share/zero-app/app')
     assert.ok(await isExecutable(cliPath(sandbox, 'my-zero')))
     assert.equal(await exists(cliPath(sandbox)), false)
     assert.ok(await isExecutable(join(app, 'bin/zero')))
     assert.equal(await readFile(state, 'utf8'), 'tabs')
-    const entry = await readFile(join(sandbox.home, '.local/share/applications/zero-desktop.desktop'), 'utf8')
+    const entry = await readFile(join(sandbox.home, '.local/share/applications/zero-app.desktop'), 'utf8')
     assert.match(entry, /^Name=Zero$/m)
     assert.match(entry, /^MimeType=x-scheme-handler\/zero;$/m)
-    assert.ok(entry.includes(`Exec="${app.replaceAll('%', '%%')}/zero-desktop" %U`), entry)
+    assert.match(entry, /^Icon=zero-app$/m)
+    assert.ok(entry.includes(`Exec="${app.replaceAll('%', '%%')}/zero-app" %U`), entry)
+    assert.ok(await exists(join(sandbox.home, '.local/share/icons/hicolor/512x512/apps/zero-app.png')))
+    // No PATH launcher: bare zero opens the app.
+    for (const name of ['zero-app', 'zero-desktop']) assert.equal(await entryExists(cliPath(sandbox, name)), false, name)
     const record = await readFile(recordPath(sandbox), 'utf8')
     assert.match(record, /^zero-install-v1\nname\tmy-zero\n/)
-    for (const role of ['cli', 'app', 'link', 'entry', 'icon']) assert.ok(record.includes(`\n${role}\t`), role)
+    for (const role of ['cli', 'app', 'entry', 'icon']) assert.ok(record.includes(`\n${role}\t`), role)
+    assert.doesNotMatch(record, /\nlink\t|zero-desktop/)
     assert.equal((await stat(recordPath(sandbox))).mode & 0o777, 0o600)
     const output = await run(script, sandbox, {}, cliOnly ? CLI_ONLY : [])
     assertOk(output)
@@ -533,7 +541,7 @@ for (const { script, version, cliOnly } of CHANNELS) {
 
   void test(`${script}: validates custom basenames and options before downloads`, async (t) => {
     const sandbox = await createSandbox(t.after.bind(t))
-    const invalid = [['--name'], ['--name', '../zero'], ['--name', '/tmp/zero'], ['--name', '-zero'], ['--name', 'white space'], ['--name', ''], ['--name', 'zero-desktop'], ['--wrong']]
+    const invalid = [['--name'], ['--name', '../zero'], ['--name', '/tmp/zero'], ['--name', '-zero'], ['--name', 'white space'], ['--name', ''], ['--name', 'zero-desktop'], ['--name', 'zero-app'], ['--wrong']]
     if (!cliOnly) invalid.push(['--cli-only'], ['--ref'], ['--ref', ''], ['--ref', '-x'], ['--ref', 'HEAD'])
     for (const args of invalid) {
       assert.notEqual((await run(script, sandbox, {}, args)).code, 0, JSON.stringify(args))
@@ -543,7 +551,7 @@ for (const { script, version, cliOnly } of CHANNELS) {
   })
 
   void test(`${script}: desktop destination collisions preflight before either install`, async (t) => {
-    for (const relative of ['.local/bin/zero-desktop', '.local/share/zero-desktop/app', '.local/share/applications/zero-desktop.desktop', '.local/share/icons/hicolor/512x512/apps/zero-desktop.png']) {
+    for (const relative of ['.local/share/zero-app/app', '.local/share/applications/zero-app.desktop', '.local/share/icons/hicolor/512x512/apps/zero-app.png']) {
       const sandbox = await createSandbox(t.after.bind(t))
       await createFullRelease(sandbox, { version })
       const path = join(sandbox.home, relative)
@@ -561,9 +569,9 @@ for (const { script, version, cliOnly } of CHANNELS) {
     const sandbox = await createSandbox(t.after.bind(t))
     await createFullRelease(sandbox, { version })
     assertOk(await run(script, sandbox))
-    const before = (await readFile(recordPath(sandbox), 'utf8')).split('\n').filter((line) => /^(app|link|entry|icon)\t/.test(line))
+    const before = (await readFile(recordPath(sandbox), 'utf8')).split('\n').filter((line) => /^(app|entry|icon)\t/.test(line))
     assertOk(await run(script, sandbox, { STUB_PGREP: '0' }, CLI_ONLY))
-    const after = (await readFile(recordPath(sandbox), 'utf8')).split('\n').filter((line) => /^(app|link|entry|icon)\t/.test(line))
+    const after = (await readFile(recordPath(sandbox), 'utf8')).split('\n').filter((line) => /^(app|entry|icon)\t/.test(line))
     assert.deepEqual(after, before)
   })
 
@@ -576,7 +584,7 @@ for (const { script, version, cliOnly } of CHANNELS) {
       const cli = await readFile(cliPath(sandbox), 'utf8')
       const release = sandbox.env.STUB_RELEASE_DIR ?? ''
       const cliArchive = join(release, `zero_${version}_linux_amd64.tar.gz`)
-      const desktopArchive = join(release, `zero-desktop_${version}_linux_amd64.tar.gz`)
+      const desktopArchive = join(release, `zero-app_${version}_linux_amd64.tar.gz`)
       if (failure === 'cli-missing') await rm(cliArchive)
       else if (failure === 'desktop-missing') await rm(desktopArchive)
       else if (failure === 'cli-corrupt') await writeFile(cliArchive, 'bad')
@@ -621,8 +629,8 @@ void test('updates, name switches, channel switches, and uninstall use recorded 
   const result = await run('uninstall.sh', sandbox)
   assertOk(result)
   assert.equal(await exists(cliPath(sandbox, 'another-zero')), false)
-  assert.equal(await exists(join(sandbox.home, '.local/share/zero-desktop/app')), false)
-  assert.equal(await entryExists(cliPath(sandbox, 'zero-desktop')), false)
+  assert.equal(await exists(join(sandbox.home, '.local/share/zero-app/app')), false)
+  assert.equal(await exists(join(sandbox.home, '.local/share/applications/zero-app.desktop')), false)
   assert.equal(await exists(recordPath(sandbox)), false)
   for (const path of [srcz, stranger, join(sandbox.home, 'go/bin/zero')]) assert.equal(await readFile(path, 'utf8'), malicious)
   assert.equal(await readFile(roots, 'utf8'), '[]')
@@ -630,18 +638,16 @@ void test('updates, name switches, channel switches, and uninstall use recorded 
 })
 
 void test('modified CLI and app are preserved on update and uninstall; name switch leaves modified old command', async (t) => {
-  for (const modified of ['cli', 'app', 'link', 'entry', 'icon']) {
+  for (const modified of ['cli', 'app', 'entry', 'icon']) {
     const sandbox = await createSandbox(t.after.bind(t))
     await createFullRelease(sandbox)
     assertOk(await run('install.sh', sandbox))
-    const app = join(sandbox.home, '.local/share/zero-desktop/app')
+    const app = join(sandbox.home, '.local/share/zero-app/app')
     const path = modified === 'cli' ? cliPath(sandbox)
       : modified === 'app' ? join(app, 'bin/zero')
-        : modified === 'entry' ? join(sandbox.home, '.local/share/applications/zero-desktop.desktop')
-          : modified === 'icon' ? join(sandbox.home, '.local/share/icons/hicolor/512x512/apps/zero-desktop.png')
-            : cliPath(sandbox, 'zero-desktop')
-    if (modified === 'link') { await rm(path); await symlink('/unrelated', path) }
-    else await writeExecutable(path, '#!/bin/sh\necho EXECUTED >> "$STUB_LOG"\n')
+        : modified === 'entry' ? join(sandbox.home, '.local/share/applications/zero-app.desktop')
+          : join(sandbox.home, '.local/share/icons/hicolor/512x512/apps/zero-app.png')
+    await writeExecutable(path, '#!/bin/sh\necho EXECUTED >> "$STUB_LOG"\n')
     const update = await run('install.sh', sandbox)
     assert.notEqual(update.code, 0, modified)
     assert.match(update.stdout + update.stderr, /collision:/)
@@ -693,7 +699,7 @@ void test('running managed daemon or desktop stops uninstall; cli-only still upd
   assert.match(daemon.stderr, /zero daemon stop/)
   const desktop = await run('uninstall.sh', sandbox, { STUB_PGREP: '0' })
   assert.notEqual(desktop.code, 0)
-  assert.match(desktop.stderr, /desktop app is running/)
+  assert.match(desktop.stderr, /Zero app is running/)
   const install = await run('install.sh', sandbox, { STUB_PGREP: '0' })
   assert.notEqual(install.code, 0)
   assertOk(await run('install.sh', sandbox, { STUB_PGREP: '0' }, CLI_ONLY))
@@ -725,10 +731,10 @@ for (const { script, version, cliOnly } of CHANNELS) {
     const app = await run(script, sandbox, { STUB_PGREP: '0', STUB_DAEMON_STOP: 'stopped' }, cliOnly ? CLI_ONLY : [])
     if (cliOnly) {
       assertOk(app)
-      assert.match(app.stdout, /desktop app is running, so its daemon keeps the old build; quit the app, then run 'zero-new daemon stop'/)
+      assert.match(app.stdout, /Zero app is running, so its daemon keeps the old build; quit the app, then run 'zero-new daemon stop'/)
     } else {
       assert.notEqual(app.code, 0)
-      assert.match(app.stderr, /desktop app is running/)
+      assert.match(app.stderr, /Zero app is running/)
     }
     assert.doesNotMatch(await readFile(sandbox.log, 'utf8'), /daemon stop/)
   })
@@ -748,7 +754,7 @@ void test('bin-directory preference and shell PATH instructions survive collisio
   await createFullRelease(sandbox)
   assertOk(await run('install.sh', sandbox, { PATH: `${sandbox.stubs}:${join(sandbox.home, 'bin')}:${SYSTEM_PATH}` }))
   assert.ok(await exists(join(sandbox.home, 'bin/zero')))
-  assert.ok(await entryExists(join(sandbox.home, 'bin/zero-desktop')))
+  assert.equal(await entryExists(join(sandbox.home, 'bin/zero-desktop')), false)
 })
 
 void test('platform support and missing latest release fail without installing', async (t) => {
@@ -768,14 +774,14 @@ void test('macOS uses canonical config and application identity with alternate C
   await createRelease(sandbox, { os: 'darwin', arch: 'arm64' })
   await createDesktopRelease(sandbox)
   const apps = (await exists('/Applications')) ? '/Applications' : join(sandbox.home, 'Applications')
-  t.after(async () => { if (apps === '/Applications') await rm(join(apps, 'zero-desktop.app'), { recursive: true, force: true }) })
+  t.after(async () => { if (apps === '/Applications') await rm(join(apps, 'Zero.app'), { recursive: true, force: true }) })
   const env = { STUB_UNAME_S: 'Darwin', STUB_UNAME_M: 'arm64' }
   assertOk(await run('install.sh', sandbox, env, ['--name', 'zero-cli']))
   const record = join(sandbox.home, 'Library/Application Support/zero/install.tsv')
   assert.match(await readFile(record, 'utf8'), /name\tzero-cli/)
-  assert.ok(await exists(join(apps, 'zero-desktop.app/Contents/Resources/bin/zero')))
+  assert.ok(await exists(join(apps, 'Zero.app/Contents/Resources/bin/zero')))
   assertOk(await run('uninstall.sh', sandbox, env))
-  assert.equal(await exists(join(apps, 'zero-desktop.app')), false)
+  assert.equal(await exists(join(apps, 'Zero.app')), false)
 })
 
 void test('PATH nonexecutables are ignored; unmanaged byte-identical executable copies still collide', async (t) => {
@@ -800,7 +806,7 @@ void test('absolute/relative XDG paths and shared data/config preserve user stat
     const env = { XDG_DATA_HOME: absolute ? xdg : 'relative', XDG_CONFIG_HOME: absolute ? xdg : 'relative' }
     const config = absolute ? join(xdg, 'zero') : join(sandbox.home, '.config/zero')
     const data = absolute ? xdg : join(sandbox.home, '.local/share')
-    const state = join(data, 'zero-desktop/localstorage/page.localstorage')
+    const state = join(data, 'zero-app/localstorage/page.localstorage')
     await writeExecutable(state, 'tabs')
     assertOk(await run('install.sh', sandbox, env))
     assert.ok(await exists(join(config, 'install.tsv')))
@@ -856,7 +862,7 @@ void test('unsafe tar and ZIP members fail before installing either component', 
     await createDesktopRelease(sandbox)
     const release = sandbox.env.STUB_RELEASE_DIR ?? ''
     if (darwin) {
-      await writeFile(join(release, 'zero-desktop_0.1.7_darwin_arm64.zip'), zipFiles([
+      await writeFile(join(release, 'zero-app_0.1.7_darwin_arm64.zip'), zipFiles([
         { name: format === 'zip-parent' ? '../escaped' : 'link', content: '/tmp', mode: format === 'zip-link' ? 0o120777 : 0o100755 },
       ]))
     } else {
@@ -866,7 +872,7 @@ void test('unsafe tar and ZIP members fail before installing either component', 
       await symlink('/tmp', join(staging, 'link'))
       const args = format === 'tar-link' ? ['link'] : ['--transform=s,file,../escaped,', 'file']
       await new Promise<void>((resolve, reject) => {
-        execFile('tar', ['-czf', join(release, 'zero-desktop_0.1.7_linux_amd64.tar.gz'), '-C', staging, ...args], (error) => error === null ? resolve() : reject(error))
+        execFile('tar', ['-czf', join(release, 'zero-app_0.1.7_linux_amd64.tar.gz'), '-C', staging, ...args], (error) => error === null ? resolve() : reject(error))
       })
     }
     await writeChecksums(sandbox)
@@ -879,10 +885,196 @@ void test('unsafe tar and ZIP members fail before installing either component', 
   }
 })
 
+// --- zero-desktop to Zero (decision 0151) ---
+
+// fingerprintOf runs the scripts' own shared:ownership fingerprint on path, so
+// a hand-made record matches what an install before decision 0151 wrote.
+async function fingerprintOf(sandbox: Sandbox, path: string): Promise<string> {
+  const text = await readFile(join(scriptsDir, 'install.sh'), 'utf8')
+  const block = /^# shared:ownership:begin\n([\s\S]*?)^# shared:ownership:end$/m.exec(text)?.[1] ?? ''
+  const work = await mkdtemp(join(sandbox.root, 'fingerprint-'))
+  const program = [
+    'has() { command -v "$1" >/dev/null 2>&1; }',
+    'fail() { exit 1; }',
+    block,
+    'TAB="$(printf \'\\t\')"',
+    `TMP=${JSON.stringify(work)}`,
+    'fingerprint "$1"',
+  ].join('\n')
+  return new Promise((resolve, reject) => {
+    execFile('/bin/sh', ['-c', program, 'sh', path], { env: { PATH: SYSTEM_PATH } }, (error, stdout) => {
+      if (error === null) resolve(stdout.trim())
+      else reject(error)
+    })
+  })
+}
+
+interface LegacyInstall {
+  app: string
+  link: string
+  entry: string
+  icon: string
+}
+
+// createLegacyInstall lays out what install.sh wrote before decision 0151 on
+// Linux: zero, the zero-desktop app, its PATH link, desktop entry, and icon,
+// with the ownership record naming them.
+async function createLegacyInstall(sandbox: Sandbox): Promise<LegacyInstall> {
+  const data = join(sandbox.home, '.local/share')
+  const app = join(data, 'zero-desktop/app')
+  await writeExecutable(join(app, 'zero-desktop'), '#!/bin/sh\necho "zero-desktop 0.1.6 abc123"\n')
+  await writeExecutable(join(app, 'bin/zero'), fakeZero('0.1.6 (abc123)'))
+  await writeFile(join(app, 'zero-desktop.png'), 'old png')
+  await writeExecutable(cliPath(sandbox), fakeZero('0.1.6 (abc123)'))
+  const link = cliPath(sandbox, 'zero-desktop')
+  await symlink(join(app, 'zero-desktop'), link)
+  const entry = join(data, 'applications/zero-desktop.desktop')
+  await mkdir(dirname(entry), { recursive: true })
+  await writeFile(entry, '[Desktop Entry]\nName=Zero\n')
+  const icon = join(data, 'icons/hicolor/512x512/apps/zero-desktop.png')
+  await mkdir(dirname(icon), { recursive: true })
+  await writeFile(icon, 'old png')
+  const rows: string[] = []
+  const owned: [string, string][] = [['cli', cliPath(sandbox)], ['app', app], ['link', link], ['entry', entry], ['icon', icon]]
+  for (const [role, path] of owned) {
+    rows.push(`${role}\t${path}\t${await fingerprintOf(sandbox, path)}\n`)
+  }
+  await mkdir(dirname(recordPath(sandbox)), { recursive: true })
+  await writeFile(recordPath(sandbox), `zero-install-v1\nname\tzero\n${rows.join('')}`)
+  return { app, link, entry, icon }
+}
+
+for (const { script, version } of CHANNELS) {
+  void test(`${script}: retires a zero-desktop install and moves its page state and window looks`, async (t) => {
+    const sandbox = await createSandbox(t.after.bind(t))
+    await createFullRelease(sandbox, { version })
+    const old = await createLegacyInstall(sandbox)
+    const data = join(sandbox.home, '.local/share')
+    await writeExecutable(join(data, 'zero-desktop/localstorage/page.localstorage'), 'tabs')
+    await mkdir(join(data, 'zero-desktop/.cache'), { recursive: true })
+    await mkdir(join(sandbox.home, '.config/zero-desktop'), { recursive: true })
+    await writeFile(join(sandbox.home, '.config/zero-desktop/appearance.json'), '{"looks":1}')
+    const result = await run(script, sandbox)
+    assertOk(result)
+    for (const path of [old.app, old.link, old.entry, old.icon]) {
+      assert.equal(await entryExists(path), false, path)
+      assert.ok(result.stdout.includes(`retired ${path}`), result.stdout)
+    }
+    assert.ok(await isExecutable(join(data, 'zero-app/app/zero-app')))
+    assert.ok(await exists(join(data, 'applications/zero-app.desktop')))
+    assert.equal(await readFile(join(data, 'zero-app/localstorage/page.localstorage'), 'utf8'), 'tabs')
+    assert.ok(await exists(join(data, 'zero-app/.cache')))
+    assert.equal(await entryExists(join(data, 'zero-desktop')), false)
+    assert.match(result.stdout, /moved page state/)
+    assert.equal(await readFile(join(sandbox.home, '.config/Zero/appearance.json'), 'utf8'), '{"looks":1}')
+    assert.equal(await entryExists(join(sandbox.home, '.config/zero-desktop')), false)
+    assert.match(await readFile(cliPath(sandbox), 'utf8'), new RegExp(version.replaceAll('.', '\\.')))
+    const record = await readFile(recordPath(sandbox), 'utf8')
+    assert.doesNotMatch(record, /zero-desktop|\nlink\t/)
+    for (const role of ['cli', 'app', 'entry', 'icon']) assert.ok(record.includes(`\n${role}\t`), role)
+    // A second run has nothing left to move.
+    const again = await run(script, sandbox)
+    assertOk(again)
+    assert.doesNotMatch(again.stdout, /retired|moved/)
+  })
+
+  void test(`${script}: state under the new name wins; modified old paths are kept and reported`, async (t) => {
+    const sandbox = await createSandbox(t.after.bind(t))
+    await createFullRelease(sandbox, { version })
+    const old = await createLegacyInstall(sandbox)
+    const data = join(sandbox.home, '.local/share')
+    await writeExecutable(join(data, 'zero-desktop/localstorage/page.localstorage'), 'old tabs')
+    await writeExecutable(join(data, 'zero-app/localstorage/page.localstorage'), 'new tabs')
+    await mkdir(join(sandbox.home, '.config/zero-desktop'), { recursive: true })
+    await writeFile(join(sandbox.home, '.config/zero-desktop/appearance.json'), 'old looks')
+    await mkdir(join(sandbox.home, '.config/Zero'), { recursive: true })
+    await writeFile(join(sandbox.home, '.config/Zero/appearance.json'), 'new looks')
+    await writeFile(old.entry, '[Desktop Entry]\nName=Edited\n')
+    const result = await run(script, sandbox)
+    assertOk(result)
+    assert.ok(result.stdout.includes(`kept ${old.entry}: ownership changed`), result.stdout)
+    assert.equal(await readFile(old.entry, 'utf8'), '[Desktop Entry]\nName=Edited\n')
+    assert.equal(await entryExists(old.app), false)
+    assert.match(result.stdout, /already has page state/)
+    assert.equal(await readFile(join(data, 'zero-desktop/localstorage/page.localstorage'), 'utf8'), 'old tabs')
+    assert.equal(await readFile(join(data, 'zero-app/localstorage/page.localstorage'), 'utf8'), 'new tabs')
+    assert.equal(await readFile(join(sandbox.home, '.config/zero-desktop/appearance.json'), 'utf8'), 'old looks')
+    assert.equal(await readFile(join(sandbox.home, '.config/Zero/appearance.json'), 'utf8'), 'new looks')
+    assert.doesNotMatch(await readFile(recordPath(sandbox), 'utf8'), /zero-desktop/)
+  })
+}
+
+void test('install.sh: cli-only keeps a zero-desktop install and its record rows', async (t) => {
+  const sandbox = await createSandbox(t.after.bind(t))
+  await createRelease(sandbox)
+  const old = await createLegacyInstall(sandbox)
+  const before = (await readFile(recordPath(sandbox), 'utf8')).split('\n').filter((line) => !line.startsWith('cli\t'))
+  assertOk(await run('install.sh', sandbox, {}, CLI_ONLY))
+  for (const path of [old.app, old.link, old.entry, old.icon]) assert.ok(await entryExists(path), path)
+  const after = (await readFile(recordPath(sandbox), 'utf8')).split('\n').filter((line) => !line.startsWith('cli\t'))
+  assert.deepEqual(after, before)
+})
+
+void test('install.sh: a release without zero-app assets fails before changing a zero-desktop install', async (t) => {
+  const sandbox = await createSandbox(t.after.bind(t))
+  await createRelease(sandbox)
+  await createDesktopRelease(sandbox, { legacy: true })
+  const old = await createLegacyInstall(sandbox)
+  const record = await readFile(recordPath(sandbox), 'utf8')
+  const cli = await readFile(cliPath(sandbox), 'utf8')
+  const result = await run('install.sh', sandbox)
+  assert.notEqual(result.code, 0)
+  assert.ok(result.stderr.includes('has no zero-app_0.1.7_linux_amd64.tar.gz'), result.stderr)
+  assert.match(result.stderr, /nothing installed/)
+  assert.equal(await readFile(recordPath(sandbox), 'utf8'), record)
+  assert.equal(await readFile(cliPath(sandbox), 'utf8'), cli)
+  for (const path of [old.app, old.link, old.entry, old.icon]) assert.ok(await entryExists(path), path)
+  assert.equal(await exists(join(sandbox.home, '.local/share/zero-app')), false)
+})
+
+void test('macOS: retires zero-desktop.app and moves window looks; an unrelated Zero.app collides', async (t) => {
+  if (await exists('/Applications')) { t.skip('a real /Applications would receive the app'); return }
+  const env = { STUB_UNAME_S: 'Darwin', STUB_UNAME_M: 'arm64' }
+  const sandbox = await createSandbox(t.after.bind(t))
+  await createRelease(sandbox, { os: 'darwin', arch: 'arm64' })
+  await createDesktopRelease(sandbox)
+  const apps = join(sandbox.home, 'Applications')
+  const support = join(sandbox.home, 'Library/Application Support')
+  const oldApp = join(apps, 'zero-desktop.app')
+  await writeExecutable(join(oldApp, 'Contents/MacOS/zero-desktop'), '#!/bin/sh\nexit 1\n')
+  await writeExecutable(join(oldApp, 'Contents/Resources/bin/zero'), fakeZero('0.1.6'))
+  await writeExecutable(join(sandbox.home, '.local/bin/zero'), fakeZero('0.1.6'))
+  await mkdir(join(support, 'zero'), { recursive: true })
+  const rows = [
+    `cli\t${cliPath(sandbox)}\t${await fingerprintOf(sandbox, cliPath(sandbox))}\n`,
+    `app\t${oldApp}\t${await fingerprintOf(sandbox, oldApp)}\n`,
+  ]
+  await writeFile(join(support, 'zero/install.tsv'), `zero-install-v1\nname\tzero\n${rows.join('')}`)
+  await mkdir(join(support, 'zero-desktop'), { recursive: true })
+  await writeFile(join(support, 'zero-desktop/appearance.json'), 'looks')
+  const result = await run('install.sh', sandbox, env)
+  assertOk(result)
+  assert.equal(await entryExists(oldApp), false)
+  assert.ok(await isExecutable(join(apps, 'Zero.app/Contents/MacOS/Zero')))
+  assert.equal(await readFile(join(support, 'Zero/appearance.json'), 'utf8'), 'looks')
+  assert.doesNotMatch(await readFile(join(support, 'zero/install.tsv'), 'utf8'), /zero-desktop/)
+
+  const stranger = await createSandbox(t.after.bind(t))
+  await createRelease(stranger, { os: 'darwin', arch: 'arm64' })
+  await createDesktopRelease(stranger)
+  const unrelated = join(stranger.home, 'Applications/Zero.app/Contents/MacOS/Zero')
+  await writeExecutable(unrelated, 'stranger')
+  const collision = await run('install.sh', stranger, env)
+  assert.notEqual(collision.code, 0)
+  assert.ok(collision.stderr.includes(`collision: ${join(stranger.home, 'Applications/Zero.app')}`), collision.stderr)
+  assert.equal(await readFile(unrelated, 'utf8'), 'stranger')
+  assert.equal(await exists(cliPath(stranger)), false)
+})
+
 // --- checksums.txt ---
 
 const CHECKSUMS_CLI = 'zero_0.1.7_linux_amd64.tar.gz'
-const CHECKSUMS_DESKTOP = 'zero-desktop_0.1.7_linux_amd64.tar.gz'
+const CHECKSUMS_DESKTOP = 'zero-app_0.1.7_linux_amd64.tar.gz'
 
 void test('install.sh: downloads checksums.txt once and accepts a binary-mode marker', async (t) => {
   const sandbox = await createSandbox(t.after.bind(t))
@@ -891,7 +1083,7 @@ void test('install.sh: downloads checksums.txt once and accepts a binary-mode ma
   await writeFile(checksums, (await readFile(checksums, 'utf8')).replace(`  ${CHECKSUMS_DESKTOP}`, ` *${CHECKSUMS_DESKTOP}`))
   assertOk(await run('install.sh', sandbox))
   assert.ok(await isExecutable(cliPath(sandbox)))
-  assert.ok(await isExecutable(join(sandbox.home, '.local/share/zero-desktop/app/zero-desktop')))
+  assert.ok(await isExecutable(join(sandbox.home, '.local/share/zero-app/app/zero-app')))
   const log = await readFile(sandbox.log, 'utf8')
   assert.equal(log.match(/releases\/download\/v0\.1\.7\/checksums\.txt/g)?.length, 1, log)
 })
@@ -911,7 +1103,7 @@ void test('install.sh: missing, mismatched, absent, duplicate, or malformed chec
     const sandbox = await createSandbox(t.after.bind(t))
     await createFullRelease(sandbox)
     assertOk(await run('install.sh', sandbox))
-    const app = join(sandbox.home, '.local/share/zero-desktop/app/zero-desktop')
+    const app = join(sandbox.home, '.local/share/zero-app/app/zero-app')
     const record = await readFile(recordPath(sandbox), 'utf8')
     const cli = await readFile(cliPath(sandbox), 'utf8')
     const desktop = await readFile(app, 'utf8')
@@ -1055,7 +1247,7 @@ void test('install-dev.sh: a running app or macOS Intel stops before cloning', a
     const sandbox = await createSandbox(t.after.bind(t))
     const result = await run('install-dev.sh', sandbox, env)
     assert.notEqual(result.code, 0)
-    assert.match(result.stderr, 'STUB_PGREP' in env ? /desktop app is running/ : /macOS Intel/)
+    assert.match(result.stderr, 'STUB_PGREP' in env ? /Zero app is running/ : /macOS Intel/)
     assert.doesNotMatch(await readFile(sandbox.log, 'utf8'), /git clone/)
   }
 })

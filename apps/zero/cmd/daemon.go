@@ -90,8 +90,8 @@ func newDaemonCommandWith(actions daemonActions) *cobra.Command {
 			},
 		}
 		if starts {
-			sub.Flags().IntVar(&opts.depth, "depth", 5, "maximum directory depth to scan within a project")
-			sub.Flags().IntVar(&opts.scanDepth, "scan-depth", 10, "maximum directory depth to search for git repositories")
+			sub.Flags().IntVar(&opts.depth, "depth", defaultDepth, "maximum directory depth to scan within a project")
+			sub.Flags().IntVar(&opts.scanDepth, "scan-depth", defaultScanDepth, "maximum directory depth to search for git repositories")
 			sub.Flags().DurationVar(&opts.idleExit, "idle-exit", daemon.DefaultIdleExit, "stop after this long with no requests (0 never stops)")
 			sub.Flags().StringVar(&opts.rootsFile, "roots-file", "", "persisted roots file (default: the user config directory)")
 			_ = sub.Flags().MarkHidden("roots-file")
@@ -240,7 +240,8 @@ func startDaemon(opts daemonOptions) daemon.StartFunc {
 			return nil, err
 		}
 		defer stdin.Close()
-		process := exec.Command(executable, daemonRunArgs(opts)...)
+		defaultSocket, _ := daemon.DefaultSocket()
+		process := exec.Command(executable, daemonRunArgs(opts, defaultSocket)...)
 		process.Dir = "/"
 		process.Stdin = stdin
 		process.Stdout = log
@@ -257,13 +258,24 @@ func startDaemon(opts daemonOptions) daemon.StartFunc {
 }
 
 // daemonRunArgs are the arguments ensure starts `zero daemon run` with.
-// --roots-file is forwarded only when set.
-func daemonRunArgs(opts daemonOptions) []string {
-	args := []string{"daemon", "run",
-		"--socket", opts.socket,
-		"--depth", strconv.Itoa(opts.depth),
-		"--scan-depth", strconv.Itoa(opts.scanDepth),
-		"--idle-exit", opts.idleExit.String()}
+// Only flags that differ from their defaults are forwarded, so a process
+// monitor shows a short command line (decision 0151). defaultSocket is
+// daemon.DefaultSocket() in this environment, which the child inherits; ""
+// forwards --socket always.
+func daemonRunArgs(opts daemonOptions, defaultSocket string) []string {
+	args := []string{"daemon", "run"}
+	if opts.socket != defaultSocket || defaultSocket == "" {
+		args = append(args, "--socket", opts.socket)
+	}
+	if opts.depth != defaultDepth {
+		args = append(args, "--depth", strconv.Itoa(opts.depth))
+	}
+	if opts.scanDepth != defaultScanDepth {
+		args = append(args, "--scan-depth", strconv.Itoa(opts.scanDepth))
+	}
+	if opts.idleExit != daemon.DefaultIdleExit {
+		args = append(args, "--idle-exit", opts.idleExit.String())
+	}
 	if opts.rootsFile != "" {
 		args = append(args, "--roots-file", opts.rootsFile)
 	}

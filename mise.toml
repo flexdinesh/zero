@@ -64,8 +64,8 @@ depends = ["build:web"]
 env = { ZERO_DESKTOP_BINARY = "{{config_root}}/.dev/desktop/zero", ZERO_DESKTOP_SOCKET = "{{config_root}}/.dev/desktop/daemon.sock", ZERO_DESKTOP_ROOTS_FILE = "{{config_root}}/.dev/desktop/roots.json", MYGO_ENV = "production" }
 run = [
   "go build -o .dev/desktop/zero ./apps/zero",
-  "GOWORK=off GOTOOLCHAIN=go1.27.3 go -C apps/desktop build -o \"{{config_root}}/.dev/desktop/zero-desktop\" .",
-  "XDG_DATA_HOME=\"{{config_root}}/.dev/desktop/data\" XDG_CACHE_HOME=\"{{config_root}}/.dev/cache\" .dev/desktop/zero-desktop",
+  "GOWORK=off GOTOOLCHAIN=go1.27.3 go -C apps/desktop build -o \"{{config_root}}/.dev/desktop/zero-app\" .",
+  "XDG_DATA_HOME=\"{{config_root}}/.dev/desktop/data\" XDG_CACHE_HOME=\"{{config_root}}/.dev/cache\" .dev/desktop/zero-app",
 ]
 
 [tasks."dev:mock"]

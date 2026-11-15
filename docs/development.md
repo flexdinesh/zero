@@ -49,8 +49,6 @@ Run it:
 zero --version              # zero 0.0.0-dev.main <commit> <date>
 zero .                      # desktop app, else browser
 zero browser .              # browser
-zero-desktop .              # desktop app, without the CLI
-zero-desktop --version
 which -a zero               # which install wins on PATH
 ```
 

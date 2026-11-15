@@ -126,7 +126,7 @@ func attachInDesktop(ctx context.Context, opts attachOptions, target sandbox.Tar
 	if !opts.noOpen && deps.goos == "linux" {
 		installed, err := deps.installed(ctx)
 		if err != nil {
-			return fallback(fmt.Sprintf("could not detect the zero desktop app (%v)", err))
+			return fallback(fmt.Sprintf("could not detect the Zero app (%v)", err))
 		}
 		if !installed {
 			return fallback(desktopapp.ErrNotInstalled.Error())
@@ -170,7 +170,7 @@ func attachInDesktop(ctx context.Context, opts attachOptions, target sandbox.Tar
 		if errors.Is(err, desktopapp.ErrNotInstalled) {
 			return fallback(desktopapp.ErrNotInstalled.Error())
 		}
-		return fallback(fmt.Sprintf("could not open the zero desktop app (%v)", err))
+		return fallback(fmt.Sprintf("could not open the Zero app (%v)", err))
 	}
 	attached()
 	return nil

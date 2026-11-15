@@ -1,14 +1,15 @@
 #!/bin/sh
-# Installs the zero CLI and desktop app from the latest release. Decisions 0073
-# and 0101.
+# Installs the zero CLI and the Zero desktop app from the latest release.
+# Decisions 0073, 0101, and 0151.
 #
 #   curl -fsSL https://raw.githubusercontent.com/flexdinesh/zero/main/scripts/install.sh | sh
 #   curl -fsSL https://raw.githubusercontent.com/flexdinesh/zero/main/scripts/install.sh | sh -s -- --cli-only
 #
-# zero and zero-desktop go on PATH in ~/.local/bin (or ~/bin when that is on
-# PATH). Linux: the app goes to ~/.local/share/zero-desktop/app with a desktop
-# entry for zero:// links and an icon. macOS: zero-desktop.app in /Applications
-# (or ~/Applications). --cli-only writes only the zero binary. Every download
+# zero goes on PATH in ~/.local/bin (or ~/bin when that is on PATH). Linux: the
+# app goes to ~/.local/share/zero-app/app with a desktop entry for zero:// links
+# and an icon. macOS: Zero.app in /Applications (or ~/Applications). An install
+# of the app's former name, zero-desktop, is retired and its page state moved.
+# --cli-only writes only the zero binary. Every download
 # must match the release's checksums.txt before anything unpacks or installs.
 # A running daemon is stopped after installing, so the next zero serves this
 # version (decision 0136). Any branch or commit, built from source:
@@ -94,17 +95,23 @@ case "$DESKTOP_CONFIG" in
   *) DESKTOP_CONFIG="$HOME/.config" ;;
 esac
 # The app has a directory of its own: WebKit keeps the page's localStorage
-# beside it in zero-desktop/, which updates and uninstall leave alone.
-DESKTOP_HOME="$DESKTOP_DATA/zero-desktop/app"
-DESKTOP_ID="zero-desktop.desktop"
-DESKTOP_ICON="$DESKTOP_DATA/icons/hicolor/512x512/apps/zero-desktop.png"
+# beside it in zero-app/, which updates and uninstall leave alone.
+DESKTOP_HOME="$DESKTOP_DATA/zero-app/app"
+DESKTOP_ID="zero-app.desktop"
+DESKTOP_ICON="$DESKTOP_DATA/icons/hicolor/512x512/apps/zero-app.png"
+# The app was zero-desktop before decision 0151; installs retire those paths.
+OLD_DESKTOP_HOME="$DESKTOP_DATA/zero-desktop/app"
+OLD_DESKTOP_ID="zero-desktop.desktop"
+OLD_DESKTOP_ICON="$DESKTOP_DATA/icons/hicolor/512x512/apps/zero-desktop.png"
 
 desktop_running() {
   has pgrep || return 1
   if [ "$OS" = darwin ]; then
-    pgrep -f 'zero-desktop\.app/Contents/MacOS/zero-desktop' >/dev/null 2>&1
+    pgrep -f 'Zero\.app/Contents/MacOS/Zero' >/dev/null 2>&1 ||
+      pgrep -f 'zero-desktop\.app/Contents/MacOS/zero-desktop' >/dev/null 2>&1
   else
-    pgrep -x -u "$(id -u)" zero-desktop >/dev/null 2>&1
+    pgrep -x -u "$(id -u)" zero-app >/dev/null 2>&1 ||
+      pgrep -x -u "$(id -u)" zero-desktop >/dev/null 2>&1
   fi
 }
 # shared:desktop:end
@@ -115,7 +122,7 @@ desktop_running() {
 occupied() { [ -e "$1" ] || [ -L "$1" ]; }
 valid_name() {
   case "$1" in
-    '' | [!A-Za-z0-9_]* | *[!A-Za-z0-9_.+-]* | zero-desktop) return 1 ;;
+    '' | [!A-Za-z0-9_]* | *[!A-Za-z0-9_.+-]* | zero-desktop | zero-app) return 1 ;;
   esac
 }
 
@@ -202,9 +209,11 @@ init_records() {
         seen="$seen$role "
         case "$role:$path" in
           "cli:$HOME/.local/bin/$OLD_NAME" | "cli:$HOME/bin/$OLD_NAME" | \
+          "app:$DESKTOP_HOME" | 'app:/Applications/Zero.app' | "app:$HOME/Applications/Zero.app" | \
+          "entry:$DESKTOP_DATA/applications/$DESKTOP_ID" | "icon:$DESKTOP_ICON" | \
           "link:$HOME/.local/bin/zero-desktop" | "link:$HOME/bin/zero-desktop" | \
-          "app:$DESKTOP_HOME" | 'app:/Applications/zero-desktop.app' | "app:$HOME/Applications/zero-desktop.app" | \
-          "entry:$DESKTOP_DATA/applications/$DESKTOP_ID" | "icon:$DESKTOP_ICON") ;;
+          "app:$OLD_DESKTOP_HOME" | 'app:/Applications/zero-desktop.app' | "app:$HOME/Applications/zero-desktop.app" | \
+          "entry:$DESKTOP_DATA/applications/$OLD_DESKTOP_ID" | "icon:$OLD_DESKTOP_ICON") ;;
           *) fail "invalid ownership path in $RECORD" ;;
         esac
         case "$digest" in *[!a-f0-9:ldx]*) fail "invalid fingerprint in $RECORD" ;; esac
@@ -357,10 +366,18 @@ finish_records() {
   { printf 'zero-install-v1\nname\t%s\n' "$NAME"; cat "$NEW_RECORD"; } >"$record_stage"
   chmod 600 "$record_stage"
   mv -f "$record_stage" "$RECORD"
-  # Retire an old command only after the new installation and record succeed.
+  # Retire an old command, and old desktop paths the new record no longer
+  # lists (zero-desktop before decision 0151), only after the new
+  # installation and record succeed.
   while IFS="$TAB" read -r role path digest; do
-    if [ "$role" = cli ] && [ "$path" != "$BIN_DIR/$NAME" ] && occupied "$path"; then
-      if owned "$path"; then rm -f "$path"; ok "retired $path"
+    retire=0
+    if [ "$role" = cli ]; then
+      if [ "$path" != "$BIN_DIR/$NAME" ]; then retire=1; fi
+    elif [ "$CLI_ONLY" = 0 ] && ! LC_ALL=C grep -qF -e "$TAB$path$TAB" "$NEW_RECORD"; then
+      retire=1
+    fi
+    if [ "$retire" = 1 ] && occupied "$path"; then
+      if owned "$path"; then rm -rf "$path"; ok "retired $path"
       else warn "kept $path: ownership changed"
       fi
     fi
@@ -377,7 +394,7 @@ finish_records() {
 # alone then.
 stop_daemon() {
   if desktop_running; then
-    warn "the zero desktop app is running, so its daemon keeps the old build; quit the app, then run '$NAME daemon stop'"
+    warn "the Zero app is running, so its daemon keeps the old build; quit the app, then run '$NAME daemon stop'"
     return 0
   fi
   if ! stopped="$("$BIN_DIR/$NAME" daemon stop 2>&1)"; then
@@ -425,10 +442,7 @@ check_webkit() {
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 
 check_desktop_conflicts() {
-  if desktop_running; then fail "the zero desktop app is running; quit it, then run this again"; fi
-  check_target "$BIN_DIR/zero-desktop"
-  # Also protect executable zero-desktop copies elsewhere on PATH.
-  name_available zero-desktop || fail "collision: $COLLISION is unrelated or modified; left untouched"
+  if desktop_running; then fail "the Zero app is running; quit it, then run this again"; fi
   if [ "$OS" = linux ]; then
     APP_TARGET="$DESKTOP_HOME"
     check_target "$DESKTOP_DATA/applications/$DESKTOP_ID"
@@ -436,12 +450,10 @@ check_desktop_conflicts() {
   else
     apps=/Applications
     if [ ! -d "$apps" ] || [ ! -w "$apps" ]; then apps="$HOME/Applications"; fi
-    APP_TARGET="$apps/zero-desktop.app"
+    APP_TARGET="$apps/Zero.app"
   fi
   check_target "$APP_TARGET"
-  for destination in "$APP_TARGET" "$BIN_DIR/zero-desktop"; do
-    writable_dir "$(dirname "$destination")" || fail "cannot write $destination"
-  done
+  writable_dir "$(dirname "$APP_TARGET")" || fail "cannot write $APP_TARGET"
   if [ "$OS" = linux ]; then
     for destination in "$DESKTOP_DATA/applications/$DESKTOP_ID" "$DESKTOP_ICON"; do
       writable_dir "$(dirname "$destination")" || fail "cannot write $destination"
@@ -484,36 +496,26 @@ install_file() {
   mv -f "$metadata_stage" "$2"
 }
 
-# link_desktop TARGET links BIN_DIR/zero-desktop to TARGET.
-link_desktop() {
-  check_target "$BIN_DIR/zero-desktop"
-  mkdir -p "$BIN_DIR"
-  rm -f "$BIN_DIR/zero-desktop"
-  ln -s "$1" "$BIN_DIR/zero-desktop"
-  record_path link "$BIN_DIR/zero-desktop"
-  ok "linked $BIN_DIR/zero-desktop"
-}
-
 # install_desktop_linux DIR installs the unpacked Linux archive DIR, its
 # desktop entry and icon, and makes it the zero:// handler.
 install_desktop_linux() {
-  if ! [ -x "$1/zero-desktop" ] || ! [ -x "$1/bin/zero" ]; then
-    fail "$package has no zero-desktop app"
+  if ! [ -x "$1/zero-app" ] || ! [ -x "$1/bin/zero" ]; then
+    fail "$package has no zero-app app"
   fi
-  mkdir -p "$DESKTOP_DATA/zero-desktop"
+  mkdir -p "$(dirname "$DESKTOP_HOME")"
   replace_path "$1" "$DESKTOP_HOME"
   record_path app "$DESKTOP_HOME"
-  ok "installed $DESKTOP_HOME (zero-desktop $VERSION)"
-  exec_arg="$(desktop_exec "$DESKTOP_HOME/zero-desktop")"
+  ok "installed $DESKTOP_HOME (zero-app $VERSION)"
+  exec_arg="$(desktop_exec "$DESKTOP_HOME/zero-app")"
   mkdir -p "$DESKTOP_DATA/applications" "$(dirname "$DESKTOP_ICON")" "$DESKTOP_CONFIG"
-  install_file "$DESKTOP_HOME/zero-desktop.png" "$DESKTOP_ICON"
+  install_file "$DESKTOP_HOME/zero-app.png" "$DESKTOP_ICON"
   cat >"$TMP/desktop-entry" <<EOF2
 [Desktop Entry]
 Type=Application
 Name=Zero
 Comment=Browse local files with Zero
 Exec=$exec_arg %U
-Icon=zero-desktop
+Icon=zero-app
 Terminal=false
 Categories=Development;
 MimeType=x-scheme-handler/zero;
@@ -529,20 +531,17 @@ EOF2
   else
     warn "could not set the zero:// handler (xdg-mime); $NAME . may serve in a browser instead"
   fi
-  link_desktop "$DESKTOP_HOME/zero-desktop"
 }
 
-# install_desktop_macos APP installs zero-desktop.app into /Applications, or
+# install_desktop_macos APP installs Zero.app into /Applications, or
 # ~/Applications when /Applications is not writable.
 install_desktop_macos() {
-  apps="$(dirname "$APP_TARGET")"
   replace_path "$1" "$APP_TARGET"
   record_path app "$APP_TARGET"
   if [ -x "$LSREGISTER" ]; then
-    "$LSREGISTER" -f "$apps/zero-desktop.app" >/dev/null 2>&1 || true
+    "$LSREGISTER" -f "$APP_TARGET" >/dev/null 2>&1 || true
   fi
-  ok "installed $apps/zero-desktop.app"
-  link_desktop "$apps/zero-desktop.app/Contents/MacOS/zero-desktop"
+  ok "installed $APP_TARGET"
 }
 
 # install_desktop installs the app unpack_desktop unpacked.
@@ -550,9 +549,52 @@ install_desktop() {
   if [ "$OS" = linux ]; then
     install_desktop_linux "$TMP/desktop"
   else
-    [ -d "$TMP/desktop/zero-desktop.app" ] || fail "$package has no zero-desktop.app"
-    install_desktop_macos "$TMP/desktop/zero-desktop.app"
+    [ -d "$TMP/desktop/Zero.app" ] || fail "$package has no Zero.app"
+    install_desktop_macos "$TMP/desktop/Zero.app"
   fi
+}
+
+# has_state DIR reports whether DIR holds anything besides the app itself.
+has_state() {
+  for entry in "$1"/* "$1"/.[!.]* "$1"/..?*; do
+    occupied "$entry" || continue
+    [ "${entry##*/}" = app ] || return 0
+  done
+  return 1
+}
+
+# migrate_desktop_state moves what the app kept under its former name,
+# zero-desktop (decision 0151): on Linux WebKit's page state beside the app,
+# and the remembered window looks. Existing state under the new name wins.
+migrate_desktop_state() {
+  if [ "$OS" = linux ]; then
+    old_state="$(dirname "$OLD_DESKTOP_HOME")"
+    new_state="$(dirname "$DESKTOP_HOME")"
+    if [ -d "$old_state" ] && [ ! -L "$old_state" ] && has_state "$old_state"; then
+      if has_state "$new_state"; then
+        warn "kept $old_state: $new_state already has page state"
+      else
+        for entry in "$old_state"/* "$old_state"/.[!.]* "$old_state"/..?*; do
+          occupied "$entry" || continue
+          [ "${entry##*/}" = app ] || mv "$entry" "$new_state/"
+        done
+        ok "moved page state from $old_state to $new_state"
+      fi
+    fi
+    rmdir "$old_state" 2>/dev/null || true
+    looks_from="$DESKTOP_CONFIG/zero-desktop"
+    looks_to="$DESKTOP_CONFIG/Zero"
+  else
+    looks_from="$HOME/Library/Application Support/zero-desktop"
+    looks_to="$HOME/Library/Application Support/Zero"
+  fi
+  if [ -f "$looks_from/appearance.json" ] && [ ! -L "$looks_from/appearance.json" ] &&
+    ! occupied "$looks_to/appearance.json"; then
+    mkdir -p "$looks_to"
+    mv "$looks_from/appearance.json" "$looks_to/appearance.json"
+    ok "moved window looks to $looks_to"
+  fi
+  rmdir "$looks_from" 2>/dev/null || true
 }
 # shared:desktop-install:end
 
@@ -584,9 +626,9 @@ unpack_cli() {
 # desktop_package sets package, the desktop app's asset name for VERSION.
 desktop_package() {
   if [ "$OS" = linux ]; then
-    package="zero-desktop_${VERSION}_linux_${ARCH}.tar.gz"
+    package="zero-app_${VERSION}_linux_${ARCH}.tar.gz"
   else
-    package="zero-desktop_${VERSION}_darwin_${ARCH}.zip"
+    package="zero-app_${VERSION}_darwin_${ARCH}.zip"
   fi
 }
 
@@ -609,12 +651,12 @@ unpack_desktop() {
     fi
   fi
   if [ "$OS" = linux ]; then
-    { [ -f "$TMP/desktop/zero-desktop" ] && [ -x "$TMP/desktop/zero-desktop" ] &&
+    { [ -f "$TMP/desktop/zero-app" ] && [ -x "$TMP/desktop/zero-app" ] &&
       [ -f "$TMP/desktop/bin/zero" ] && [ -x "$TMP/desktop/bin/zero" ] &&
-      [ -f "$TMP/desktop/zero-desktop.png" ]; } || fail "$package has no valid zero-desktop app"
+      [ -f "$TMP/desktop/zero-app.png" ]; } || fail "$package has no valid zero-app app"
   else
-    { [ -x "$TMP/desktop/zero-desktop.app/Contents/MacOS/zero-desktop" ] &&
-      [ -x "$TMP/desktop/zero-desktop.app/Contents/Resources/bin/zero" ]; } || fail "$package has no valid zero-desktop.app"
+    { [ -x "$TMP/desktop/Zero.app/Contents/MacOS/Zero" ] &&
+      [ -x "$TMP/desktop/Zero.app/Contents/Resources/bin/zero" ]; } || fail "$package has no valid Zero.app"
   fi
 }
 # shared:unpack:end
@@ -663,9 +705,9 @@ download_cli() {
 # download_desktop unpacks the desktop app of release TAG into TMP/desktop.
 download_desktop() {
   desktop_package
-  step "downloading the zero desktop app $TAG ($OS/$ARCH)"
+  step "downloading the Zero app $TAG ($OS/$ARCH)"
   fetch "$(release_url "$package")" "$TMP/$package" ||
-    fail "zero $TAG has no $package; install the CLI alone with --cli-only"
+    fail "zero $TAG has no $package (releases before the Zero app rename lack it); nothing installed. Install the CLI alone with --cli-only"
   verify_asset "$TMP/$package" "$package"
   unpack_desktop "$TMP/$package"
 }
@@ -713,6 +755,7 @@ NEW_RECORD="$TMP/new-record"
 if [ "$CLI_ONLY" = 0 ]; then install_desktop; fi
 install_cli
 finish_records
+if [ "$CLI_ONLY" = 0 ]; then migrate_desktop_state; fi
 stop_daemon
 if [ "$CLI_ONLY" = 0 ]; then check_webkit; fi
 ok "done; open the current directory with:"

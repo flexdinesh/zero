@@ -1,8 +1,8 @@
 # CLI
 
 Examples use the canonical `zero` command. If installed as `zero-cli` or with
-`--name NAME`, substitute that name for `zero`. The desktop command remains
-`zero-desktop`; protocols and data paths keep their canonical names. See
+`--name NAME`, substitute that name for `zero`. The desktop app remains
+Zero (`zero-app` on Linux); protocols and data paths keep their canonical names. See
 [installation](../apps/site/src/pages/docs/getting-started.mdx#command-name-collisions).
 
 ## Open

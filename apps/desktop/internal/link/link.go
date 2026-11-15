@@ -1,4 +1,4 @@
-// Package link parses what opens zero-desktop: zero:// links and
+// Package link parses what opens the Zero app: zero:// links and
 // command-line arguments. It is pure: no I/O.
 //
 // The CLI prints these links (decisions 0063, 0098, 0128):
@@ -20,7 +20,7 @@ import (
 	"github.com/flexdinesh/zero/pkg/connection"
 )
 
-// Scheme is the URL scheme zero-desktop registers.
+// Scheme is the URL scheme the Zero app registers.
 const Scheme = "zero"
 
 // Target is a parsed link: where it points and what it shows there.
@@ -34,7 +34,7 @@ type Target struct {
 	Fragment string
 }
 
-// ErrInvalid reports a link zero-desktop does not open.
+// ErrInvalid reports a link the Zero app does not open.
 var ErrInvalid = errors.New("not a zero link")
 
 // Parse parses a zero:// link.

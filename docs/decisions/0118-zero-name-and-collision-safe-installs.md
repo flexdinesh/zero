@@ -1,6 +1,6 @@
 # 0118: Zero name and collision-safe installs
 
-- Status: Accepted
+- Status: Accepted; desktop names superseded by [0151](0151-desktop-app-named-zero.md)
 - Date: 2026-11-10
 - Supersedes: [0100](0100-rename-to-srcz.md)'s naming and one-time rewriting of historical records
 - Revises: [0073](0073-install-scripts.md), [0101](0101-install-script-installs-cli-and-desktop.md)'s installer names, ownership, and arguments; [0104](0104-source-zero-logo.md)'s product wordmarks

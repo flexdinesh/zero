@@ -140,7 +140,7 @@ func newWorld(t *testing.T) (*world, string) {
 	// Validation may supply the app built from the same immutable source snapshot.
 	w.bin = os.Getenv("ZERO_DESKTOP_APP_BINARY")
 	if w.bin == "" {
-		w.bin = filepath.Join(base, "zero-desktop")
+		w.bin = filepath.Join(base, "zero-app")
 		build := exec.Command("go", "build", "-tags", "e2e", "-o", w.bin, ".")
 		build.Dir = ".."
 		if output, err := build.CombinedOutput(); err != nil {
@@ -455,7 +455,7 @@ func TestWebViewApp(t *testing.T) {
 
 	t.Run("state survives a restart", func(t *testing.T) {
 		w.t = t
-		// The install scripts replace only zero-desktop/app and keep the rest,
+		// The install scripts replace only zero-app/app and keep the rest,
 		// so the page's state must be beside it, where they expect it.
 		stored := storageFiles(t, home)
 		w.report["storageFiles"] = stored
@@ -463,7 +463,7 @@ func TestWebViewApp(t *testing.T) {
 			t.Error("no localStorage files found")
 		}
 		for _, file := range stored {
-			if !strings.HasPrefix(file, filepath.Join("data", "zero-desktop", "localstorage")+string(filepath.Separator)) {
+			if !strings.HasPrefix(file, filepath.Join("data", "zero-app", "localstorage")+string(filepath.Separator)) {
 				t.Errorf("localStorage at %s", file)
 			}
 		}
@@ -509,8 +509,8 @@ func TestWebViewApp(t *testing.T) {
 		if err := os.MkdirAll(filepath.Join(dataHome, "applications"), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		entry := "[Desktop Entry]\nType=Application\nName=zero\nExec=" + w.bin + " %U\nTerminal=false\nMimeType=x-scheme-handler/zero;\n"
-		if err := os.WriteFile(filepath.Join(dataHome, "applications", "zero-desktop.desktop"), []byte(entry), 0o644); err != nil {
+		entry := "[Desktop Entry]\nType=Application\nName=Zero\nExec=" + w.bin + " %U\nTerminal=false\nMimeType=x-scheme-handler/zero;\n"
+		if err := os.WriteFile(filepath.Join(dataHome, "applications", "zero-app.desktop"), []byte(entry), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		// The CLI knows only the default socket and roots: so must the app here.
@@ -526,14 +526,14 @@ func TestWebViewApp(t *testing.T) {
 			stop.Env = w.env
 			_ = stop.Run()
 		})
-		register := exec.Command("xdg-mime", "default", "zero-desktop.desktop", "x-scheme-handler/zero")
+		register := exec.Command("xdg-mime", "default", "zero-app.desktop", "x-scheme-handler/zero")
 		register.Env = w.env
 		if output, err := register.CombinedOutput(); err != nil {
 			t.Fatalf("xdg-mime default: %v\n%s", err, output)
 		}
 		query := exec.Command("xdg-mime", "query", "default", "x-scheme-handler/zero")
 		query.Env = w.env
-		if output, err := query.CombinedOutput(); err != nil || strings.TrimSpace(string(output)) != "zero-desktop.desktop" {
+		if output, err := query.CombinedOutput(); err != nil || strings.TrimSpace(string(output)) != "zero-app.desktop" {
 			t.Fatalf("xdg-mime query = %q, %v", output, err)
 		}
 	}

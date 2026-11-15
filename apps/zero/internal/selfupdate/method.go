@@ -171,7 +171,7 @@ func readRecord(path, home string) (record, bool) {
 
 // validName mirrors the scripts' valid_name: a simple executable basename.
 func validName(name string) bool {
-	if name == "" || name == "zero-desktop" {
+	if name == "" || name == "zero-desktop" || name == "zero-app" {
 		return false
 	}
 	for i, r := range name {

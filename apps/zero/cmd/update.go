@@ -147,7 +147,7 @@ func runUpdate(ctx context.Context, opts updateOptions, stdin io.Reader, stdout,
 	}
 	if err := deps.run(ctx, script, args, stdin, stdout, stderr); err != nil {
 		if method.Desktop && !opts.cliOnly {
-			return fmt.Errorf("install.sh failed: %w\nif the zero desktop app is running, quit it and run `%s update` again, or update the CLI alone with `%s update --cli-only`", err, name, name)
+			return fmt.Errorf("install.sh failed: %w\nif the Zero app is running, quit it and run `%s update` again, or update the CLI alone with `%s update --cli-only`", err, name, name)
 		}
 		return fmt.Errorf("install.sh failed: %w", err)
 	}

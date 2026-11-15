@@ -242,11 +242,11 @@ jobs:
           set -euo pipefail
 
           dir="$(mktemp -d)"
-          tar -C "$dir" -xzf "desktop-dist/zero-desktop_${VERSION}_linux_amd64.tar.gz"
-          "$dir/zero-desktop" --version | grep -Fx "zero-desktop ${VERSION} $(git rev-parse --short=12 HEAD)"
+          tar -C "$dir" -xzf "desktop-dist/zero-app_${VERSION}_linux_amd64.tar.gz"
+          "$dir/zero-app" --version | grep -Fx "zero-app ${VERSION} $(git rev-parse --short=12 HEAD)"
           "$dir/bin/zero" --version | grep -F "zero ${VERSION} "
-          grep -E '^MimeType=(.*;)?x-scheme-handler/zero(;|$)' "$dir/zero-desktop.desktop"
-          test -f "$dir/zero-desktop.png"
+          grep -E '^MimeType=(.*;)?x-scheme-handler/zero(;|$)' "$dir/zero-app.desktop"
+          test -f "$dir/zero-app.png"
 
       - name: Upload desktop packages
         uses: actions/upload-artifact@v7
@@ -293,11 +293,11 @@ jobs:
           set -euo pipefail
 
           dir="$(mktemp -d)"
-          ditto -x -k "desktop-dist/zero-desktop_${VERSION}_darwin_arm64.zip" "$dir"
-          app="$dir/zero-desktop.app/Contents"
-          "$app/MacOS/zero-desktop" --version | grep -Fx "zero-desktop ${VERSION} $(git rev-parse --short=12 HEAD)"
+          ditto -x -k "desktop-dist/zero-app_${VERSION}_darwin_arm64.zip" "$dir"
+          app="$dir/Zero.app/Contents"
+          "$app/MacOS/Zero" --version | grep -Fx "zero-app ${VERSION} $(git rev-parse --short=12 HEAD)"
           "$app/Resources/bin/zero" --version | grep -F "zero ${VERSION} "
-          codesign --verify "$dir/zero-desktop.app"
+          codesign --verify "$dir/Zero.app"
           scheme="$(plutil -extract CFBundleURLTypes.0.CFBundleURLSchemes.0 raw -o - "$app/Info.plist")"
           if [[ "$scheme" != "zero" ]]; then
             echo "Info.plist registers URL scheme '$scheme', want zero" >&2
@@ -337,9 +337,9 @@ jobs:
           for arch in amd64 arm64; do
             expected+=(
               "zero_${VERSION}_linux_${arch}.tar.gz"
-              "zero-desktop_${VERSION}_linux_${arch}.tar.gz"
+              "zero-app_${VERSION}_linux_${arch}.tar.gz"
               "zero_${VERSION}_darwin_${arch}.tar.gz"
-              "zero-desktop_${VERSION}_darwin_${arch}.zip"
+              "zero-app_${VERSION}_darwin_${arch}.zip"
             )
           done
 

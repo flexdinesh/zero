@@ -151,3 +151,4 @@ rewriting history; update `Status` on the old record.
 | [0147](0147-zero-update.md) | `zero update` and the update notice | Accepted; extends 0073, 0079, 0118, 0136; revises 0073 checksums |
 | [0148](0148-remote-version-mismatch.md) | Client and server versions in remote workflows | Accepted; extends 0098, 0127, 0128 |
 | [0150](0150-remote-connect-copy.md) | Copy the connect command on `--remote` | Accepted; extends 0098 |
+| [0151](0151-desktop-app-named-zero.md) | Desktop app named Zero; process names | Accepted; supersedes 0095's and 0118's desktop names; revises 0101's PATH launcher |

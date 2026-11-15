@@ -80,17 +80,23 @@ case "$DESKTOP_CONFIG" in
   *) DESKTOP_CONFIG="$HOME/.config" ;;
 esac
 # The app has a directory of its own: WebKit keeps the page's localStorage
-# beside it in zero-desktop/, which updates and uninstall leave alone.
-DESKTOP_HOME="$DESKTOP_DATA/zero-desktop/app"
-DESKTOP_ID="zero-desktop.desktop"
-DESKTOP_ICON="$DESKTOP_DATA/icons/hicolor/512x512/apps/zero-desktop.png"
+# beside it in zero-app/, which updates and uninstall leave alone.
+DESKTOP_HOME="$DESKTOP_DATA/zero-app/app"
+DESKTOP_ID="zero-app.desktop"
+DESKTOP_ICON="$DESKTOP_DATA/icons/hicolor/512x512/apps/zero-app.png"
+# The app was zero-desktop before decision 0151; installs retire those paths.
+OLD_DESKTOP_HOME="$DESKTOP_DATA/zero-desktop/app"
+OLD_DESKTOP_ID="zero-desktop.desktop"
+OLD_DESKTOP_ICON="$DESKTOP_DATA/icons/hicolor/512x512/apps/zero-desktop.png"
 
 desktop_running() {
   has pgrep || return 1
   if [ "$OS" = darwin ]; then
-    pgrep -f 'zero-desktop\.app/Contents/MacOS/zero-desktop' >/dev/null 2>&1
+    pgrep -f 'Zero\.app/Contents/MacOS/Zero' >/dev/null 2>&1 ||
+      pgrep -f 'zero-desktop\.app/Contents/MacOS/zero-desktop' >/dev/null 2>&1
   else
-    pgrep -x -u "$(id -u)" zero-desktop >/dev/null 2>&1
+    pgrep -x -u "$(id -u)" zero-app >/dev/null 2>&1 ||
+      pgrep -x -u "$(id -u)" zero-desktop >/dev/null 2>&1
   fi
 }
 # shared:desktop:end
@@ -101,7 +107,7 @@ desktop_running() {
 occupied() { [ -e "$1" ] || [ -L "$1" ]; }
 valid_name() {
   case "$1" in
-    '' | [!A-Za-z0-9_]* | *[!A-Za-z0-9_.+-]* | zero-desktop) return 1 ;;
+    '' | [!A-Za-z0-9_]* | *[!A-Za-z0-9_.+-]* | zero-desktop | zero-app) return 1 ;;
   esac
 }
 
@@ -188,9 +194,11 @@ init_records() {
         seen="$seen$role "
         case "$role:$path" in
           "cli:$HOME/.local/bin/$OLD_NAME" | "cli:$HOME/bin/$OLD_NAME" | \
+          "app:$DESKTOP_HOME" | 'app:/Applications/Zero.app' | "app:$HOME/Applications/Zero.app" | \
+          "entry:$DESKTOP_DATA/applications/$DESKTOP_ID" | "icon:$DESKTOP_ICON" | \
           "link:$HOME/.local/bin/zero-desktop" | "link:$HOME/bin/zero-desktop" | \
-          "app:$DESKTOP_HOME" | 'app:/Applications/zero-desktop.app' | "app:$HOME/Applications/zero-desktop.app" | \
-          "entry:$DESKTOP_DATA/applications/$DESKTOP_ID" | "icon:$DESKTOP_ICON") ;;
+          "app:$OLD_DESKTOP_HOME" | 'app:/Applications/zero-desktop.app' | "app:$HOME/Applications/zero-desktop.app" | \
+          "entry:$DESKTOP_DATA/applications/$OLD_DESKTOP_ID" | "icon:$OLD_DESKTOP_ICON") ;;
           *) fail "invalid ownership path in $RECORD" ;;
         esac
         case "$digest" in *[!a-f0-9:ldx]*) fail "invalid fingerprint in $RECORD" ;; esac
@@ -231,7 +239,7 @@ record_path() {
 detect_platform
 make_tmp
 init_records
-if desktop_running; then fail "the zero desktop app is running; quit it, then run this again"; fi
+if desktop_running; then fail "the Zero app is running; quit it, then run this again"; fi
 # Only execute a fingerprint-verified CLI, never a PATH lookup or bundled stranger.
 while IFS="$TAB" read -r role path digest; do
   program=""
@@ -293,8 +301,12 @@ fi
 step "kept your data (delete it yourself if you no longer need it):"
 if [ "$OS" = linux ]; then
   note "$ZERO_CONFIG"
-  note "$DESKTOP_DATA/zero-desktop"
+  note "$(dirname "$DESKTOP_HOME")"
+  note "$DESKTOP_CONFIG/Zero"
+  # State of the app's former name that no install has moved yet.
+  if [ -d "$(dirname "$OLD_DESKTOP_HOME")" ]; then note "$(dirname "$OLD_DESKTOP_HOME")"; fi
 else
   note "$ZERO_CONFIG"
   note "$HOME/Library/WebKit/io.github.flexdinesh.zero.desktop"
+  note "$HOME/Library/Application Support/Zero"
 fi

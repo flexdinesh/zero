@@ -1,8 +1,8 @@
-// Command zero-desktop is the zero desktop app (decisions 0094, 0095, 0098):
+// Command zero-app is the Zero desktop app (decisions 0094, 0095, 0098, 0151):
 // one window per connection, whose page is the web app, served through a custom
 // scheme from the local daemon, a saved remote server, or a saved sandbox
 // (decision 0128). It runs once per user:
-// links (zero://) and `zero-desktop [path]` reach the first instance.
+// links (zero://) and `zero-app [path]` reach the first instance.
 package main
 
 import (
@@ -89,7 +89,7 @@ func main() {
 	app.notify = app.showWarning
 	storePath, err := connection.DefaultStorePath()
 	if err != nil {
-		log.Printf("zero-desktop: %v", err)
+		log.Printf("zero-app: %v", err)
 	}
 	app.store = connection.NewStore(storePath)
 	// Sandbox connections run the same zero the daemon does (decision 0128).
@@ -222,7 +222,7 @@ func (h *host) openWindow(start string) {
 			return
 		}
 		if err := page.LoadURL(proxy.OriginOf(connectionHost) + proxy.CrashedPath); err != nil {
-			log.Printf("zero-desktop: %v", err)
+			log.Printf("zero-app: %v", err)
 		}
 	})
 }
@@ -250,10 +250,10 @@ func (h *host) followThemeColor(connectionHost string, window *mygo.Window, c co
 	if !ok || !opaque {
 		background = appearance.DefaultBackground
 	} else if err := h.looks.SetBackground(connectionHost, background); err != nil {
-		log.Printf("zero-desktop: %v", err)
+		log.Printf("zero-app: %v", err)
 	}
 	if err := window.SetBackgroundColor(background); err != nil {
-		log.Printf("zero-desktop: %v", err)
+		log.Printf("zero-app: %v", err)
 	}
 }
 
@@ -261,7 +261,7 @@ func (h *host) followThemeColor(connectionHost string, window *mygo.Window, c co
 // follow, and applies it while that window is in front.
 func (h *host) setAppearance(connectionHost string, window *mygo.Window, source string) {
 	if err := h.looks.SetAppearance(connectionHost, source); err != nil {
-		log.Printf("zero-desktop: %v", err)
+		log.Printf("zero-app: %v", err)
 	}
 	if focused := mygo.FocusedWindow(); focused == nil || focused == window {
 		h.applyAppearance(connectionHost)
@@ -288,7 +288,7 @@ func (h *host) applyAppearance(connectionHost string) {
 func looksPath() string {
 	dir, err := mygo.App.Path(mygo.PathUserData)
 	if err != nil {
-		log.Printf("zero-desktop: %v", err)
+		log.Printf("zero-app: %v", err)
 		return ""
 	}
 	return filepath.Join(dir, "appearance.json")
@@ -458,7 +458,7 @@ func (h *host) load(target string) {
 		return
 	}
 	if err := window.Page().LoadURL(target); err != nil {
-		log.Printf("zero-desktop: %v", err)
+		log.Printf("zero-app: %v", err)
 	}
 }
 
@@ -470,7 +470,7 @@ func onlyNamesConnection(raw string) bool {
 
 // report tells the user something failed without blocking anything.
 func (h *host) report(message, detail string) {
-	log.Printf("zero-desktop: %s: %s", message, detail)
+	log.Printf("zero-app: %s: %s", message, detail)
 	h.notify(message, detail)
 }
 
@@ -486,5 +486,5 @@ func appURL(target link.Target) string {
 }
 
 func versionLine() string {
-	return strings.TrimSpace("zero-desktop " + version + " " + commit)
+	return strings.TrimSpace("zero-app " + version + " " + commit)
 }

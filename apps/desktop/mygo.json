@@ -1,6 +1,6 @@
 {
-  "name": "zero-desktop",
-  "slug": "zero-desktop",
+  "name": "Zero",
+  "slug": "zero-app",
   "identifier": "io.github.flexdinesh.zero.desktop",
   "version": "0.0.0",
   "copyright": "© 2026 Dinesh Pandiyan",
@@ -17,7 +17,6 @@
     "categories": [
       "Development"
     ],
-    "webview": true,
-    "command": "zero-desktop"
+    "webview": true
   }
 }
