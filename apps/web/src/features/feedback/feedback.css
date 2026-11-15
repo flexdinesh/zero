@@ -432,7 +432,7 @@
    file. */
 .feedback-row {
   align-items: flex-start;
-  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-5);
+  padding-block: var(--space-1);
 }
 
 .feedback-row:focus-visible {

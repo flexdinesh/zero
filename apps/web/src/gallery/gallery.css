@@ -53,6 +53,12 @@
   padding-bottom: var(--space-1);
 }
 
+/* Trailing content ends at the row's end inset, clear of the scrollbar lane. */
+.gallery-row-end {
+  margin-left: auto;
+  color: var(--color-warning);
+}
+
 .gallery-palette {
   width: 32rem;
 }

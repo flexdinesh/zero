@@ -204,7 +204,7 @@ export function SearchView({ mobile, onDismiss, onLeave, session }: SearchViewPr
               <Badge aria-hidden="true">{row.file.matches.length.toLocaleString()}</Badge>
             </ListRow>
           ) : (
-            <ListRow key={row.key} data-row-key={row.key} className="search-match"
+            <ListRow indent="match" key={row.key} data-row-key={row.key} className="search-match"
               role="treeitem" aria-level={2} aria-selected={row.key === activeKey} tabIndex={row.key === tabKey ? 0 : -1}
               title={`${row.file.path}:${row.match.line}`}
               onFocus={() => setFocusedKey(row.key)} onClick={() => openRow(row, false)} onDoubleClick={() => openRow(row, true)}>

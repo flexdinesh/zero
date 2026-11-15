@@ -279,7 +279,7 @@ function ThreadRows({ feedback, navigate, onOpenThread, threads, view }: RowsPro
             const title = threadTitle(thread)
             const detail = `${placeLabel(thread)} · ${activity(thread)} ${age}`
             return [
-              <ListRow key={thread.number} role="option" aria-selected={false} tabIndex={index === tabIndex ? 0 : -1}
+              <ListRow indent="nested" key={thread.number} role="option" aria-selected={false} tabIndex={index === tabIndex ? 0 : -1}
                 className="feedback-row" data-new={fresh || undefined} aria-expanded={outdated ? expanded === thread.number : undefined}
                 title={`Thread ${thread.number}: ${title}\n${detail}${last ? `\n${commitDate(last.createdAt)}` : ""}`}
                 aria-label={`Thread ${thread.number}, ${statusLabels[thread.status]}${fresh ? ", new reply" : ""}: ${title}, ${detail}${outdated ? ", outdated" : ""}`}

@@ -111,7 +111,7 @@ function FlatFiles({ activePath, files: changed, stats, onOpen }: FlatFilesProps
         const lines = renamed ? "" : statsLabel(fileStats)
         const selected = file.path === activePath
         return (
-          <ListRow key={file.path} data-path={file.path} role="option" aria-selected={selected} selected={selected}
+          <ListRow indent="nested" key={file.path} data-path={file.path} role="option" aria-selected={selected} selected={selected}
             tabIndex={file.path === tabPath ? 0 : -1} className="changes-row" data-status={file.status}
             aria-label={`${file.path}, ${statusNames[file.status]}${lines ? `, ${lines}` : ""}`}
             title={file.oldPath ? `${file.path}\nRenamed from ${file.oldPath}` : file.path}

@@ -1,12 +1,17 @@
+/* The row owns its sideways insets (decision 0149): a leading indent chosen
+   by `indent`, and an end inset that keeps trailing content clear of the
+   overlay scrollbar lane. */
 .ui-row {
   --row-height: var(--row-list);
+  --row-indent: var(--row-indent-flush);
   display: flex;
   width: 100%;
   min-width: 0;
   min-height: var(--row-height);
   align-items: center;
   gap: var(--space-2);
-  padding: 0 var(--space-2);
+  padding-block: 0;
+  padding-inline: var(--row-indent) var(--row-inset-end);
   border: 0;
   color: var(--color-text-primary);
   background: transparent;
@@ -26,6 +31,18 @@
 
 .ui-row[data-density="drawer"] {
   --row-height: var(--row-drawer);
+}
+
+.ui-row[data-indent="toggle"] {
+  --row-indent: var(--row-indent-toggle);
+}
+
+.ui-row[data-indent="nested"] {
+  --row-indent: var(--row-indent-nested);
+}
+
+.ui-row[data-indent="match"] {
+  --row-indent: var(--row-indent-match);
 }
 
 .ui-row:hover:not(:disabled, [aria-disabled="true"]) {

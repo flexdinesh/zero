@@ -94,7 +94,9 @@
   font-weight: 600;
 }
 
+/* Row actions are xs IconButtons, touch-sized where a dialog asks. */
 .project-option-row {
+  --project-action: max(var(--control-xs), var(--icon-button-min, 0px));
   position: relative;
 }
 
@@ -177,12 +179,13 @@
   color: inherit;
 }
 
-/* Row actions float over the row's end. */
+/* Row actions float over the row's end, clear of the scrollbar lane like
+   every row's trailing content (decision 0149). */
 .project-forget,
 .project-drill {
   position: absolute;
   top: 50%;
-  right: var(--space-1);
+  right: var(--row-inset-end);
   transform: translateY(-50%);
 }
 
@@ -197,16 +200,16 @@
 
 .project-option-row.drillable .project-option,
 .project-option-row:has(.project-stop) .project-option {
-  padding-right: 2rem;
+  padding-right: calc(var(--row-inset-end) + var(--project-action) + var(--space-2));
 }
 
 /* Stop serving (decision 0146) sits before a repository's worktree chevron. */
 .project-option-row.drillable .project-stop {
-  right: 1.75rem;
+  right: calc(var(--row-inset-end) + var(--project-action) + var(--space-1));
 }
 
 .project-option-row.drillable:has(.project-stop) .project-option {
-  padding-right: 3.5rem;
+  padding-right: calc(var(--row-inset-end) + 2 * var(--project-action) + var(--space-1) + var(--space-2));
 }
 
 /* A folder zero cannot read; its title holds the server's explanation. */
@@ -239,18 +242,6 @@
 
   .project-forget {
     opacity: 1;
-  }
-
-  .project-option-row.drillable .project-option {
-    padding-right: 3rem;
-  }
-
-  .project-option-row.drillable .project-stop {
-    right: 2.5rem;
-  }
-
-  .project-option-row.drillable:has(.project-stop) .project-option {
-    padding-right: 5rem;
   }
 }
 
