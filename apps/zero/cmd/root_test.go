@@ -159,6 +159,8 @@ func TestRootCommandTailscaleFlags(t *testing.T) {
 		{[]string{"docs", "--tailscale", "--host", "127.0.0.1"}, "--host does not apply to --tailscale"},
 		{[]string{"docs", "--tailscale", "--port", "0"}, "--port must be between 1 and 65535 with --tailscale"},
 		{[]string{"docs", "--tailscale", "--web"}, "--web needs --remote"},
+		{[]string{"docs", "--no-copy"}, "--no-copy needs --remote"},
+		{[]string{"docs", "--tailscale", "--no-copy"}, "--no-copy needs --remote"},
 	} {
 		command := fresh()
 		command.SetArgs(test.args)

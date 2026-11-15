@@ -136,6 +136,10 @@ func serveRemote(ctx context.Context, opts options, stdout, stderr io.Writer, de
 		}
 		info.Links = deps.terminal(stdout) && deps.getenv("TERM") != "dumb"
 	}
+	if !opts.noCopy && deps.terminal(stdout) && deps.getenv("TERM") != "dumb" {
+		_, _ = io.WriteString(stdout, osc52(connectCommand(info.Connect), deps.getenv))
+		info.Copied = true
+	}
 	writeRemoteStartup(stdout, info)
 	if foreground != nil {
 		return foreground.wait()
