@@ -55,7 +55,31 @@ test("a visible page holds one stream and passes its changes on", () => {
   fake.streams[0]?.handlers.status(watching)
   fake.streams[0]?.handlers.change(edit)
   assert.deepEqual(fake.statuses, [watching])
-  assert.deepEqual(fake.changes, [edit])
+  assert.deepEqual(fake.changes, [everything, edit])
+})
+
+test("the first stream reconciles a write after the initial read, once", () => {
+  const fake = harness()
+  let stored = 2
+  let shown = stored
+  followLiveUpdates({
+    ...fake.deps,
+    change(value) {
+      fake.deps.change(value)
+      shown = stored
+    },
+  })
+
+  // An external write lands after the read, before the stream subscribes.
+  stored = 1
+  assert.equal(shown, 2)
+  assert.deepEqual(fake.changes, [])
+  fake.streams[0]?.handlers.status(watching)
+  assert.equal(shown, 1)
+  assert.deepEqual(fake.changes, [everything])
+
+  fake.streams[0]?.handlers.status({ mode: "polling", reason: "watch limit" })
+  assert.deepEqual(fake.changes, [everything])
 })
 
 test("a stream the browser gave up on is reopened, and rereads what it missed", () => {
@@ -118,15 +142,15 @@ test("focus rereads only without a working stream, at most every two seconds", (
   const follower = followLiveUpdates(fake.deps)
   fake.streams[0]?.handlers.status(watching)
   follower.focus()
-  assert.deepEqual(fake.changes, [])
+  assert.deepEqual(fake.changes, [everything])
 
   fake.streams[0]?.handlers.status({ mode: "off", reason: "limit" })
   follower.focus()
   follower.focus()
-  assert.deepEqual(fake.changes, [everything])
+  assert.deepEqual(fake.changes, [everything, everything])
   fake.state.now += 2_000
   follower.focus()
-  assert.deepEqual(fake.changes, [everything, everything])
+  assert.deepEqual(fake.changes, [everything, everything, everything])
 })
 
 test("stopping closes the stream and cancels the wait", () => {

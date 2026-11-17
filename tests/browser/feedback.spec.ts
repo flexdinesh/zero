@@ -215,6 +215,8 @@ test("Source lines take a comment that the Feedback view opens there", async ({ 
 })
 
 test("the Feedback view lists, filters, opens, and copies threads", async ({ page, request, live }) => {
+  // This multi-navigation flow can exceed 30 s on WebKit in the full suite.
+  test.setTimeout(60_000)
   await grantClipboard(page)
   await recordClipboard(page)
   const project = encodeURIComponent(live.root)
@@ -287,6 +289,43 @@ test("the Feedback view lists, filters, opens, and copies threads", async ({ pag
   await page.getByRole("group", { name: "Delete feedback" }).getByRole("button", { name: "Delete" }).click()
   await expect(page.locator(".feedback-view")).toContainText("Select lines in a diff or file and press C to comment.")
   await expectFeedbackBadge(page, 0)
+})
+
+test("the Feedback badge catches a reply between its initial read and live subscription", async ({ page, request, live }) => {
+  for (const body of ["Name the answer.", "Keep two spaces."]) {
+    const created = await request.post(`${live.origin}/api/feedback-threads`, {
+      data: { project: live.root, path: "src/app.ts", body },
+    })
+    expect(created.ok()).toBe(true)
+  }
+  const id = await feedbackId(request, live.origin, live.root)
+  let releaseSubscription = () => {}
+  const subscription = new Promise<void>((resolve) => { releaseSubscription = resolve })
+  let held = false
+  await page.route("**/api/events?*", async (route) => {
+    held = true
+    await subscription
+    await route.continue()
+  })
+  try {
+    await page.goto(`${live.origin}/?project=${encodeURIComponent(live.root)}`)
+    await expectFeedbackBadge(page, 2)
+    await expect.poll(() => held).toBe(true)
+
+    // The real server announces this reply before the page can subscribe.
+    const answered = await request.post(`${live.origin}/api/feedback-messages`, {
+      data: { project: live.root, id, thread: 2, body: "Fixed.", status: "resolved", author: "agent" },
+    })
+    expect(answered.ok()).toBe(true)
+    await expectFeedbackBadge(page, 2)
+
+    releaseSubscription()
+    await expect(page.locator(".status-live")).toHaveAttribute("data-mode", "watching")
+    await expectFeedbackBadge(page, 1)
+  } finally {
+    releaseSubscription()
+    await page.unroute("**/api/events?*")
+  }
 })
 
 test("the Feedback badge follows the selected branch and reloads", async ({ page, request, live }) => {

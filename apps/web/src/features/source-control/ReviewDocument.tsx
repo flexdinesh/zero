@@ -45,7 +45,7 @@ import { DIFF_THEME } from "./diff-theme.ts"
 import type { CollapseRequest } from "./FilesTree.tsx"
 import { ImageDiff, ImageDiffProvider } from "./ImageDiff.tsx"
 import { createReviewDiffs, type ReviewDiffs, useReviewDiff, type RenderedDiff } from "./review-diffs.ts"
-import { pinSettled, pinWait } from "./review-pin.ts"
+import { createPinRender, createReviewRenderHandler, pinSettled, pinWait } from "./review-pin.ts"
 import { adjacentFile, nextUnviewed, reviewKeyCommand, reviewKeyShortcuts, type ReviewKeyCommand } from "./review-keys.ts"
 import type { ViewedState } from "./review-viewed.ts"
 import type { CompareData } from "./use-compare-data.ts"
@@ -210,9 +210,14 @@ interface ShownDiff {
   expandTo(side: SelectionSide, line: number): void
 }
 
-// ShownContext lets rendered diffs register by path for reveals and steps.
-type RegisterShown = (path: string, shown: ShownDiff | null) => void
-const ShownContext = createContext<RegisterShown>(() => {})
+// ShownContext reports resident diffs and completed row renders.
+type ShownEvent = { path: string } & (
+  | { kind: "register"; view: ShownDiff }
+  | { kind: "remove" }
+  | { kind: "render" }
+)
+type ReportShown = (event: ShownEvent) => void
+const ShownContext = createContext<ReportShown>(() => {})
 
 // OpenOverride is the user's choice to open or close a file, made at blob;
 // a new blob lets it lapse, so a file changed since viewed opens again.
@@ -360,10 +365,10 @@ function ReviewBody({
   // Rendered diffs, by path; a pin repins when the pinned file's diff shows.
   const shown = useRef(new Map<string, ShownDiff>())
   const repin = useRef<{ path: string; pin(): void } | null>(null)
-  const registerShown = useCallback<RegisterShown>((path, next) => {
-    if (next) shown.current.set(path, next)
-    else shown.current.delete(path)
-    if (next && repin.current?.path === path) repin.current.pin()
+  const registerShown = useCallback<ReportShown>((event) => {
+    if (event.kind === "register") shown.current.set(event.path, event.view)
+    else if (event.kind === "remove") shown.current.delete(event.path)
+    if (event.kind !== "remove" && repin.current?.path === event.path) repin.current.pin()
   }, [])
 
   // A review hidden behind another tab keeps its scroll; the pane scrolls
@@ -471,14 +476,22 @@ function ReviewBody({
     const pin = () => {
       clock.changedAt = performance.now()
       const top = place(true)?.top
-      if (top !== undefined && Math.abs(root.scrollTop - top) > 1) scrollPane(root, top)
+      if (top !== undefined) {
+        const reachable = Math.max(0, Math.min(top, root.scrollHeight - root.clientHeight))
+        if (Math.abs(root.scrollTop - reachable) > 1) scrollPane(root, reachable)
+      }
       settle()
     }
-    repin.current = { path: target, pin }
+    const renderPin = createPinRender(pin, {
+      request: (callback) => window.requestAnimationFrame(callback),
+      cancel: (frame) => window.cancelAnimationFrame(frame),
+    })
+    repin.current = { path: target, pin: renderPin.rendered }
     const observer = new ResizeObserver(pin)
     const events: ReadonlyArray<keyof HTMLElementEventMap> = ["wheel", "pointerdown", "keydown", "touchstart"]
     const release = () => {
       repin.current = null
+      renderPin.release()
       window.clearTimeout(timer)
       observer.disconnect()
       for (const type of events) root.removeEventListener(type, onInput)
@@ -995,6 +1008,7 @@ function lineKey(side: SelectionSide, line: number): string {
 }
 
 type DiffInstance = VirtualizedFileDiff<undefined, undefined>
+type DiffRenderInstance = Parameters<NonNullable<FileDiffOptions<undefined, undefined>["onPostRender"]>>[1]
 
 // DiffView renders only the rows near the pane's viewport.
 function DiffView({ annotation, rendered, lines, narrow, options, path, reference, scrollRoot, zones, onComment, onSelectLines }: DiffViewProps) {
@@ -1004,14 +1018,13 @@ function DiffView({ annotation, rendered, lines, narrow, options, path, referenc
   const register = useContext(ShownContext)
   const host = useRef<HTMLDivElement>(null)
   const [instance, setInstance] = useState<DiffInstance | null>(null)
-  const onPostRender = useCallback<NonNullable<FileDiffOptions<undefined, undefined>["onPostRender"]>>((_node, next) => {
-    // Pierre reports row virtualization as "unmount" too. The instance still
-    // owns its layout; React cleanup below unregisters a removed component.
-    setInstance(next instanceof VirtualizedFileDiff ? next : null)
-  }, [])
+  const onPostRender = useMemo(() => createReviewRenderHandler<DiffRenderInstance>(
+    (next) => setInstance(next instanceof VirtualizedFileDiff ? next : null),
+    () => register({ kind: "render", path }),
+  ), [path, register])
   useEffect(() => {
     if (!instance) return
-    register(path, {
+    register({ kind: "register", path, view: {
       rendered,
       // The diff's place comes from the DOM: Pierre's own top trails a
       // scroll until its next frame.
@@ -1027,8 +1040,8 @@ function DiffView({ annotation, rendered, lines, narrow, options, path, referenc
         const gap = gapForLine(rendered.lineDiff, side, line)
         if (gap && !instance.isLineRenderable(gap.newLine)) instance.expandHunk(gap.hunkIndex, "up", gap.lines)
       },
-    })
-    return () => register(path, null)
+    } })
+    return () => register({ kind: "remove", path })
   }, [instance, path, register, rendered, scrollRoot])
   // Escape clears the selection while focus is in the pane, as in Source. A
   // text field's Escape is its own: a comment's field cancels or blurs, and

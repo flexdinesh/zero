@@ -50,7 +50,8 @@ export function followLiveUpdates(deps: LiveDeps): LiveFollower {
   let cancelRetry: (() => void) | null = null
   // following is true while a stream delivers changes.
   let following = false
-  let missed = false
+  // Initial reads can finish before the subscription starts.
+  let missed = true
   let lastReturn = 0
   const returned = () => {
     if (deps.now() - lastReturn < returnThrottle) return

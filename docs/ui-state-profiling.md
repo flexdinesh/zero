@@ -121,3 +121,50 @@ repairs. The hover diagnosis is correctness evidence, not a measured speedup.
 Original-runtime comparison: `8a0198f3945f0e0b6a58d1b65fe35dbd`; synchronous
 mutation diagnosis: `52dec08fc85642f3ea2a6d73ba7d593a`. Traces and logs remain
 in task 225's artifact archive.
+
+## Render-completion and test-budget follow-up
+
+A later combined full-suite run passed Chromium, desktop, static, unit and
+stress groups, but WebKit reported two different failures. Both cases passed
+three isolated repetitions on freshly fetched main and the candidate; those
+passes alone did not resolve the full-suite evidence.
+
+F7 selected the correct final file and line, but the viewport stopped above it.
+The resident diff remained registered while Pierre replaced its rows. Passing
+diagnostic captures recovered through ResizeObserver; the registration-only
+path did not notify the active pin about later renders of the same instance.
+Completed mount/update notifications now schedule one coalesced correction
+after Pierre's render. Release cancels that frame and fences an already queued
+callback. Corrections compare against the reachable, clamped position. The
+300 ms quiet interval, three-second maximum, input cancellation, virtualization
+and single scroll owner remain unchanged.
+
+The actual public render handler is tested for repeated updates of a resident
+instance, virtualization unmounts, coalescing and release fencing. Existing F7
+and anchor browser assertions remain unchanged. Controlled-frame and synthetic
+collapse probes are excluded as final regressions: their scheduling assumptions
+were unstable across repeated native browser runs. They are retained only as
+diagnostic artifacts, not aggregate validation evidence.
+
+The Feedback trace showed test teardown and server shutdown before the final
+Delete click. Its 30-second total budget expired during the long navigation
+flow. That case now has a 60-second total budget; its five-second assertions and
+exact clipboard checks are unchanged. Three traced WebKit repetitions passed:
+DELETE returned 204 in 1.460–1.991 ms, and the final empty-view assertion took
+84–139 ms (`2e3589b045c782a6371aac55a1e106fa`). No server change was needed.
+
+A subsequent trace exposed a separate startup gap: the badge read completed
+before an external reply, and the live subscription started afterward. Its
+initial status/head events replayed no feedback write. The follower now treats
+that initial interval as missed work and reconciles once through its existing
+catch-up path. Reconnection and focus fallback retain their behavior. This
+adds one initial refresh burst per follower.
+
+The regression holds the real event subscription, reads two open threads,
+resolves one through the API, then releases the stream. Old code failed with
+the badge still at two (`2be46799af645ad7074b4670ac147de5`). The repaired
+code passed three new regressions and three unchanged long flows per engine:
+Chromium `8a3cd4d1eb690241a621ae05deb3566d` and WebKit
+`60ba7ef5da97326925a0fc67216da975`. Traces show a fresh read after status,
+without a replayed feedback event. Frontend tests also passed
+(`0b267fa00fca5a4220fd31680691b11a`). Existing five-second assertions remain.
