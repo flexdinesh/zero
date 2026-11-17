@@ -4,6 +4,8 @@
 .ui-row {
   --row-height: var(--row-list);
   --row-indent: var(--row-indent-flush);
+  position: relative;
+  isolation: isolate;
   display: flex;
   width: 100%;
   min-width: 0;
@@ -45,7 +47,17 @@
   --row-indent: var(--row-indent-match);
 }
 
-.ui-row:hover:not(:disabled, [aria-disabled="true"]) {
+/* Paint states behind the content, ending before the scrollbar lane. The
+   row's layout and click target still span the full width. */
+.ui-row::before {
+  position: absolute;
+  inset: 0 var(--scrollbar-size) 0 0;
+  z-index: var(--z-behind);
+  content: "";
+  pointer-events: none;
+}
+
+.ui-row:hover:not(:disabled, [aria-disabled="true"])::before {
   background: var(--color-hover);
 }
 
@@ -55,11 +67,18 @@
 
 .ui-row:is([data-active], [data-selected], [aria-selected="true"], [aria-current="page"]) {
   color: var(--color-selected-text);
+}
+
+.ui-row:is([data-active], [data-selected], [aria-selected="true"], [aria-current="page"])::before {
   background: var(--color-selected);
   box-shadow: inset 0 0 0 1px var(--color-selected-border);
 }
 
 .ui-row:focus-visible {
+  outline: 0;
+}
+
+.ui-row:focus-visible::before {
   outline: 1px solid var(--color-focus);
   outline-offset: -1px;
 }

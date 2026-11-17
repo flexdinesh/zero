@@ -1,5 +1,34 @@
 import { expect, test } from "@playwright/test"
 
+test("shared list buttons keep selection and focus inside the scrollbar lane", async ({ page }) => {
+  await page.goto("/")
+  await page.getByRole("button", { name: "Settings", exact: true }).click()
+  const categories = page.getByRole("navigation", { name: "Settings categories" })
+  const row = categories.getByRole("button", { name: "Code Navigation" })
+  await row.click()
+  await row.press("Space")
+  const paint = await row.evaluate((element) => {
+    const row = getComputedStyle(element)
+    const state = getComputedStyle(element, "::before")
+    return {
+      inset: Number.parseFloat(state.right),
+      contentInset: Number.parseFloat(row.paddingRight),
+      background: state.backgroundColor,
+      shadow: state.boxShadow,
+      outline: state.outlineStyle,
+      rowShadow: row.boxShadow,
+      rowOutline: row.outlineStyle,
+    }
+  })
+  expect(paint.inset).toBeGreaterThan(0)
+  expect(paint.contentInset - paint.inset).toBe(4)
+  expect(paint.background).not.toBe("rgba(0, 0, 0, 0)")
+  expect(paint.shadow).not.toBe("none")
+  expect(paint.outline).toBe("solid")
+  expect(paint.rowShadow).toBe("none")
+  expect(paint.rowOutline).toBe("none")
+})
+
 test("settings categories, global search, and modified filter compose and recover", async ({ page }) => {
   await page.goto("/")
   await page.getByRole("button", { name: "Settings", exact: true }).click()
