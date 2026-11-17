@@ -26,6 +26,8 @@ otherwise modest work into a main-thread task.
   including later font changes. Only visual newlines create chunk boundaries;
   bare carriage returns stay within the same visual row. An indivisible visual
   row may exceed the chunk budget. Active native selections defer replacement.
+  The final contained chunk stays inline-level so WebKit does not add a newline
+  to native selection when the original fence has none.
 - Content replacement and unmount cancel queued work and ignore obsolete worker
   replies. Closing the final workspace tab still releases the shared worker.
   No application-wide fence-result cache is added.
