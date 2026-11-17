@@ -273,7 +273,7 @@ func TestDesktopGroupIsPartOfCheckPR(t *testing.T) {
 		}
 	}
 	// Generated contracts feed the drift check and every web consumer.
-	for _, group := range []string{"repo", "web-static", "go", "frontend", "browser", "desktop"} {
+	for _, group := range []string{"repo", "web-static", "tooling-static", "go", "frontend", "browser", "desktop"} {
 		if !selected(group, "packages/contracts/src/index.ts") {
 			t.Fatalf("%s misses the generated contracts", group)
 		}

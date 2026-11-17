@@ -130,7 +130,7 @@ func TestConsumerInputInvalidation(t *testing.T) {
 		{"tests/browser/extended/memory.spec.ts", []string{"tooling-static", "tooling", "browser", "browser-extended", "webkit"}},
 		{"playwright.config.ts", []string{"tooling-static", "tooling", "browser", "browser-extended", "webkit"}},
 		{"testdata/api/default/page.json", []string{"go", "frontend", "tooling", "browser", "browser-extended", "webkit"}},
-		{"packages/contracts/src/index.ts", []string{"repo", "web-static", "go", "frontend", "browser", "desktop", "browser-extended", "desktop-extended", "webkit"}},
+		{"packages/contracts/src/index.ts", []string{"repo", "web-static", "tooling-static", "go", "frontend", "browser", "desktop", "browser-extended", "desktop-extended", "webkit"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.path, func(t *testing.T) {
