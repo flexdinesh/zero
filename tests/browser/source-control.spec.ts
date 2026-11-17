@@ -952,14 +952,14 @@ for (const activation of ["Files rail", "mobile Files sheet", "Uncommitted list"
       if (mobile) {
         await filesToggle(page).click()
         const sheet = page.getByRole("dialog", { name: "Review files" })
-        await sheet.getByRole("treeitem", { name: "app.ts", exact: true }).getByText("app.ts", { exact: true }).click()
+        await sheet.getByRole("treeitem", { name: "app.ts", exact: true }).locator('[data-item-section="content"]').click()
         await expect(sheet).toBeHidden()
       } else if (activation === "Uncommitted list") {
         await changeRow(page, "src/app.ts").getByText("app.ts", { exact: true }).click()
       } else {
         const tree = working ? pane(page, "Uncommitted") : rail(page)
         // Click the shadow-DOM label, including when its row is already selected.
-        await tree.getByRole("treeitem", { name: "app.ts", exact: true }).getByText("app.ts", { exact: true }).click()
+        await tree.getByRole("treeitem", { name: "app.ts", exact: true }).locator('[data-item-section="content"]').click()
       }
       await expect(page).toHaveURL(/#f=src\/app\.ts$/)
       await expect(fileToggle(page, "src/app.ts")).toHaveAttribute("aria-expanded", "true")
