@@ -404,6 +404,15 @@ function ReviewBody({
   // waits until the fragment selects its file.
   const handledRequest = useRef(revealRequest.id)
   const request = revealRequest.path === target ? revealRequest.id : 0
+  // Choosing a file opens it, including an explicit request for the already
+  // selected file. Refreshes and manual collapse leave the override alone.
+  const [openedReveal, setOpenedReveal] = useState({ key: "", request: 0 })
+  const revealKey = `${target}#${anchor}`
+  if (ready && target && files.some((file) => file.path === target)
+    && (openedReveal.key !== revealKey || (request !== 0 && openedReveal.request !== request))) {
+    setOpenedReveal({ key: revealKey, request })
+    setFileOpen(target, true)
+  }
   useEffect(() => {
     const root = scrollRoot.current
     const content = container.current

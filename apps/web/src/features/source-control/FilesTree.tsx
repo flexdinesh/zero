@@ -56,9 +56,9 @@ export function FilesTree({ activePath, collapseRequest, files, itemHeight, labe
   const previousPaths = useRef(paths)
   const syncing = useRef(false)
   const threadPaths = useMemo(() => paths.filter((path) => (threads?.get(path) ?? 0) > 0), [paths, threads])
-  // input is set while a click or key press is dispatched in the tree: only
-  // those open a file. Selection that follows the review's current file
-  // never does (decisions 0135, 0137).
+  // input is set while a navigation key is dispatched in the tree. Clicks,
+  // Enter, and Space activate directly, even if selection does not change.
+  // Selection that follows the review never opens a file (0135, 0137).
   const input = useRef(false)
   const current = useRef({ activePath, byPath, marked, stats, threads, viewedPaths, onOpen })
   useLayoutEffect(() => { current.current = { activePath, byPath, marked, stats, threads, viewedPaths, onOpen } }, [activePath, byPath, marked, stats, threads, viewedPaths, onOpen])
@@ -162,9 +162,11 @@ export function FilesTree({ activePath, collapseRequest, files, itemHeight, labe
 
   // Click and Space keep focus in the list; Enter and double-click move it to
   // the review, as in the Search view.
-  const openFocused = () => {
+  const openFocused = (focusDocument = true) => {
     const focused = model.getFocusedPath()
-    if (focused && !model.getItem(focused)?.isDirectory()) current.current.onOpen(focused, true)
+    if (!focused || model.getItem(focused)?.isDirectory()) return false
+    current.current.onOpen(focused, focusDocument)
+    return true
   }
 
   // The tree selects within the event's own dispatch; the flag clears after it.
@@ -174,7 +176,18 @@ export function FilesTree({ activePath, collapseRequest, files, itemHeight, labe
   }
 
   return <PierreFileTree model={model} className="file-tree-host" aria-label={label}
-    onClickCapture={markInput} onKeyDownCapture={markInput}
-    onKeyDown={(event: KeyboardEvent<HTMLElement>) => { if (event.key === "Enter") openFocused() }}
-    onDoubleClick={openFocused} />
+    onClickCapture={() => { input.current = false }}
+    onClick={(event) => {
+      const row = event.nativeEvent.composedPath().find((node) => node instanceof HTMLElement && node.getAttribute("role") === "treeitem")
+      const path = row instanceof HTMLElement ? row.dataset.itemPath : undefined
+      if (path && !model.getItem(path)?.isDirectory()) current.current.onOpen(path, false)
+    }}
+    onKeyDownCapture={(event) => {
+      input.current = false
+      if (event.key !== "Enter" && event.key !== " ") markInput()
+    }}
+    onKeyDown={(event: KeyboardEvent<HTMLElement>) => {
+      if ((event.key === "Enter" || event.key === " ") && openFocused(event.key === "Enter")) event.preventDefault()
+    }}
+    onDoubleClick={() => openFocused()} />
 }

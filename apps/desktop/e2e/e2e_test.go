@@ -319,6 +319,146 @@ func TestWebViewApp(t *testing.T) {
 		app.waitEval("the changed file in the page", `return document.body.innerText.includes("Live marker from the e2e test.")`)
 	})
 
+	run("unchanged focus refresh preserves a cached review and viewport", func(t *testing.T) {
+		project := filepath.Join(base, "focus-review")
+		writeFixture(t, project)
+		writeDiffs := func(version string) {
+			t.Helper()
+			for _, name := range []string{"a.txt", "b.txt", "c.txt"} {
+				var content strings.Builder
+				for line := range 360 {
+					fmt.Fprintf(&content, "%s %s line %03d\n", name, version, line)
+				}
+				if err := os.WriteFile(filepath.Join(project, name), []byte(content.String()), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		writeDiffs("before")
+		for _, args := range [][]string{{"add", "a.txt", "b.txt", "c.txt"}, {"-c", "user.name=e2e", "-c", "user.email=e2e@example.invalid", "-c", "commit.gpgsign=false", "commit", "-qm", "Review fixture"}} {
+			git := exec.Command("git", args...)
+			git.Dir = project
+			if output, err := git.CombinedOutput(); err != nil {
+				t.Fatalf("git %v: %v\n%s", args, err, output)
+			}
+		}
+		writeDiffs("after")
+		if got := app.eval(`const response = await fetch('/api/roots', {method: 'POST', headers: {'Content-Type': 'application/json'},
+			body: JSON.stringify({path: ` + strconv.Quote(project) + `})}); return response.ok`); got != true {
+			t.Fatal("could not serve the review fixture")
+		}
+		// Preserve later scenarios' project even if this regression fails.
+		defer func() {
+			app.eval(`location.href = "/view?project=" + encodeURIComponent(` + strconv.Quote(w.project) + `) + "&path=README.md"; return true`)
+			app.waitEval("the original project after the review", `return new URLSearchParams(location.search).get('project') === `+strconv.Quote(w.project)+` && document.body.innerText.includes('A paragraph.')`)
+		}()
+		app.eval(`location.href = "/view?project=" + encodeURIComponent(` + strconv.Quote(project) + `) + "&review=working#f=a.txt"; return true`)
+		app.waitEval("A's rendered review", `return (document.querySelector('[data-review-path="a.txt"] .diff-view')?.shadowRoot?.querySelectorAll('[data-line]').length ?? 0) > 0
+			&& document.querySelectorAll('[data-review-path]').length === 3`)
+		app.eval(`const state = window.__focusReview = {
+			fetch: window.fetch, calls: [], completed: [], pending: [], hold: false,
+			section: (path) => document.querySelector('[data-review-path="' + path + '"]'),
+			pane: document.querySelector('main'),
+		};
+		state.rows = () => Array.from(state.section('b.txt').querySelector('.diff-view')?.shadowRoot?.querySelectorAll('[data-line]') ?? []);
+		state.scrollTo = (path) => {
+			const section = state.section(path);
+			state.pane.scrollTop += section.getBoundingClientRect().top - state.pane.getBoundingClientRect().top + 2400;
+		};
+		window.fetch = async (...args) => {
+			const input = args[0];
+			const url = new URL(typeof input === 'string' ? input : input.url ?? String(input), location.href);
+			if (url.pathname !== '/api/diff') return state.fetch.apply(window, args);
+			const path = url.searchParams.get('path');
+			state.calls.push(path);
+			if (state.hold) await new Promise((resolve) => state.pending.push({path, resolve}));
+			const response = await state.fetch.apply(window, args);
+			state.completed.push(path);
+			return response;
+		};
+		return true`)
+		defer app.eval(`const state = window.__focusReview; if (state) {
+			state.stop = true; state.hold = false; state.pending.forEach((request) => request.resolve()); window.fetch = state.fetch;
+		} return true`)
+		// Wait past both the 3 s reveal pin and the 2 s focus throttle.
+		time.Sleep(3500 * time.Millisecond)
+		app.eval(`window.__focusReview.scrollTo('b.txt'); return true`)
+		app.waitEval("B's first rendered diff", `return window.__focusReview.rows().some((row) => row.textContent.includes('b.txt after'))`)
+		app.eval(`const state = window.__focusReview;
+			state.bReads = state.calls.filter((path) => path === 'b.txt').length;
+			state.scrollTo('c.txt'); return true`)
+		app.waitEval("C's rendered diff", `return (window.__focusReview.section('c.txt').querySelector('.diff-view')?.shadowRoot?.querySelectorAll('[data-line]').length ?? 0) > 0`)
+		// The first scroll can clamp against C's unloaded placeholder.
+		app.eval(`window.__focusReview.scrollTo('c.txt'); return true`)
+		app.waitEval("B released outside the viewport", `const state = window.__focusReview;
+			return state.section('b.txt').querySelector('.diff-view') === null
+				&& (state.section('c.txt').querySelector('.diff-view')?.shadowRoot?.querySelectorAll('[data-line]').length ?? 0) > 0`)
+		app.eval(`window.__focusReview.scrollTo('b.txt'); return true`)
+		app.waitEval("B rendered from cache", `const state = window.__focusReview;
+			return state.rows().some((row) => row.textContent.includes('b.txt after'))
+				&& state.calls.filter((path) => path === 'b.txt').length === state.bReads`)
+		if got := app.eval(`return location.hash`); got != "#f=a.txt" {
+			t.Fatalf("scrolling B changed the chosen file: %v", got)
+		}
+		// xdotool is already required by this harness. X focus None and back
+		// produces trusted WebKit blur/focus events without a window manager.
+		app.waitEval("native review focus before leaving", `return document.hasFocus()`)
+		focused, err := exec.Command("xdotool", "getwindowfocus").Output()
+		if err != nil {
+			t.Fatalf("xdotool getwindowfocus: %v", err)
+		}
+		focus := func(window string) {
+			t.Helper()
+			if output, err := exec.Command("xdotool", "windowfocus", window).CombinedOutput(); err != nil {
+				t.Fatalf("xdotool windowfocus %s: %v\n%s", window, err, output)
+			}
+		}
+		focus("0x0")
+		defer focus(strings.TrimSpace(string(focused)))
+		app.waitEval("native review window blur", `return !document.hasFocus()`)
+		time.Sleep(3500 * time.Millisecond)
+		app.waitEval("a visible row in B", `const state = window.__focusReview;
+			const pane = state.pane.getBoundingClientRect();
+			return state.rows().some((row) => row.textContent.includes('b.txt after') && row.getBoundingClientRect().top > pane.top + 80 && row.getBoundingClientRect().bottom < pane.bottom)`)
+		app.eval(`const state = window.__focusReview;
+			const pane = state.pane.getBoundingClientRect();
+			const row = state.rows().find((row) => row.textContent.includes('b.txt after') && row.getBoundingClientRect().top > pane.top + 80 && row.getBoundingClientRect().bottom < pane.bottom);
+			state.baseline = {scroll: state.pane.scrollTop, height: state.section('b.txt').offsetHeight, text: row.textContent, top: row.getBoundingClientRect().top};
+			state.bCompleted = state.completed.filter((path) => path === 'b.txt').length;
+			state.hold = true; state.frames = 0; state.failures = []; state.focusEvents = [];
+			window.addEventListener('focus', (event) => state.focusEvents.push(event.isTrusted));
+			state.sample = () => {
+				const row = state.rows().find((row) => row.textContent === state.baseline.text);
+				const sample = {scroll: state.pane.scrollTop, height: state.section('b.txt').offsetHeight,
+					top: row?.getBoundingClientRect().top ?? null, loading: state.section('b.txt').textContent.includes('Loading diff'), hash: location.hash};
+				if (Math.abs(sample.scroll - state.baseline.scroll) > 2 || Math.abs(sample.height - state.baseline.height) > 2
+					|| sample.top === null || Math.abs(sample.top - state.baseline.top) > 2 || sample.loading || sample.hash !== '#f=a.txt') {
+					if (state.failures.length < 10) state.failures.push(sample);
+				}
+				state.frames++;
+			};
+			const frame = () => { if (!state.stop) { state.sample(); requestAnimationFrame(frame); } };
+			requestAnimationFrame(frame); return true`)
+		focus(strings.TrimSpace(string(focused)))
+		app.waitEval("trusted native focus and B's pending refetch", `const state = window.__focusReview;
+			return document.hasFocus() && state.focusEvents.includes(true) && state.pending.some((request) => request.path === 'b.txt')`)
+		time.Sleep(750 * time.Millisecond)
+		if got := app.eval(`const state = window.__focusReview; state.sample();
+			return state.failures.length === 0 && state.frames > 5 && state.completed.filter((path) => path === 'b.txt').length === state.bCompleted`); got != true {
+			t.Errorf("review changed with diff refetch pending: %v", app.eval(`return {baseline: window.__focusReview.baseline, failures: window.__focusReview.failures, frames: window.__focusReview.frames}`))
+		}
+		app.eval(`const state = window.__focusReview; state.hold = false; state.pending.forEach((request) => request.resolve()); return true`)
+		app.waitEval("B's unchanged refetch completed", `const state = window.__focusReview;
+			return state.completed.filter((path) => path === 'b.txt').length > state.bCompleted`)
+		time.Sleep(time.Second)
+		w.report["reviewFocusRefresh"] = app.eval(`const state = window.__focusReview; state.sample(); state.stop = true;
+			return {baseline: state.baseline, frames: state.frames, failures: state.failures, focusEvents: state.focusEvents, calls: state.calls, completed: state.completed}`)
+		if got := app.eval(`return window.__focusReview.failures.length === 0`); got != true {
+			t.Errorf("unchanged focus refresh moved or replaced the rendered review: %v", w.report["reviewFocusRefresh"])
+		}
+		app.capture("review-focus-refresh.png")
+	})
+
 	run("native title bar outside macOS", func(t *testing.T) {
 		// Decision 0119: only macOS hides the title bar, so the page's band
 		// has no height here and the workspace starts at the top.

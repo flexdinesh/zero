@@ -123,6 +123,10 @@ export function useReviewDiff({ project, compare, file, version, ignoreWhitespac
   const [attempt, setAttempt] = useState(0)
   const url = diffUrl(project, compare, file, ignoreWhitespace)
   const cached = wanted ? cache.get(key) : undefined
+  // Cache hits must become the section's retained diff too. Otherwise a
+  // focus refresh changes the key and drops a cache-only render to Loading,
+  // shrinking the section and moving the reader's viewport.
+  if (cached && entry?.diff !== cached) setEntry({ key, diff: cached })
   // A section scrolled away lets go of its diff; the cache may keep it.
   if (!wanted && entry) setEntry(null)
 
