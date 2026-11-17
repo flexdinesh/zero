@@ -19,8 +19,8 @@ import (
 // ErrNotFound is returned for feedback the store does not hold.
 var ErrNotFound = errors.New("feedback not found")
 
-// repositoryLock names the lock serializing creation and eviction within a
-// repository's directory.
+// repositoryLock serializes mutations with creation's branch lookup within
+// a repository's directory.
 const repositoryLock = "repository.lock"
 
 // DefaultDirectory returns the per-user state directory feedback is stored
@@ -58,9 +58,9 @@ func defaultDirectory(goos string, getenv func(string) string, home, config func
 // Store keeps feedback as private JSON files, one directory per repository
 // named by the SHA-256 of its key, never inside the project. Writes replace
 // files atomically under a per-ID file lock, so processes sharing the
-// directory (the CLI and a server) never lose each other's changes; creation
-// and eviction also hold the repository's lock. Listing decodes only files
-// changed since the last listing.
+// directory (the CLI and a server) never lose each other's changes. Every
+// mutation also holds the repository lock so a branch lookup during creation
+// sees stable directory entries. Listing decodes only changed files.
 type Store struct {
 	directory string
 	limit     int
@@ -264,6 +264,13 @@ func (s *Store) Update(repository, id string, change func(*Feedback) error) (Fee
 	if _, err := os.Stat(directory); err != nil {
 		return Feedback{}, ErrNotFound
 	}
+	// Atomic replacement changes directory entries, even for an existing ID.
+	// Do not let Ensure's branch scan race that replacement and create a new ID.
+	releaseRepository, err := lockFile(filepath.Join(directory, repositoryLock))
+	if err != nil {
+		return Feedback{}, err
+	}
+	defer releaseRepository()
 	unlock, err := lockFile(filepath.Join(directory, id+".lock"))
 	if err != nil {
 		return Feedback{}, err
@@ -291,6 +298,11 @@ func (s *Store) Delete(repository, id string) error {
 	if _, err := os.Stat(directory); err != nil {
 		return ErrNotFound
 	}
+	releaseRepository, err := lockFile(filepath.Join(directory, repositoryLock))
+	if err != nil {
+		return err
+	}
+	defer releaseRepository()
 	return s.remove(repository, id)
 }
 
