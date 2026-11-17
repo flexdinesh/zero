@@ -9,7 +9,7 @@ import {
   upperBranch,
 } from "./git-fixture.ts"
 import { gitApiOrigin } from "./ports.ts"
-import { grantClipboard } from "./clipboard.ts"
+import { copiedText, grantClipboard, recordClipboard } from "./clipboard.ts"
 import { dragWithoutSelection, exerciseResizeLifecycle, resizeBox, selectContent } from "./resize.ts"
 
 // The fixture repository is built by the git server's webServer command.
@@ -268,6 +268,7 @@ test("large diffs keep the page responsive and render only rows near the viewpor
 
 test("diff line numbers select lines, update the URL, and copy path:line", async ({ page }) => {
   await grantClipboard(page)
+  await recordClipboard(page)
   await openReview(page, "review=working#f=README.md")
   // Split: HEAD's lines on the left (L), the working copy's on the right (R).
   const gutter = (side: "deletions" | "additions", line: number) =>
@@ -284,13 +285,13 @@ test("diff line numbers select lines, update the URL, and copy path:line", async
   await expect(status).toHaveText("Ln 4")
   await expect(page.locator(".status-diff-stats")).toHaveText("+2 −1")
   await page.getByRole("button", { name: "Copy README.md:4" }).click()
-  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("README.md:4")
+  await expect.poll(() => copiedText(page)).toBe("README.md:4")
 
   await gutter("additions", 6).click({ modifiers: ["Shift"] })
   await expect(page).toHaveURL(/#f=README\.md&R4-R6$/)
   await expect(status).toHaveText("Ln 4–6")
   await page.getByRole("button", { name: "Copy README.md:4-6" }).click()
-  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("README.md:4-6")
+  await expect.poll(() => copiedText(page)).toBe("README.md:4-6")
 
   // HEAD's lines keep HEAD's numbers.
   await gutter("deletions", 4).click()
