@@ -1,6 +1,6 @@
 import {
   Virtualizer, VirtualizedFileDiff,
-  type DiffLineAnnotation, type FileDiff as FileDiffInstance, type FileDiffMetadata, type LineDiffTypes, type SelectedLineRange,
+  type DiffLineAnnotation, type FileDiffMetadata, type LineDiffTypes, type SelectedLineRange,
   type SelectionSide,
 } from "@pierre/diffs"
 import {
@@ -44,7 +44,7 @@ import { DiffStatsText, FileStatsText } from "./DiffStatsText.tsx"
 import { DIFF_THEME } from "./diff-theme.ts"
 import type { CollapseRequest } from "./FilesTree.tsx"
 import { ImageDiff, ImageDiffProvider } from "./ImageDiff.tsx"
-import { loadReviewDiff, useReviewDiff, type RenderedDiff } from "./review-diffs.ts"
+import { createReviewDiffs, type ReviewDiffs, useReviewDiff, type RenderedDiff } from "./review-diffs.ts"
 import { pinSettled, pinWait } from "./review-pin.ts"
 import { adjacentFile, nextUnviewed, reviewKeyCommand, reviewKeyShortcuts, type ReviewKeyCommand } from "./review-keys.ts"
 import type { ViewedState } from "./review-viewed.ts"
@@ -73,7 +73,7 @@ const diffCSS = `*, ::before, ::after { border-radius: 0 !important; }
 :is([data-diff], [data-file]):hover [data-code]::-webkit-scrollbar-thumb { background-color: var(--color-scrollbar-thumb); }
 @supports not selector(::-webkit-scrollbar) { [data-code] { scrollbar-color: var(--color-scrollbar-thumb) transparent; } }`
 
-// Sections within this distance of the viewport read and render their diffs.
+// Sections within this distance of the viewport begin reading their diffs.
 const nearMargin = "1600px 0px"
 
 // revealTop is where a revealed line lands: the pane's top third, as in Source.
@@ -238,7 +238,7 @@ const ObserveContext = createContext<Observe>(() => () => {})
 
 // ReviewDocument stacks a compare's file diffs in one scroll (decision 0035),
 // in the Files tree's order. Sections read their diff as they near the
-// viewport and let go of it far away.
+// viewport; Pierre virtualizes rows while visited renderers stay mounted.
 export function ReviewDocument(props: ReviewDocumentProps) {
   // The pool reads these once; later changes go through setRenderOptions.
   const [highlighterOptions] = useState((): WorkerInitializationRenderOptions => ({
@@ -258,6 +258,7 @@ function ReviewBody({
   onAllExpandedChange, onOpenFile, onRegisterHunkStep, onSelectLines, onStatus, onViewedChange, viewedState,
 }: ReviewDocumentProps) {
   const pool = useWorkerPool()
+  const [diffs] = useState(createReviewDiffs)
   const [virtualizer] = useState(() => new Virtualizer())
   const container = useRef<HTMLDivElement>(null)
   const list = data?.list
@@ -292,7 +293,7 @@ function ReviewBody({
   useEffect(() => {
     const root = scrollRoot.current
     if (!root) return
-    virtualizer.setup(root)
+    virtualizer.setup(root, container.current ?? undefined)
     root.style.overflowAnchor = "none"
     return () => {
       root.style.removeProperty("overflow-anchor")
@@ -523,9 +524,10 @@ function ReviewBody({
     const { files: all, isOpen: opened, selection: selected, style: shownStyle, version, ignoreWhitespace, root } = latestStep.current
     const candidates = all.filter(opened)
     const load = async (file: CompareFile): Promise<LineDiff | null> => {
+      controller.signal.throwIfAborted()
       const view = shown.current.get(file.path)
       if (view) return view.rendered.lineDiff
-      const diff = await loadReviewDiff({ project, compare, file, version, ignoreWhitespace }, controller.signal)
+      const diff = await diffs.load({ project, compare, file, version, ignoreWhitespace }, controller.signal)
       return diff.kind === "ready" ? diff.rendered?.lineDiff ?? null : null
     }
     // cursor places the step in its first file: at the selection, else below
@@ -566,10 +568,10 @@ function ReviewBody({
       }
     }
     step().catch(() => {
-      // Aborted by a newer step or unmount.
+      // Aborted by a newer step, changed inputs, or unmount.
     })
-  }, [compare, onSelectLines, project])
-  useEffect(() => () => stepping.current?.abort(), [])
+  }, [compare, diffs, onSelectLines, project])
+  useLayoutEffect(() => () => stepping.current?.abort(), [compare, data?.version, options.ignoreWhitespace, project])
 
   useLayoutEffect(() => {
     onRegisterHunkStep(stepHunk)
@@ -687,7 +689,7 @@ function ReviewBody({
           {files.length > 0 && <div className="review-files">{files.map((file) => {
             const fileStats = stats?.byPath.get(file.path)
             return (
-              <ReviewFile key={file.path} project={project} compare={compare} file={file} stats={fileStats}
+              <ReviewFile key={file.path} diffs={diffs} project={project} compare={compare} file={file} stats={fileStats}
                 version={data?.version ?? ""} uncommitted={marked?.has(file.path) ?? false}
                 open={isOpen(file)} viewed={viewedState(file.path, fileStats?.blob ?? "")} options={options} narrow={narrow} scrollRoot={scrollRoot}
                 lines={selection?.path === file.path ? selection.lines : null}
@@ -788,6 +790,7 @@ function ReviewMeta({ compare, data }: { compare: Compare; data: CompareData | n
 }
 
 interface ReviewFileProps {
+  diffs: ReviewDiffs
   project: string
   compare: Compare
   file: CompareFile
@@ -817,28 +820,19 @@ interface ReviewFileProps {
 
 // ReviewFile is one file's sticky header and collapsible diff.
 function ReviewFile({
-  annotation, compare, file, lines, narrow, open, openFileReason, options, outdated, project, scrollRoot, stats, uncommitted, version, viewed, zones,
+  annotation, compare, diffs, file, lines, narrow, open, openFileReason, options, outdated, project, scrollRoot, stats, uncommitted, version, viewed, zones,
   onComment, onOpenChange, onOpenFile, onSelectLines, onShowOutdated, onStatus, onViewedChange,
 }: ReviewFileProps) {
   const observe = useContext(ObserveContext)
   const section = useRef<HTMLElement>(null)
-  const body = useRef<HTMLDivElement>(null)
   const [near, setNear] = useState(false)
-  // height keeps a released diff's space, so scrolling stays put.
-  const [height, setHeight] = useState(0)
   useLayoutEffect(() => {
     const element = section.current
     return element ? observe(element, setNear) : undefined
   }, [observe])
   const wanted = open && near
-  const { diff, retry } = useReviewDiff({ project, compare, file, version, ignoreWhitespace: options.ignoreWhitespace, wanted })
-  useLayoutEffect(() => {
-    const element = body.current
-    if (!element || !wanted) return
-    const observer = new ResizeObserver(() => setHeight(element.offsetHeight))
-    observer.observe(element)
-    return () => observer.disconnect()
-  }, [wanted])
+  const { diff, retry } = useReviewDiff(diffs, { project, compare, file, version, ignoreWhitespace: options.ignoreWhitespace, wanted })
+  const resident = diff.kind !== "loading"
 
   const rendered = diff.kind === "ready" ? diff.rendered : null
   const style = effectiveDiffStyle(options, narrow)
@@ -906,9 +900,8 @@ function ReviewFile({
         <IconButton size="xs" label="Open File" icon={<FileInputIcon aria-hidden="true" />}
           disabledReason={openFileReason || undefined} onClick={onOpenFile} />
       </div>
-      <div id={bodyId} ref={body} className="review-file-body" hidden={!open}
-        style={open && !wanted && height > 0 ? { minHeight: height } : undefined}>
-        {wanted && <FileBody diff={diff} file={file} compare={compare} rendered={rendered} options={options} narrow={narrow}
+      <div id={bodyId} className="review-file-body" hidden={!open}>
+        {open && (resident || near) && <FileBody diff={diff} file={file} compare={compare} rendered={rendered} options={options} narrow={narrow}
           scrollRoot={scrollRoot} lines={lines} reference={reference} annotation={annotation} zones={zones} onComment={commentLines}
           onRetry={retry} onSelectLines={onSelectLines} />}
       </div>
@@ -1011,7 +1004,9 @@ function DiffView({ annotation, rendered, lines, narrow, options, path, referenc
   const register = useContext(ShownContext)
   const host = useRef<HTMLDivElement>(null)
   const [instance, setInstance] = useState<DiffInstance | null>(null)
-  const onInstance = useCallback((next: FileDiffInstance<undefined, undefined> | null) => {
+  const onPostRender = useCallback<NonNullable<FileDiffOptions<undefined, undefined>["onPostRender"]>>((_node, next) => {
+    // Pierre reports row virtualization as "unmount" too. The instance still
+    // owns its layout; React cleanup below unregisters a removed component.
     setInstance(next instanceof VirtualizedFileDiff ? next : null)
   }, [])
   useEffect(() => {
@@ -1077,6 +1072,7 @@ function DiffView({ annotation, rendered, lines, narrow, options, path, referenc
     enableLineSelection: true,
     // The gutter utility holds the copy button at the selection's last line.
     enableGutterUtility: true,
+    onPostRender,
     // Only pointer gestures end a selection. onLineSelected also echoes
     // selectedLines changes, which would clear a selection moving to
     // another file.
@@ -1085,7 +1081,7 @@ function DiffView({ annotation, rendered, lines, narrow, options, path, referenc
       scrollRoot.current?.focus({ preventScroll: true })
       select.current(range)
     },
-  }), [expandUnchanged, inline, resolvedTheme, scrollRoot, style, wrap])
+  }), [expandUnchanged, inline, onPostRender, resolvedTheme, scrollRoot, style, wrap])
   // One annotation per side and line holds the walkthrough's narration and
   // every zone there, so several threads can share a line. Slots change
   // only when lines do; their content follows each render.
@@ -1110,7 +1106,7 @@ function DiffView({ annotation, rendered, lines, narrow, options, path, referenc
   return (
     <div ref={host}>
       <FileDiff key={metrics.lineHeight} className="diff-view" fileDiff={rendered.fileDiff} options={diffOptions} metrics={metrics}
-        selectedLines={lines} onInstance={onInstance} lineAnnotations={lineAnnotations}
+        selectedLines={lines} lineAnnotations={lineAnnotations}
         renderAnnotation={(slot) => {
           const key = lineKey(slot.side, slot.lineNumber)
           const narration = annotation && annotation.line > 0 && lineKey(annotation.side, annotation.line) === key

@@ -9,6 +9,102 @@ import { test } from "./live-test.ts"
 // in software-rendered WebKit. Keep explicit screenshots and measured data.
 test.use({ trace: "off" })
 
+for (const reason of ["refresh", "many files", "wrapped many files"]) {
+  test(`scrolling back after ${reason} preserves a diff's space while loading`, async ({ page, live }) => {
+    test.setTimeout(90_000)
+    const names = reason === "refresh" ? ["a.txt", "b.txt", "c.txt"]
+      : ["a.txt", ...Array.from({ length: 31 }, (_, index) => `b${String(index).padStart(2, "0")}.txt`), "c.txt"]
+    const addFile = (name: string) => {
+      writeFileSync(path.join(live.root, name), Array.from({ length: 420 }, (_, line) => `${name} line ${line + 1} ${reason === "wrapped many files" && name === "a.txt" ? "long text ".repeat(60) : ""}\n`).join(""))
+    }
+    addFile("a.txt")
+    let hold = false
+    let requested = false
+    let release = () => {}
+    const pending = new Promise<void>((resolve) => { release = resolve })
+    await page.route("**/api/diff?*", async (route) => {
+      if (hold && new URL(route.request().url()).searchParams.get("path") === "a.txt") {
+        requested = true
+        await pending
+      }
+      await route.continue()
+    })
+    await page.goto(`${live.origin}/view?project=${encodeURIComponent(live.root)}&review=working#f=a.txt`)
+    const main = page.getByRole("main")
+    const first = main.getByRole("region", { name: "a.txt", exact: true })
+    const last = main.getByRole("region", { name: "c.txt", exact: true })
+    await expect(first.locator("[data-line]").filter({ hasText: "a.txt line 10" }).first()).toBeVisible()
+    // Start with the first rendered file, then grow the review. This isolates
+    // returning to visited files from initial multi-file loading order.
+    for (const name of names.slice(1)) addFile(name)
+    await expect(last).toBeAttached()
+    if (reason === "wrapped many files") {
+      await page.getByRole("button", { name: "View options" }).click()
+      await page.getByRole("menuitemcheckbox", { name: "Wrap lines" }).click()
+      await page.keyboard.press("Escape")
+      await page.waitForTimeout(250)
+    }
+    const height = await first.evaluate((element) => element.getBoundingClientRect().height)
+    expect(height).toBeGreaterThan(5_000)
+    await main.evaluate((element) => { element.dispatchEvent(new WheelEvent("wheel")) })
+    // Load intervening sections before positioning at the last file. Their
+    // first load legitimately grows the document from its initial placeholders.
+    for (const name of names.slice(1)) {
+      const section = main.getByRole("region", { name, exact: true })
+      if (reason === "wrapped many files") await page.evaluate((file) => { location.hash = `f=${file}` }, name)
+      else await section.evaluate((element) => element.scrollIntoView({ block: "start" }))
+      await expect(section.locator(".diff-view")).toBeAttached()
+      await section.evaluate((element) => element.scrollIntoView({ block: "start" }))
+      await expect(section.locator("[data-line]").first()).toBeVisible()
+      await main.evaluate((element) => element.dispatchEvent(new WheelEvent("wheel")))
+    }
+    await expect(last.locator("[data-line]").first()).toBeVisible()
+    await expect(first.locator("[data-line]")).toHaveCount(0)
+
+    // The renderer and its measurements survive beyond the old cache limit.
+    await expect(first.locator(".diff-view")).toBeAttached()
+    if (reason !== "refresh") expect(await main.locator(".diff-view").count()).toBeGreaterThan(30)
+    const pendingHeight = await first.evaluate((element) => element.getBoundingClientRect().height)
+    const returnTop = reason === "wrapped many files" ? height - 1_400 : 1_400
+    hold = true
+    try {
+      // Refresh invalidates offscreen files too. Their later read must not
+      // discard the previous content or its measured geometry.
+      await page.clock.setFixedTime(new Date(Date.now() + 60_000))
+      const changes = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/changes")
+      const refreshed = page.waitForResponse((response) => {
+        const url = new URL(response.url())
+        return url.pathname === "/api/diff" && url.searchParams.get("path") === "c.txt"
+      })
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")))
+      await (await changes).finished()
+      await (await refreshed).finished()
+      await main.evaluate((element, top) => { element.scrollTop = top }, returnTop)
+      await expect.poll(() => requested).toBe(true)
+      await page.waitForTimeout(250)
+      const loadedHeight = await first.evaluate((element) => element.getBoundingClientRect().height)
+      // Wrapped rows newly measured on this scroll can grow the file. The
+      // unchanged response must retain that measured layout afterwards.
+      if (reason === "wrapped many files") expect(loadedHeight).toBeGreaterThanOrEqual(pendingHeight)
+      else expect(loadedHeight).toBeCloseTo(height, 0)
+      const loadedTop = await main.evaluate((element) => element.scrollTop)
+      if (reason !== "wrapped many files") expect(loadedTop).toBeCloseTo(returnTop, 0)
+      await expect(first).toBeInViewport()
+      release()
+      await expect(first.locator("[data-line]").first()).toBeAttached()
+      await expect(first.getByText("Loading diff…")).toHaveCount(0)
+      await expect(first).toBeInViewport()
+      await page.waitForTimeout(250)
+      expect(await main.evaluate((element) => element.scrollTop)).toBeCloseTo(loadedTop, 0)
+      expect(await first.evaluate((element) => element.getBoundingClientRect().height)).toBeCloseTo(loadedHeight, 0)
+      await expect(page).toHaveURL(reason === "wrapped many files" ? /#f=c\.txt$/ : /#f=a\.txt$/)
+    } finally {
+      hold = false
+      release()
+    }
+  })
+}
+
 function lockfile(changed: boolean): string {
   return "lockfileVersion: '9.0'\npackages:\n" + Array.from({ length: 2_000 }, (_, index) => {
     const version = changed && index % 3 === 0 ? "2.0.0" : "1.0.0"

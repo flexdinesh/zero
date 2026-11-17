@@ -157,3 +157,4 @@ rewriting history; update `Status` on the old record.
 | [0154](0154-document-tabs-before-content-and-bounded-scroll-anchors.md) | Document tabs before content and bounded scroll anchors | Accepted; extends 0048, 0111 |
 | [0155](0155-review-file-activation-expands-diffs.md) | Review file activation expands its diff | Accepted; amends 0137 |
 | [0156](0156-feedback-badge-and-sidebar-width.md) | Open feedback badge and window-relative sidebar width | Accepted; amends 0120, 0102 |
+| [0157](0157-resident-review-diffs.md) | Resident review diffs | Accepted; amends 0035, 0155; replaces 0034's instance patch |

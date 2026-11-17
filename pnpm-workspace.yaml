@@ -22,8 +22,7 @@ allowBuilds:
   esbuild: true
   vue-demi: false
 
-# Exposes React FileDiff's instance for diff anchor reveal and hunk steps
-# (decision 0034); drop once Pierre exposes it or a scroll-to-line API.
+# Bounded scroll-anchor geometry reads in Pierre's virtualizer (decision 0154).
 patchedDependencies:
   '@pierre/diffs@1.6.1': patches/@pierre__diffs@1.6.1.patch
   '@pierre/trees@1.0.0-beta.6': patches/@pierre__trees@1.0.0-beta.6.patch
