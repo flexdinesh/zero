@@ -1,4 +1,4 @@
-import { useRef, type ReactNode, type RefObject } from "react"
+import { useCallback, useEffect, useRef, type PointerEvent, type ReactNode, type RefObject } from "react"
 
 import { SectionToggle } from "../../components/ui/section-toggle.tsx"
 
@@ -55,7 +55,22 @@ interface PaneSashProps {
 // PaneSash resizes the open panes on either side by pointer or arrow keys;
 // double-click restores the default split.
 export function PaneSash({ container, label, value, onResize, onReset }: PaneSashProps) {
-  const dragging = useRef<{ pointer: number; y: number } | null>(null)
+  const dragging = useRef<{ pointer: number; element: HTMLDivElement; y: number } | null>(null)
+  const finishResize = useCallback(() => {
+    const drag = dragging.current
+    dragging.current = null
+    if (drag?.element.hasPointerCapture(drag.pointer)) drag.element.releasePointerCapture(drag.pointer)
+  }, [])
+  useEffect(() => {
+    window.addEventListener("blur", finishResize)
+    return () => {
+      window.removeEventListener("blur", finishResize)
+      finishResize()
+    }
+  }, [finishResize])
+  function stopResize(event: PointerEvent<HTMLDivElement>) {
+    if (dragging.current?.pointer === event.pointerId) finishResize()
+  }
   return (
     <div className="scm-sash" role="separator" aria-orientation="horizontal" aria-label={label}
       aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(value * 100)} tabIndex={0}
@@ -66,7 +81,10 @@ export function PaneSash({ container, label, value, onResize, onReset }: PaneSas
         onResize(event.key === "ArrowUp" ? -step : step)
       }}
       onPointerDown={(event) => {
-        dragging.current = { pointer: event.pointerId, y: event.clientY }
+        if (event.button !== 0 || !event.isPrimary || dragging.current) return
+        event.preventDefault()
+        event.currentTarget.focus({ preventScroll: true })
+        dragging.current = { pointer: event.pointerId, element: event.currentTarget, y: event.clientY }
         event.currentTarget.setPointerCapture(event.pointerId)
       }}
       onPointerMove={(event) => {
@@ -76,11 +94,8 @@ export function PaneSash({ container, label, value, onResize, onReset }: PaneSas
         onResize((event.clientY - drag.y) / height)
         drag.y = event.clientY
       }}
-      onPointerUp={(event) => {
-        if (dragging.current?.pointer !== event.pointerId) return
-        dragging.current = null
-        if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
-      }}
-      onPointerCancel={() => { dragging.current = null }} />
+      onPointerUp={stopResize}
+      onPointerCancel={stopResize}
+      onLostPointerCapture={stopResize} />
   )
 }

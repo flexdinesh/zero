@@ -18,6 +18,7 @@ export function SidebarResizer() {
       onPointerMove={sidebar.moveResize}
       onPointerUp={sidebar.stopResize}
       onPointerCancel={sidebar.stopResize}
+      onLostPointerCapture={sidebar.stopResize}
     />
   )
 }
