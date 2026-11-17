@@ -9,7 +9,7 @@ import {
   upperBranch,
 } from "./git-fixture.ts"
 import { gitApiOrigin } from "./ports.ts"
-import { grantClipboard } from "./clipboard.ts"
+import { copiedText, grantClipboard, recordClipboard } from "./clipboard.ts"
 import { dragWithoutSelection, exerciseResizeLifecycle, resizeBox, selectContent } from "./resize.ts"
 
 // The fixture repository is built by the git server's webServer command.
@@ -268,6 +268,7 @@ test("large diffs keep the page responsive and render only rows near the viewpor
 
 test("diff line numbers select lines, update the URL, and copy path:line", async ({ page }) => {
   await grantClipboard(page)
+  await recordClipboard(page)
   await openReview(page, "review=working#f=README.md")
   // Split: HEAD's lines on the left (L), the working copy's on the right (R).
   const gutter = (side: "deletions" | "additions", line: number) =>
@@ -284,13 +285,13 @@ test("diff line numbers select lines, update the URL, and copy path:line", async
   await expect(status).toHaveText("Ln 4")
   await expect(page.locator(".status-diff-stats")).toHaveText("+2 −1")
   await page.getByRole("button", { name: "Copy README.md:4" }).click()
-  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("README.md:4")
+  await expect.poll(() => copiedText(page)).toBe("README.md:4")
 
   await gutter("additions", 6).click({ modifiers: ["Shift"] })
   await expect(page).toHaveURL(/#f=README\.md&R4-R6$/)
   await expect(status).toHaveText("Ln 4–6")
   await page.getByRole("button", { name: "Copy README.md:4-6" }).click()
-  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("README.md:4-6")
+  await expect.poll(() => copiedText(page)).toBe("README.md:4-6")
 
   // HEAD's lines keep HEAD's numbers.
   await gutter("deletions", 4).click()
@@ -923,6 +924,190 @@ test("a settled reveal never pulls the pane back, and choosing the file again re
   await expect(fileToggle(page, "untracked.txt")).toBeInViewport()
   await expect(page.locator(".status-path")).toHaveText("untracked.txt")
 })
+
+for (const activation of ["Files rail", "mobile Files sheet", "Uncommitted list", "Uncommitted tree"]) {
+  test(`${activation} reopens a viewed diff, including the selected file, preserving other folds`, async ({ page }) => {
+    const mobile = activation === "mobile Files sheet"
+    const working = activation.startsWith("Uncommitted")
+    if (mobile) await page.setViewportSize({ width: 390, height: 844 })
+    if (working) {
+      await openSourceControl(page)
+      await changeRow(page, "src/app.ts").click()
+      if (activation === "Uncommitted tree") {
+        await pane(page, "Uncommitted").getByRole("button", { name: "View as Tree" }).click()
+      }
+    } else {
+      await openReview(page, "review=branch&uncommitted=1#f=src/app.ts")
+    }
+
+    await fileToggle(page, "notes/removed.md").click()
+    const viewed = reviewFile(page, "src/app.ts").getByRole("button", { name: "Viewed" })
+    await expect(viewed).toBeEnabled()
+    await viewed.click()
+    await expect(viewed).toHaveAttribute("aria-pressed", "true")
+    await expect(fileToggle(page, "src/app.ts")).toHaveAttribute("aria-expanded", "false")
+    await expect(page).not.toHaveURL(/#f=src\/app\.ts$/)
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const historyLength = await page.evaluate(() => window.history.length)
+      if (mobile) {
+        await filesToggle(page).click()
+        const sheet = page.getByRole("dialog", { name: "Review files" })
+        await sheet.getByRole("treeitem", { name: "app.ts", exact: true }).locator('[data-item-section="content"]').click()
+        await expect(sheet).toBeHidden()
+      } else if (activation === "Uncommitted list") {
+        await changeRow(page, "src/app.ts").getByText("app.ts", { exact: true }).click()
+      } else {
+        const tree = working ? pane(page, "Uncommitted") : rail(page)
+        // Click the shadow-DOM label, including when its row is already selected.
+        await tree.getByRole("treeitem", { name: "app.ts", exact: true }).locator('[data-item-section="content"]').click()
+      }
+      await expect(page).toHaveURL(/#f=src\/app\.ts$/)
+      await expect(fileToggle(page, "src/app.ts")).toHaveAttribute("aria-expanded", "true")
+      await expect(diffLines(page, "change-addition", "src/app.ts").filter({ hasText: "answer = 2" })).toBeInViewport()
+      await expect(viewed).toHaveAttribute("aria-pressed", "true")
+      await expect(fileToggle(page, "notes/removed.md")).toHaveAttribute("aria-expanded", "false")
+      if (!mobile) {
+        const row = activation === "Uncommitted list" ? changeRow(page, "src/app.ts")
+          : (working ? pane(page, "Uncommitted") : rail(page)).getByRole("treeitem", { name: "app.ts", exact: true })
+        await expect(row).toBeFocused()
+      }
+      if (attempt === 1) expect(await page.evaluate(() => window.history.length)).toBe(historyLength)
+      if (attempt === 0) {
+        await fileToggle(page, "src/app.ts").click()
+        await expect(fileToggle(page, "src/app.ts")).toHaveAttribute("aria-expanded", "false")
+      }
+    }
+    if (!mobile) {
+      const row = activation === "Uncommitted list" ? changeRow(page, "src/app.ts")
+        : (working ? pane(page, "Uncommitted") : rail(page)).getByRole("treeitem", { name: "app.ts", exact: true })
+      for (const key of ["Space", "Enter"]) {
+        await fileToggle(page, "src/app.ts").click()
+        await expect(fileToggle(page, "src/app.ts")).toHaveAttribute("aria-expanded", "false")
+        await row.focus()
+        await row.press(key)
+        await expect(fileToggle(page, "src/app.ts")).toHaveAttribute("aria-expanded", "true")
+        await expect(viewed).toHaveAttribute("aria-pressed", "true")
+        await expect(fileToggle(page, "notes/removed.md")).toHaveAttribute("aria-expanded", "false")
+        await expect(key === "Space" ? row : page.getByRole("main")).toBeFocused()
+      }
+      await fileToggle(page, "src/app.ts").click()
+      await row.dblclick()
+      await expect(fileToggle(page, "src/app.ts")).toHaveAttribute("aria-expanded", "true")
+      await expect(page.getByRole("main")).toBeFocused()
+    }
+  })
+}
+
+test("restoring a cleared file fragment reopens its diff and preserves other folds", async ({ page }) => {
+  await openReview(page, "review=working#f=src/app.ts")
+  await expect(fileToggle(page, "src/app.ts")).toHaveAttribute("aria-expanded", "true")
+  await fileToggle(page, "notes/removed.md").click()
+  await fileToggle(page, "src/app.ts").click()
+  await expect(fileToggle(page, "src/app.ts")).toHaveAttribute("aria-expanded", "false")
+  await page.evaluate(() => { location.hash = "" })
+  await expect(page).not.toHaveURL(/#f=/)
+  await page.goBack()
+  await expect(page).toHaveURL(/#f=src\/app\.ts$/)
+  await expect(fileToggle(page, "src/app.ts")).toHaveAttribute("aria-expanded", "true")
+  await expect(fileToggle(page, "notes/removed.md")).toHaveAttribute("aria-expanded", "false")
+})
+
+for (const outcome of ["unchanged files", "failed changes read"]) {
+  test(`focus refresh with ${outcome} preserves a cached visible diff and scroll away from the selected file`, async ({ page }) => {
+    test.setTimeout(60_000)
+    let refreshing = false
+    let releaseRefresh = () => {}
+    const pending = new Promise<void>((resolve) => { releaseRefresh = resolve })
+    const diffReads: string[] = []
+    const delayedDiffs: string[] = []
+    let changesRequested = false
+    await page.route("**/api/diff?*", async (route) => {
+      const file = new URL(route.request().url()).searchParams.get("path") ?? ""
+      diffReads.push(file)
+      if (refreshing) {
+        delayedDiffs.push(file)
+        await pending
+      }
+      await route.continue()
+    })
+    await page.route("**/api/changes?*", async (route) => {
+      if (refreshing) changesRequested = true
+      if (refreshing && outcome === "failed changes read") {
+        await pending
+        return route.fulfill({ status: 500, json: { error: "Focus refresh unavailable" } })
+      }
+      await route.continue()
+    })
+
+    await openSourceControl(page)
+    // A remains selected while the user reads B, several viewports above it.
+    await changeRow(page, "untracked.txt").click()
+    await expect(fileToggle(page, "untracked.txt")).toBeInViewport()
+    await page.waitForTimeout(3_500)
+    const main = page.getByRole("main")
+    const visible = diffLines(page, "change-addition", "src/app.ts").filter({ hasText: "answer = 2" })
+    await fileToggle(page, "src/app.ts").scrollIntoViewIfNeeded()
+    await expect(visible).toBeInViewport()
+    const top = await main.evaluate((element) => element.scrollTop)
+    const reads = diffReads.filter((file) => file === "src/app.ts").length
+    expect(reads).toBeGreaterThan(0)
+
+    // Release B's hook state by scrolling away, then return through cache.
+    await main.evaluate((element) => { element.scrollTop = element.scrollHeight })
+    await expect(reviewFile(page, "src/app.ts").locator(".diff-view")).toHaveCount(0)
+    await main.evaluate((element, position) => { element.scrollTop = position }, top)
+    await expect(visible).toBeInViewport()
+    expect(diffReads.filter((file) => file === "src/app.ts")).toHaveLength(reads)
+    const before = await visible.boundingBox()
+    if (!before) throw new Error("the cached diff has no visible line")
+    await expect(changeRow(page, "untracked.txt")).toHaveAttribute("aria-selected", "true")
+
+    // Expire the focus throttle without changing timer or RAF clocks.
+    await page.clock.setFixedTime(new Date(Date.now() + 60_000))
+    const changesResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/changes")
+    refreshing = true
+    try {
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")))
+      await expect.poll(() => changesRequested).toBe(true)
+      if (outcome === "unchanged files") {
+        await changesResponse
+        await expect.poll(() => delayedDiffs).toContain("src/app.ts")
+      }
+      // Responses are held: cached content must not become a placeholder.
+      await page.waitForTimeout(350)
+      await expect(visible).toBeInViewport()
+      expect(await main.evaluate((element) => element.scrollTop)).toBeCloseTo(top, 0)
+      const during = await visible.boundingBox()
+      if (!during) throw new Error("focus removed the visible diff")
+      expect(during.y).toBeCloseTo(before.y, 0)
+
+      const diffResponse = outcome === "unchanged files"
+        ? page.waitForResponse((response) => {
+          const url = new URL(response.url())
+          return url.pathname === "/api/diff" && url.searchParams.get("path") === "src/app.ts"
+        }) : null
+      releaseRefresh()
+      const refreshedChanges = await changesResponse
+      expect(refreshedChanges.status()).toBe(outcome === "unchanged files" ? 200 : 500)
+      await refreshedChanges.finished()
+      if (diffResponse) await (await diffResponse).finished()
+      await page.waitForTimeout(350)
+      await expect(visible).toBeInViewport()
+      expect(await main.evaluate((element) => element.scrollTop)).toBeCloseTo(top, 0)
+      const after = await visible.boundingBox()
+      if (!after) throw new Error("refresh removed the visible diff")
+      expect(after.y).toBeCloseTo(before.y, 0)
+      await expect(page).toHaveURL(/#f=untracked\.txt$/)
+      await expect(changeRow(page, "untracked.txt")).toHaveAttribute("aria-selected", "true")
+      await expect(page.locator(".status-path")).toHaveText("untracked.txt")
+      if (outcome === "failed changes read") expect(delayedDiffs).toEqual([])
+    } finally {
+      refreshing = false
+      releaseRefresh()
+    }
+  })
+}
 
 test("a layer opens its own commits or everything since the base", async ({ page }) => {
   await openSourceControl(page)
