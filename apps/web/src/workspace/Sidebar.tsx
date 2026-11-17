@@ -40,16 +40,16 @@ interface SidebarProps {
   // unseenWalkthroughs counts walkthroughs published since the view last
   // showed; 0 shows no badge.
   unseenWalkthroughs: number
-  // unseenFeedback counts agent replies this browser has not shown; 0
-  // shows no badge (decision 0120).
-  unseenFeedback: number
+  // openFeedbackThreads counts open threads on the branch selected in
+  // Feedback, regardless of filters or seen replies; 0 shows no badge.
+  openFeedbackThreads: number
   sidebar: SidebarState
 }
 
 // Sidebar groups the VS Code activity bar and its views into one desktop
 // pane; mobile opens it as a modal drawer. All views
 // stay mounted so switching keeps tree, search, and change-list state.
-export function Sidebar({ explorer, feedback, pendingChanges, search, sidebar, sourceControl, unseenFeedback, unseenWalkthroughs, walkthroughs }: SidebarProps) {
+export function Sidebar({ explorer, feedback, openFeedbackThreads, pendingChanges, search, sidebar, sourceControl, unseenWalkthroughs, walkthroughs }: SidebarProps) {
   const { drawer, hidden, mobile, view } = sidebar
   // Only the mobile drawer is a dialog; inline, the element is presentational.
   return (
@@ -59,10 +59,10 @@ export function Sidebar({ explorer, feedback, pendingChanges, search, sidebar, s
       <nav className="activity-bar" aria-label="Views">
         {activities.map((activity) => {
           const count = activity.view === "source-control" ? pendingChanges : activity.view === "walkthroughs" ? unseenWalkthroughs
-            : activity.view === "feedback" ? unseenFeedback : 0
+            : activity.view === "feedback" ? openFeedbackThreads : 0
           const badge = count > 0 ? badgeLabel(count) : ""
-          const noun = activity.view === "source-control" ? "pending change" : activity.view === "feedback" ? "new reply" : "new walkthrough"
-          const nouns = count === 1 ? noun : noun === "new reply" ? "new replies" : `${noun}s`
+          const noun = activity.view === "source-control" ? "pending change" : activity.view === "feedback" ? "open thread" : "new walkthrough"
+          const nouns = count === 1 ? noun : `${noun}s`
           const label = badge ? `${activity.label}, ${count.toLocaleString()} ${nouns}` : activity.label
           return (
             <IconButton key={activity.view} size="bar" className="activity-item" data-view={activity.view}

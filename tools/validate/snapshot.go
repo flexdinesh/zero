@@ -334,7 +334,7 @@ func selected(group, name string) bool {
 	prefixes := map[string][]string{
 		"repo":           {"apps/zero/", "apps/desktop/", "tools/", "packages/contracts/"},
 		"web-static":     {"apps/web/", "packages/contracts/"},
-		"tooling-static": {"scripts/", "tests/"},
+		"tooling-static": {"scripts/", "tests/", "packages/contracts/"},
 		"site-static":    {"apps/site/"},
 		"go":             {"apps/zero/", "tools/", "testdata/", "apps/web/", "packages/contracts/"},
 		"frontend":       {"apps/web/", "testdata/", "packages/contracts/"},
