@@ -364,9 +364,9 @@ func TestWebViewApp(t *testing.T) {
 			pane: document.querySelector('main'),
 		};
 		state.rows = () => Array.from(state.section('b.txt').querySelector('.diff-view')?.shadowRoot?.querySelectorAll('[data-line]') ?? []);
-		state.scrollTo = (path) => {
+		state.scrollTo = (path, offset = 2400) => {
 			const section = state.section(path);
-			state.pane.scrollTop += section.getBoundingClientRect().top - state.pane.getBoundingClientRect().top + 2400;
+			state.pane.scrollTop += section.getBoundingClientRect().top - state.pane.getBoundingClientRect().top + offset;
 		};
 		window.fetch = async (...args) => {
 			const input = args[0];
@@ -385,16 +385,18 @@ func TestWebViewApp(t *testing.T) {
 		} return true`)
 		// Wait past both the 3 s reveal pin and the 2 s focus throttle.
 		time.Sleep(3500 * time.Millisecond)
-		app.eval(`window.__focusReview.scrollTo('b.txt'); return true`)
+		// Load the section at its header before scrolling into its interior; an
+		// unloaded section has no 2400px interior yet.
+		app.eval(`window.__focusReview.scrollTo('b.txt', 0); return true`)
 		app.waitEval("B's first rendered diff", `return window.__focusReview.rows().some((row) => row.textContent.includes('b.txt after'))`)
 		app.eval(`const state = window.__focusReview;
 			state.bReads = state.calls.filter((path) => path === 'b.txt').length;
-			state.scrollTo('c.txt'); return true`)
+			state.scrollTo('c.txt', 0); return true`)
 		app.waitEval("C's rendered diff", `return (window.__focusReview.section('c.txt').querySelector('.diff-view')?.shadowRoot?.querySelectorAll('[data-line]').length ?? 0) > 0`)
-		// The first scroll can clamp against C's unloaded placeholder.
+		// C now has content, so scroll into its interior.
 		app.eval(`window.__focusReview.scrollTo('c.txt'); return true`)
-		app.waitEval("B released outside the viewport", `const state = window.__focusReview;
-			return state.section('b.txt').querySelector('.diff-view') === null
+		app.waitEval("B's rows virtualized outside the viewport", `const state = window.__focusReview;
+			return state.rows().length === 0
 				&& (state.section('c.txt').querySelector('.diff-view')?.shadowRoot?.querySelectorAll('[data-line]').length ?? 0) > 0`)
 		app.eval(`window.__focusReview.scrollTo('b.txt'); return true`)
 		app.waitEval("B rendered from cache", `const state = window.__focusReview;

@@ -59,7 +59,7 @@ import { useDiffOptions } from "./features/source-control/use-diff-options.ts"
 import { useRefs } from "./features/source-control/use-refs.ts"
 import { useReviewViewed } from "./features/source-control/use-review-viewed.ts"
 import { releaseHighlightResources } from "./highlighting/use-highlighted-lines.ts"
-import { releaseReviewDiffs } from "./features/source-control/review-diffs.ts"
+import { releaseDiffResources } from "./features/source-control/diff-resources.ts"
 import { useSourceControlLayout } from "./features/source-control/use-source-control-layout.ts"
 import { filePaths } from "./api/page-data.ts"
 import { isCommitHash } from "./lib/commit-hash.ts"
@@ -600,7 +600,7 @@ export function App({ project }: AppProps) {
   const hasReviewTabs = workspace.tabs.some((tab) => tab.kind === "review")
   // Closing the last review tab frees its workers and caches until the next one.
   useEffect(() => {
-    if (!hasReviewTabs) releaseReviewDiffs()
+    if (!hasReviewTabs) releaseDiffResources()
   }, [hasReviewTabs])
   // Closing the last tab frees the Source highlight worker the same way.
   const hasTabs = workspace.tabs.length > 0
@@ -1008,7 +1008,7 @@ export function App({ project }: AppProps) {
           {narrationPanel}
           <div className="workspace-body">
           <DocumentPane
-            diff={shownReview ? <ReviewDocument key={compareKey(shownReview)} project={project} compare={shownReview}
+            diff={shownReview ? <ReviewDocument key={`${project}\n${compareKey(shownReview)}`} project={project} compare={shownReview}
               name={nameTab(reviewTab(shownReview))} data={reviewData} options={shownDiffOptions} narrow={diffNarrow}
               scrollRoot={main} selection={fragment} expandRequest={expandRequest} treeFiles={treeFiles}
               viewedState={viewed.state} onViewedChange={viewed.mark} onSelectLines={selectReviewLines}

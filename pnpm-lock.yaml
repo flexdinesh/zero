@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  '@pierre/diffs@1.6.1': 260e1fbd1350a079e1ddbb03fb64e5826615a56023b010594c34d6099623d784
+  '@pierre/diffs@1.6.1': c63def03440e3aa4402a24a13a08834f6cb6524515e7b571999ab216ab2503e9
   '@pierre/trees@1.0.0-beta.6': 96dcbfec4f1e9f0d37237a5e4d924b6ec0958a61719906a26b0cf5011033540c
   vocs@2.10.3: 04b3456a826c1d8816be02953d1aacdc1bafd9810461aa7068dccb2c92a74cea
 
@@ -73,7 +73,7 @@ importers:
         version: 5.3.0
       '@pierre/diffs':
         specifier: 1.6.1
-        version: 1.6.1(patch_hash=260e1fbd1350a079e1ddbb03fb64e5826615a56023b010594c34d6099623d784)(@shikijs/themes@4.5.0)(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
+        version: 1.6.1(patch_hash=c63def03440e3aa4402a24a13a08834f6cb6524515e7b571999ab216ab2503e9)(@shikijs/themes@4.5.0)(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
       '@pierre/highlights':
         specifier: 0.2.0
         version: 0.2.0
@@ -5484,7 +5484,7 @@ snapshots:
 
   '@phosphor-icons/core@2.1.1': {}
 
-  '@pierre/diffs@1.6.1(patch_hash=260e1fbd1350a079e1ddbb03fb64e5826615a56023b010594c34d6099623d784)(@shikijs/themes@4.5.0)(react-dom@19.2.1(react@19.2.1))(react@19.2.1)':
+  '@pierre/diffs@1.6.1(patch_hash=c63def03440e3aa4402a24a13a08834f6cb6524515e7b571999ab216ab2503e9)(@shikijs/themes@4.5.0)(react-dom@19.2.1(react@19.2.1))(react@19.2.1)':
     dependencies:
       '@pierre/highlights': 0.2.0
       '@pierre/theme': 2.0.0

@@ -340,6 +340,22 @@ test("review anchors scroll their lines into view and open the unchanged lines t
   await expect(page).toHaveURL(/#f=large\.txt&R312$/)
   await expect(status).toHaveText("Ln 312")
   expect(await pane.evaluate((element) => element.scrollTop)).toBe(before)
+
+  // With no selection left to re-expand the gap, an unchanged focus read
+  // must retain Pierre's expanded layout and the reader's position.
+  await pane.focus()
+  await page.keyboard.press("Escape")
+  await pane.evaluate((element) => element.dispatchEvent(new WheelEvent("wheel")))
+  await page.clock.setFixedTime(new Date(Date.now() + 60_000))
+  const refreshed = page.waitForResponse((response) => {
+    const url = new URL(response.url())
+    return url.pathname === "/api/diff" && url.searchParams.get("path") === "large.txt"
+  })
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")))
+  await (await refreshed).finished()
+  await page.waitForTimeout(250)
+  await expect(gutter(310)).toBeInViewport()
+  expect(await pane.evaluate((element) => element.scrollTop)).toBeCloseTo(before, 0)
 })
 
 test("F7, N and P, and the toolbar step through changes across the review's files", async ({ page }) => {
@@ -1053,9 +1069,9 @@ for (const outcome of ["unchanged files", "failed changes read"]) {
     const reads = diffReads.filter((file) => file === "src/app.ts").length
     expect(reads).toBeGreaterThan(0)
 
-    // Release B's hook state by scrolling away, then return through cache.
+    // Let Pierre virtualize B's rows, then return to its resident renderer.
     await main.evaluate((element) => { element.scrollTop = element.scrollHeight })
-    await expect(reviewFile(page, "src/app.ts").locator(".diff-view")).toHaveCount(0)
+    await expect(reviewFile(page, "src/app.ts").locator("[data-line]")).toHaveCount(0)
     await main.evaluate((element, position) => { element.scrollTop = position }, top)
     await expect(visible).toBeInViewport()
     expect(diffReads.filter((file) => file === "src/app.ts")).toHaveLength(reads)
