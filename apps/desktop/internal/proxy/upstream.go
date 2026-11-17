@@ -178,8 +178,8 @@ func (c *Connections) remote(host string, reread bool) (*Remote, error) {
 	return created, nil
 }
 
-// Drop ends a saved connection's server when its window closes: a sandbox's
-// zero stops.
+// Drop ends a saved connection's requests when its window closes; a sandbox's
+// zero also stops.
 func (c *Connections) Drop(host string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -331,6 +331,9 @@ type Remote struct {
 	base      string
 	transport http.RoundTripper
 	versions  *VersionCheck
+	lifetime  context.Context
+	cancel    context.CancelFunc
+	closeOnce sync.Once
 
 	// versionMu guards checked and refusal: the build check runs once, on
 	// the first page load that reaches the server.
@@ -344,7 +347,8 @@ func newRemote(saved connection.Saved, zero string) (*Remote, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Remote{saved: saved, base: endpoint.BaseURL(), transport: endpoint.RoundTripper()}, nil
+	lifetime, cancel := context.WithCancel(context.Background())
+	return &Remote{saved: saved, base: endpoint.BaseURL(), transport: endpoint.RoundTripper(), lifetime: lifetime, cancel: cancel}, nil
 }
 
 // sameConnection reports a saved connection that has not changed, whenever it
@@ -358,18 +362,55 @@ func sameConnection(a, b connection.Saved) bool {
 func (r *Remote) BaseURL() string { return r.base }
 
 // RoundTripper implements connection.Endpoint: the transport pages use.
-func (r *Remote) RoundTripper() http.RoundTripper { return r.transport }
+func (r *Remote) RoundTripper() http.RoundTripper { return r }
 
-// Close implements Upstream: a sandbox's command ends; a remote server's idle
-// connections close.
+// RoundTrip keeps requests, including their response bodies, within this
+// connection instance. Notifiers share this lifetime with the window's pages.
+func (r *Remote) RoundTrip(request *http.Request) (*http.Response, error) {
+	ctx, cancel := context.WithCancel(request.Context())
+	stop := context.AfterFunc(r.lifetime, cancel)
+	// AfterFunc runs asynchronously, including when Close already happened.
+	if r.lifetime.Err() != nil {
+		cancel()
+	}
+	release := func() {
+		stop()
+		cancel()
+	}
+	response, err := r.transport.RoundTrip(request.Clone(ctx))
+	if err != nil {
+		release()
+		return response, err
+	}
+	// Headers are only the start of a stream. Keep both cancellation paths
+	// until the caller closes the body, and unregister them then.
+	response.Body = &remoteBody{ReadCloser: response.Body, release: release}
+	return response, nil
+}
+
+type remoteBody struct {
+	io.ReadCloser
+	release func()
+}
+
+func (b *remoteBody) Close() error {
+	b.release()
+	return b.ReadCloser.Close()
+}
+
+// Close implements Upstream: active requests end, a sandbox's command stops,
+// and idle transport connections close.
 func (r *Remote) Close() {
-	if closer, ok := r.transport.(io.Closer); ok {
-		_ = closer.Close()
-		return
-	}
-	if closer, ok := r.transport.(interface{ CloseIdleConnections() }); ok {
-		closer.CloseIdleConnections()
-	}
+	r.closeOnce.Do(func() {
+		r.cancel()
+		if closer, ok := r.transport.(io.Closer); ok {
+			_ = closer.Close()
+			return
+		}
+		if closer, ok := r.transport.(interface{ CloseIdleConnections() }); ok {
+			closer.CloseIdleConnections()
+		}
+	})
 }
 
 // versionTimeout bounds the build check's request.
@@ -419,7 +460,7 @@ func (r *Remote) remoteInfo(ctx context.Context) (contract.RemoteInfo, error) {
 		return contract.RemoteInfo{}, err
 	}
 	request.Host = "localhost"
-	response, err := r.transport.RoundTrip(request)
+	response, err := r.RoundTrip(request)
 	if err != nil {
 		return contract.RemoteInfo{}, err
 	}
@@ -440,7 +481,7 @@ func (r *Remote) Send(request *http.Request, body []byte, document bool) (*http.
 	if err != nil {
 		return nil, r.unreachable(err)
 	}
-	response, err := r.transport.RoundTrip(upstream)
+	response, err := r.RoundTrip(upstream)
 	if errors.Is(err, connection.ErrFingerprint) {
 		return nil, &Failure{
 			Status: http.StatusBadGateway,

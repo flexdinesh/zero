@@ -23,16 +23,15 @@ function selectedSearchText(pane: HTMLElement | null): string {
 
 export type OpenSearchMatch = (path: string, match: SearchMatch, focusDocument: boolean) => void
 
-interface SearchSessionOptions {
+export interface SearchSessionOptions {
   documentPane: RefObject<HTMLElement | null>
   openMatch: OpenSearchMatch
   project: string
-  registerOpen(open: (() => void) | null): void
   reveal(): void
 }
 
 // useSearchSession indexes one project's documents; mount one per project.
-export function useSearchSession({ documentPane, openMatch, project, registerOpen, reveal }: SearchSessionOptions) {
+export function useSearchSession({ documentPane, openMatch, project, reveal }: SearchSessionOptions) {
   const input = useRef<HTMLInputElement>(null)
   const handlers = useRef<SearchHandlers | null>(null)
   const controllerRef = useRef<ReturnType<typeof createSearchController> | null>(null)
@@ -99,10 +98,7 @@ export function useSearchSession({ documentPane, openMatch, project, registerOpe
     }
   }, [changeQuery])
 
-  useEffect(() => {
-    registerOpen(controllerRef.current?.open ?? null)
-    return () => registerOpen(null)
-  }, [registerOpen])
+  const show = useCallback(() => controllerRef.current?.open(), [])
 
   const open = useCallback((position: MatchPosition, focusDocument: boolean) => {
     const file = resultsRef.current?.files.find((candidate) => candidate.path === position.path)
@@ -158,7 +154,7 @@ export function useSearchSession({ documentPane, openMatch, project, registerOpe
   const markStale = useCallback((shown: boolean) => handlers.current?.onStale(shown), [])
 
   return {
-    active, changeQuery, clear, collapsed, details, focusInput, input, open, query, results, setActive,
+    active, changeQuery, clear, collapsed, details, focusInput, input, open, query, results, setActive, show,
     setAllCollapsed, setDetails, status, toggleFile,
     refresh: () => handlers.current?.onRefresh(),
     retry: () => handlers.current?.onRetry(),

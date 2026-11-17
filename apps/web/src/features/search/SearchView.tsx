@@ -17,7 +17,7 @@ import { FileIcon } from "../../components/FileIcon.tsx"
 import type { SearchQuery } from "./search-engine.ts"
 import { highlightedParts } from "./search-highlights.ts"
 import { fileRowKey, matchRowKey, resultRows, resultSummary, type ResultRow } from "./search-results.ts"
-import type { SearchSession } from "./use-search-session.ts"
+import { useSearchSessionState } from "./SearchProvider.tsx"
 
 type Toggle = "matchCase" | "wholeWord" | "regex"
 
@@ -45,10 +45,10 @@ interface SearchViewProps {
   onDismiss(): void
   // onLeave moves focus out of the view, to the document.
   onLeave(): void
-  session: SearchSession
 }
 
-export function SearchView({ mobile, onDismiss, onLeave, session }: SearchViewProps) {
+export function SearchView({ mobile, onDismiss, onLeave }: SearchViewProps) {
+  const session = useSearchSessionState()
   const { active, collapsed, details, query, results, status } = session
   const tree = useRef<HTMLDivElement>(null)
   const [focusedKey, setFocusedKey] = useState("")

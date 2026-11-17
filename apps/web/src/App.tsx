@@ -5,7 +5,6 @@ import {
   useSearch,
 } from "@tanstack/react-router"
 import {
-  Activity,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -44,13 +43,11 @@ import {
 } from "./features/source-control/compare.ts"
 import { uncommittedPaths } from "./features/source-control/compare-files.ts"
 import { splitMinimumWidth, stepDiffOptions, type DiffOptions, type DiffStyle } from "./features/source-control/diff-options.ts"
-import { ReviewFilesRail, ReviewFilesSheet } from "./features/source-control/ReviewFilesRail.tsx"
-import { defaultRailWidth } from "./features/source-control/source-control-layout.ts"
+import { ReviewFilesButton, ReviewRail, ReviewSheet } from "./features/source-control/ReviewFilesLayout.tsx"
 import { onBaseBranch } from "./features/source-control/source-control-panes.ts"
 import { useBranchStack } from "./features/source-control/use-branch-stack.ts"
 import { useNarrowElement } from "./lib/use-narrow-element.ts"
 import { useChanges } from "./features/source-control/use-changes.ts"
-import { useCommitFilter } from "./features/source-control/use-commit-filter.ts"
 import { useChangeMarkers } from "./features/source-control/use-change-markers.ts"
 import { markerLine } from "./features/source-control/change-markers.ts"
 import { useCommits } from "./features/source-control/use-commits.ts"
@@ -60,14 +57,14 @@ import { useRefs } from "./features/source-control/use-refs.ts"
 import { useReviewViewed } from "./features/source-control/use-review-viewed.ts"
 import { releaseHighlightResources } from "./highlighting/use-highlighted-lines.ts"
 import { releaseDiffResources } from "./features/source-control/diff-resources.ts"
-import { useSourceControlLayout } from "./features/source-control/use-source-control-layout.ts"
+import { useSourceControlCommands, useSourceControlQuery } from "./features/source-control/SourceControlProvider.tsx"
 import { filePaths } from "./api/page-data.ts"
 import { isCommitHash } from "./lib/commit-hash.ts"
 import {
   documentKey, documentTab, includesTab, reviewTab, tabName, tabSearch, walkthroughTab, welcomeTab, type WorkspaceTab,
 } from "./workspace/workspace-tabs.ts"
-import { EmptyWorkspace } from "./workspace/EmptyWorkspace.tsx"
-import { emptyWorkspace, type EmptyWorkspaceAction } from "./workspace/empty-workspace.ts"
+import { WorkspaceEmptyState } from "./workspace/EmptyWorkspace.tsx"
+import type { EmptyWorkspaceAction, EmptyWorkspaceInput } from "./workspace/empty-workspace.ts"
 import { WelcomeTab } from "./features/welcome/WelcomeTab.tsx"
 import type { WelcomeAction } from "./features/welcome/welcome-model.ts"
 import { SettingsDialog, type OpenSettings } from "./settings/SettingsDialog.tsx"
@@ -105,7 +102,7 @@ import { useProjectMemory } from "./workspace/use-project-memory.ts"
 import { useDesktopCloseTab } from "./workspace/use-desktop-close-tab.ts"
 import { useDesktopOpenFolder } from "./workspace/use-desktop-open-folder.ts"
 import { useDesktopReportProblem } from "./workspace/use-desktop-report-problem.ts"
-import { useSearchSession } from "./features/search/use-search-session.ts"
+import { SearchProvider, type SearchCommands } from "./features/search/SearchProvider.tsx"
 import type { LiveChange } from "./api/events-contract.ts"
 import { liveTargets } from "./features/live-updates/live-updates.ts"
 import { useLiveUpdates } from "./features/live-updates/use-live-updates.ts"
@@ -216,6 +213,7 @@ export function App({ project }: AppProps) {
   const searchWelcome = useSearch({ strict: false, select: (search) => search.welcome === 1 })
   const welcomeRoute = !searchPath && !reviewRoute && !walkthroughRoute && searchWelcome
   const openSearch = useRef<() => void>(() => {})
+  const searchCommands = useRef<SearchCommands | null>(null)
   const openFiles = useRef<() => void>(() => {})
   const openQuickOpen = useRef<(options?: QuickOpenOptions) => void>(() => {})
   const openProjects = useRef<(options?: PickerOpenOptions) => void>(() => {})
@@ -230,8 +228,9 @@ export function App({ project }: AppProps) {
     if (result?.kind === "page") setLastPage(result.page)
   }, [result])
 
-  const registerSearch = useCallback((open: (() => void) | null) => {
-    openSearch.current = open ?? (() => {})
+  const registerSearch = useCallback((commands: SearchCommands | null) => {
+    searchCommands.current = commands
+    openSearch.current = commands?.open ?? (() => {})
   }, [])
   const registerHunkStep = useCallback((step: HunkStep | null) => {
     stepHunk.current = step ?? (() => {})
@@ -323,21 +322,19 @@ export function App({ project }: AppProps) {
   // A live review rereads its compare like an open Source Control view.
   const reviewLive = reviewCompare !== null && isLiveCompare(reviewCompare)
   const changes = useChanges(project, sourceControlActive || reviewCompare?.kind === "working" || welcomeRoute)
-  const sourceControlLayout = useSourceControlLayout(project)
-  const stack = useBranchStack(project, sourceControlActive, sourceControlLayout.base)
+  const sourceControlQuery = useSourceControlQuery()
+  const sourceControlCommands = useSourceControlCommands()
+  const stack = useBranchStack(project, sourceControlActive, sourceControlQuery.base)
   // On the base branch itself, commits list all history (decision 0040).
   const allOnly = onBaseBranch(stack.result?.branch ?? "", stack.result?.base ?? "")
-  const commitFilter = useCommitFilter()
-  const commits = useCommits(project, sourceControlActive || reviewLive, allOnly ? "all" : sourceControlLayout.range,
-    sourceControlLayout.base, commitFilter.applied)
+  const commits = useCommits(project, sourceControlActive || reviewLive, allOnly ? "all" : sourceControlQuery.range,
+    sourceControlQuery.base, sourceControlQuery.filter)
   // showFileHistory filters Commits to a file and reveals them (decision 0114).
-  const { showFileHistory: filterToFile } = commitFilter
-  const { setPaneCollapsed } = sourceControlLayout
+  const { showFileHistory: filterToFile, focusHistory } = sourceControlCommands
   const showFileHistory = useCallback((path: string) => {
     filterToFile(path, !sidebar.mobile)
-    setPaneCollapsed("commits", false)
     revealSidebar("source-control")
-  }, [filterToFile, revealSidebar, setPaneCollapsed, sidebar.mobile])
+  }, [filterToFile, revealSidebar, sidebar.mobile])
   const refs = useRefs(project)
   const chooseProject = useCallback(() => openProjects.current(), [])
   const chooseWorktree = useCallback(() => openProjects.current({ worktrees: true }), [])
@@ -496,14 +493,6 @@ export function App({ project }: AppProps) {
     ? { wt: searchWalkthrough, step: searchStep }
     : {}, [searchStep, searchWalkthrough, walkthroughs.routed])
 
-  // The Commits pane's selection follows an open commit or range review.
-  const [commitSelection, setCommitSelection] = useState<Compare | null>(null)
-  const [followed, setFollowed] = useState("")
-  const reviewKey = reviewCompare ? compareKey(reviewCompare) : ""
-  if (reviewKey !== followed) {
-    setFollowed(reviewKey)
-    if (reviewCompare?.kind === "commit" || reviewCompare?.kind === "range") setCommitSelection(reviewCompare)
-  }
   // The last review stays mounted, hidden, while another tab shows, so
   // returning to it keeps its scroll, open files, selection, and rail without
   // rereading its diffs (decision 0048). hash is its last fragment.
@@ -522,7 +511,6 @@ export function App({ project }: AppProps) {
   // diffs; Uncommitted's files are the sidebar's list.
   const reviewRail = reviewCompare !== null && reviewCompare.kind !== "working"
   const shownRail = shownReview !== null && shownReview.kind !== "working"
-  const [filesSheet, setFilesSheet] = useState(false)
   // Split needs room in the diff area itself, not just the window.
   const diffNarrow = useNarrowElement(main, splitMinimumWidth) || sidebar.mobile
   const diffOptions = useDiffOptions()
@@ -609,7 +597,7 @@ export function App({ project }: AppProps) {
   }, [hasTabs])
   // Branch tabs name the base once Source Control has read it; commit tabs
   // their subject once listed.
-  const defaultBase = commits.branches.get("")?.result?.base || (sourceControlLayout.base ? "" : commits.result?.base) || ""
+  const defaultBase = commits.branches.get("")?.result?.base || (sourceControlQuery.base ? "" : commits.result?.base) || ""
   const listed = commits.result?.commits
   const compareContext = useMemo((): CompareContext => ({
     base: defaultBase,
@@ -641,8 +629,7 @@ export function App({ project }: AppProps) {
         showFileHistory(activeDocument)
         return
       }
-      if (!sidebar.mobile) commitFilter.requestFocus()
-      setPaneCollapsed("commits", false)
+      focusHistory(!sidebar.mobile)
       revealSidebar("source-control")
     }
   })
@@ -694,14 +681,12 @@ export function App({ project }: AppProps) {
   const goToLine = useCallback((line: number) => {
     if (lineTarget) navigateToDocument(lineTarget, lineTargetAt, lineAnchor({ start: line, end: line }))
   }, [lineTarget, lineTargetAt, navigateToDocument])
-  const search = useSearchSession({ documentPane: main, openMatch: openSearchMatch, project, registerOpen: registerSearch, reveal: revealSearch })
   // Live updates reread what each change touches (decision 0050).
   const liveDocument = routedPage?.hasFile && !routedPage.at ? routedPage.selected : ""
   const searchShown = !sidebar.hidden && sidebar.view === "search"
   const { refresh: refreshChanges } = changes
   const { refresh: refreshCommits } = commits
   const { refresh: refreshStack } = stack
-  const { markStale: markSearchStale } = search
   // gitVersion counts git state changes (HEAD may have moved); Source's
   // change markers reread with it.
   const [gitVersion, setGitVersion] = useState(0)
@@ -717,8 +702,8 @@ export function App({ project }: AppProps) {
       refreshStack()
       setGitVersion((version) => version + 1)
     }
-    if (targets.search) markSearchStale(searchShown)
-  }, [liveDocument, markSearchStale, refreshChanges, refreshCommits, refreshStack, reread, rereadFeedback, searchShown])
+    if (targets.search) searchCommands.current?.markStale(searchShown)
+  }, [liveDocument, refreshChanges, refreshCommits, refreshStack, reread, rereadFeedback, searchShown])
   const liveStatus = useLiveUpdates(project, applyLiveChange, rereadFeedback)
   usePresence()
   const notificationStatus = useNotificationSync(project, settings)
@@ -804,15 +789,13 @@ export function App({ project }: AppProps) {
     else if (action === "review-uncommitted") openReview(workingCompare, true)
     else revealSidebar(sidebar.view)
   }
-  const empty = emptyWorkspace({
+  const emptyInput: Omit<EmptyWorkspaceInput, "searchPattern" | "searchFiles"> = {
     view: sidebar.hidden ? "hidden" : sidebar.view,
     mobile: sidebar.mobile,
-    searchPattern: search.query.pattern,
-    searchFiles: search.results?.files.length ?? 0,
     changes: changes.result ? changes.result.files.length : null,
     repository: changes.result?.repository ?? true,
     walkthroughs: walkthroughs.list.result?.length ?? null,
-  })
+  }
 
   function changeDocumentMode(mode: DocumentMode) {
     if (!page.hasFile || !page.selected || mode === documentMode) return
@@ -930,7 +913,7 @@ export function App({ project }: AppProps) {
   }, [windowTitle])
 
   return (
-    <>
+    <SearchProvider documentPane={main} openMatch={openSearchMatch} project={project} registerCommands={registerSearch} reveal={revealSearch}>
       <div className={`navigation-progress${isLoading ? " active" : ""}`} aria-hidden="true" />
       <div className="visually-hidden" role="status" aria-live="polite">
         {isLoading ? "Loading document…" : documentTitle ? `${documentTitle} loaded.` : ""}
@@ -954,17 +937,17 @@ export function App({ project }: AppProps) {
             registerOpen={registerFiles}
           />}
           search={<SearchView mobile={sidebar.mobile} onDismiss={sidebar.dismiss}
-            onLeave={() => main.current?.focus({ preventScroll: true })} session={search} />}
+            onLeave={() => main.current?.focus({ preventScroll: true })} />}
           unseenWalkthroughs={walkthroughs.unseen}
           openFeedbackThreads={feedbackView.openThreadCount}
           feedback={<FeedbackView project={project} branch={page.branch} view={feedbackView} mobile={sidebar.mobile}
             onDismiss={sidebar.dismiss} onOpenThread={openThread} navigate={navigateToHref} />}
           walkthroughs={<WalkthroughsView project={project} session={walkthroughs} context={compareContext} mobile={sidebar.mobile} onPresent={present}
             onDismiss={sidebar.dismiss} />}
-          sourceControl={<SourceControlView changes={changes} commits={commits} commitFilter={commitFilter} stack={stack} layout={sourceControlLayout} refs={refs}
+          sourceControl={<SourceControlView changes={changes} commits={commits} stack={stack} refs={refs}
             working={workingData} workingPath={reviewCompare?.kind === "working" ? currentFile : ""}
-            commitSelection={commitSelection} allOnly={allOnly} mobile={sidebar.mobile}
-            onDismiss={sidebar.dismiss} onSelectCommits={setCommitSelection} onOpenReview={openReview} />}
+            review={reviewCompare} allOnly={allOnly} mobile={sidebar.mobile}
+            onDismiss={sidebar.dismiss} onOpenReview={openReview} />}
         />
         <SidebarResizer />
         <section className="workspace" aria-label="Document workspace">
@@ -992,13 +975,7 @@ export function App({ project }: AppProps) {
                 hasChanges={reviewData?.list.kind === "ready" && reviewData.list.files.length > 0}
                 anyExpanded={anyFileExpanded} onStepHunk={(direction) => stepHunk.current(direction)}
                 onExpandAll={(expand) => setExpandRequest({ expand, id: (expandRequest?.id ?? 0) + 1 })}
-                files={reviewRail ? {
-                  shown: !sidebar.mobile && !sourceControlLayout.railHidden,
-                  onToggle: () => {
-                    if (sidebar.mobile) setFilesSheet(true)
-                    else sourceControlLayout.setRailHidden(!sourceControlLayout.railHidden)
-                  },
-                } : undefined} />
+                files={reviewRail ? <ReviewFilesButton mobile={sidebar.mobile} /> : undefined} />
             ) : <>
               <DocumentModeToggle page={page} mode={documentMode} busyMode={formatPending ? "format" : undefined}
                 onChange={changeDocumentMode} />
@@ -1032,7 +1009,7 @@ export function App({ project }: AppProps) {
               }}
               onAction={runWelcomeAction} onOpenProject={switchProject}
               onStartupSetting={() => openSettings.current("showWelcome")} /> : undefined}
-            empty={<EmptyWorkspace state={empty} viewName={sidebarViewName(sidebar.view)}
+            empty={<WorkspaceEmptyState input={emptyInput} viewName={sidebarViewName(sidebar.view)}
               onAction={runEmptyAction} onWelcome={openWelcome} />}
             sourceAnnotation={sourceAnnotation}
             sourceBlame={inlineBlame.blame}
@@ -1053,21 +1030,15 @@ export function App({ project }: AppProps) {
             sourceNavigation={sourceNavigation}
             view={view}
           />
-          {shownRail && shownReview && !sidebar.mobile && !sourceControlLayout.railHidden && (
-            <Activity mode={reviewCompare ? "visible" : "hidden"}>
-              <ReviewFilesRail data={reviewData} marked={markedPaths} activePath={currentFile} viewed={railViewed} threads={reviewFeedback.counts}
-                hideViewed={sourceControlLayout.railHideViewed} onHideViewedChange={sourceControlLayout.setRailHideViewed} itemHeight={treeRowHeight(false, uiScale(settings))}
-                width={sourceControlLayout.railWidth} onResize={sourceControlLayout.setRailWidth}
-                onResetWidth={() => sourceControlLayout.setRailWidth(defaultRailWidth)}
-                onHide={() => sourceControlLayout.setRailHidden(true)}
-                onOpen={(path, focusDocument) => openReview(shownReview, focusDocument, path)} />
-            </Activity>
+          {shownRail && shownReview && !sidebar.mobile && (
+            <ReviewRail visible={reviewCompare !== null} data={reviewData} marked={markedPaths} activePath={currentFile} viewed={railViewed} threads={reviewFeedback.counts}
+              itemHeight={treeRowHeight(false, uiScale(settings))}
+              onOpen={(path, focusDocument) => openReview(shownReview, focusDocument, path)} />
           )}
           </div>
           {reviewRail && reviewCompare && sidebar.mobile && (
-            <ReviewFilesSheet open={filesSheet} data={reviewData} marked={markedPaths} activePath={currentFile} viewed={railViewed} threads={reviewFeedback.counts}
-              hideViewed={sourceControlLayout.railHideViewed} onHideViewedChange={sourceControlLayout.setRailHideViewed} itemHeight={treeRowHeight(true, uiScale(settings))}
-              onClose={() => setFilesSheet(false)}
+            <ReviewSheet data={reviewData} marked={markedPaths} activePath={currentFile} viewed={railViewed} threads={reviewFeedback.counts}
+              itemHeight={treeRowHeight(true, uiScale(settings))}
               onOpen={(path, focusDocument) => openReview(reviewCompare, focusDocument, path)} />
           )}
         </section>
@@ -1098,6 +1069,6 @@ export function App({ project }: AppProps) {
       <ReportProblemDialog registerOpen={registerReport} />
       <NavigationDialog panel={codeNavigation.panel} onClose={closeNavigation} onOpen={openNavigationResult} />
       <OverlayScrollbars />
-    </>
+    </SearchProvider>
   )
 }

@@ -1,5 +1,6 @@
 import { Menu } from "@base-ui/react/menu"
-import { CheckIcon, ChevronDownIcon, ChevronUpIcon, ChevronsDownUpIcon, ChevronsUpDownIcon, Columns2Icon, PanelRightIcon, Rows2Icon, Settings2Icon } from "lucide-react"
+import { CheckIcon, ChevronDownIcon, ChevronUpIcon, ChevronsDownUpIcon, ChevronsUpDownIcon, Columns2Icon, Rows2Icon, Settings2Icon } from "lucide-react"
+import type { ReactNode } from "react"
 
 import { IconButton } from "../../components/ui/icon-button.tsx"
 import { menuGroupLabelClass, menuItemClass, menuPopupClass, menuPositionerClass, menuSeparatorClass } from "../../components/ui/menu.ts"
@@ -19,7 +20,7 @@ interface DiffToolbarProps {
   onStepHunk(direction: 1 | -1): void
   // files toggles the review's Files rail, or opens its sheet on phones;
   // absent for reviews without one.
-  files?: { shown: boolean; onToggle(): void }
+  files?: ReactNode
 }
 
 const splitUnavailable = "Split view needs a wider window"
@@ -100,10 +101,7 @@ export function DiffToolbar({ anyExpanded, files, hasChanges, narrow, onChange, 
       <IconButton className="diff-open-file" label={anyExpanded ? "Collapse All Files" : "Expand All Files"}
         icon={anyExpanded ? <ChevronsDownUpIcon aria-hidden="true" /> : <ChevronsUpDownIcon aria-hidden="true" />}
         onClick={() => onExpandAll(!anyExpanded)} />
-      {files && (
-        <IconButton label="Files" title={files.shown ? "Hide Files" : "Show Files"} aria-pressed={files.shown}
-          icon={<PanelRightIcon aria-hidden="true" />} onClick={files.onToggle} />
-      )}
+      {files}
     </div>
   )
 }

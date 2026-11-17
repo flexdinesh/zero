@@ -18,6 +18,7 @@
   "include": [
     "src/**/*.ts",
     "src/**/*.tsx",
+    "test-fixtures/**/*.ts",
     "test-fixtures/**/*.tsx",
     "dev-server.ts",
     "dev-server.test.ts",

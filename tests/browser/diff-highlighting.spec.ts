@@ -42,8 +42,8 @@ test("diff rows with bold tokens keep their row height", async ({ page }) => {
     return {
       bold: bold.length > 0,
       heights: [...new Set(lines.map((line) => line.getBoundingClientRect().height))],
-      font: lines.length > 0 ? getComputedStyle(lines[0]).fontFamily.startsWith('"JetBrains Mono Variable"') : false,
+      font: lines.length > 0 ? getComputedStyle(lines[0]).fontFamily.split(",")[0]?.trim().replace(/^"(.*)"$/, "$1") : "",
       ligatures: lines.length > 0 ? getComputedStyle(lines[0]).fontVariantLigatures : "",
     }
-  })).toEqual({ bold: true, heights: [22], font: true, ligatures: "none" })
+  })).toEqual({ bold: true, heights: [22], font: "JetBrains Mono Variable", ligatures: "none" })
 })

@@ -13,7 +13,7 @@ import { uiScale } from "../../settings/settings.ts"
 import { BranchesPane } from "./BranchesPane.tsx"
 import { isFiltered } from "./commit-filter.ts"
 import { CommitsPane } from "./CommitsPane.tsx"
-import { workingCompare, type Compare } from "./compare.ts"
+import { compareKey, workingCompare, type Compare } from "./compare.ts"
 import type { CollapseRequest } from "./FilesTree.tsx"
 import { Pane, PaneSash } from "./Pane.tsx"
 import { paneIds, paneOpen, paneShares, type PaneId } from "./source-control-layout.ts"
@@ -21,31 +21,27 @@ import { commitLanes, refChips } from "./source-control-panes.ts"
 import { UncommittedPane } from "./UncommittedPane.tsx"
 import type { BranchStack } from "./use-branch-stack.ts"
 import type { Changes } from "./use-changes.ts"
-import type { CommitFilterState } from "./use-commit-filter.ts"
 import type { Commits } from "./use-commits.ts"
 import type { CompareData } from "./use-compare-data.ts"
 import type { Refs } from "./use-refs.ts"
-import type { SourceControlLayoutState } from "./use-source-control-layout.ts"
+import { useSourceControlFilter, useSourceControlPanes, useSourceControlQuery } from "./SourceControlProvider.tsx"
 
 interface SourceControlViewProps {
   changes: Changes
   commits: Commits
-  // commitFilter is the Commits filter (decisions 0114, 0129).
-  commitFilter: CommitFilterState
   stack: BranchStack
-  layout: SourceControlLayoutState
   refs: Refs
   // working is the uncommitted changes' list and stats.
   working: CompareData | null
   // workingPath is the current file when the open review is Uncommitted.
   workingPath: string
-  // commitSelection is the selected commit or range.
-  commitSelection: Compare | null
+  // review follows an opened commit/range without clearing a sidebar selection
+  // when a document or another kind of review opens.
+  review: Compare | null
   // allOnly is set when HEAD is the base branch; commits list all history.
   allOnly: boolean
   mobile: boolean
   onDismiss(): void
-  onSelectCommits(compare: Compare): void
   // onOpenReview opens a compare's review tab, at path when given;
   // focusDocument moves focus to it.
   onOpenReview(compare: Compare, focusDocument: boolean, path?: string): void
@@ -58,9 +54,18 @@ const paneLabels: Record<PaneId, string> = { working: "Uncommitted", commits: "C
 // choice wins. On desktop open panes split the height with sashes between
 // them; phones stack them and the view scrolls.
 export function SourceControlView({
-  allOnly, changes, commitFilter, commitSelection, commits, layout, mobile, refs, stack, working, workingPath,
-  onDismiss, onOpenReview, onSelectCommits,
+  allOnly, changes, commits, mobile, refs, review: routedReview, stack, working, workingPath,
+  onDismiss, onOpenReview,
 }: SourceControlViewProps) {
+  const layout = { ...useSourceControlPanes(), ...useSourceControlQuery() }
+  const commitFilter = useSourceControlFilter()
+  const [commitSelection, setCommitSelection] = useState<Compare | null>(null)
+  const [followed, setFollowed] = useState("")
+  const reviewKey = routedReview ? compareKey(routedReview) : ""
+  if (reviewKey !== followed) {
+    setFollowed(reviewKey)
+    if (routedReview?.kind === "commit" || routedReview?.kind === "range") setCommitSelection(routedReview)
+  }
   const scale = uiScale(useSettings().settings)
   const itemHeight = treeRowHeight(mobile, scale)
   const panes = useRef<HTMLDivElement>(null)
@@ -91,7 +96,7 @@ export function SourceControlView({
   }
   const setRange = (range: typeof layout.range) => {
     // A range of commits the other list may not hold is dropped.
-    if (range !== layout.range && commitSelection?.kind === "range") onSelectCommits({ kind: "commit", hash: commitSelection.to })
+    if (range !== layout.range && commitSelection?.kind === "range") setCommitSelection({ kind: "commit", hash: commitSelection.to })
     layout.setRange(range)
   }
   const fileCount = working?.list.kind === "ready" ? working.list.files.length : 0
@@ -140,7 +145,7 @@ export function SourceControlView({
             onClick={() => setRange("all")}>All</SegmentedItem>
         </SegmentedControl>}
         selection={commitSelection} chips={chips} allOnly={allOnly} mobile={mobile}
-        onSelect={onSelectCommits} onOpen={review} onShowAll={() => setRange("all")} />,
+        onSelect={setCommitSelection} onOpen={review} onShowAll={() => setRange("all")} />,
     },
     branches: {
       note: stack.result?.base && <span className="scm-pane-note">base {stack.result.base}</span>,

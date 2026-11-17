@@ -336,6 +336,9 @@ test("review anchors scroll their lines into view and open the unchanged lines t
   // Selecting from the gutter leaves the pane where it is.
   const pane = page.locator("main")
   const before = await pane.evaluate((element) => element.scrollTop)
+  // Moving the gutter utility on hover must retain the reader's position.
+  await gutter(312).hover()
+  expect(await pane.evaluate((element) => element.scrollTop)).toBe(before)
   await gutter(312).click()
   await expect(page).toHaveURL(/#f=large\.txt&R312$/)
   await expect(status).toHaveText("Ln 312")

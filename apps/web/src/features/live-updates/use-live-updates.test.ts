@@ -44,6 +44,7 @@ function harness(start: { visible?: boolean } = {}) {
     },
     status: (value) => { statuses.push(value) },
     change: (value) => { changes.push(value) },
+    subscribed() {},
   }
   return { deps, streams, timers, statuses, changes, state, runTimer: () => { timers.shift()?.() } }
 }
@@ -56,6 +57,45 @@ test("a visible page holds one stream and passes its changes on", () => {
   fake.streams[0]?.handlers.change(edit)
   assert.deepEqual(fake.statuses, [watching])
   assert.deepEqual(fake.changes, [edit])
+})
+
+test("the first stream reconciles a write after the initial read, once", () => {
+  const fake = harness()
+  let stored = 2
+  let shown = stored
+  let reconciliations = 0
+  followLiveUpdates({
+    ...fake.deps,
+    subscribed() {
+      reconciliations++
+      shown = stored
+    },
+  })
+
+  // An external write lands after the read, before the stream subscribes.
+  stored = 1
+  assert.equal(shown, 2)
+  assert.deepEqual(fake.changes, [])
+  fake.streams[0]?.handlers.status(watching)
+  assert.equal(shown, 1)
+  assert.equal(reconciliations, 1)
+  assert.deepEqual(fake.changes, [])
+
+  fake.streams[0]?.handlers.status({ mode: "polling", reason: "watch limit" })
+  assert.equal(reconciliations, 1)
+  assert.deepEqual(fake.changes, [])
+})
+
+test("an initial off status reconciles once and retains focus fallback", () => {
+  const fake = harness()
+  let reconciliations = 0
+  const follower = followLiveUpdates({ ...fake.deps, subscribed() { reconciliations++ } })
+  fake.streams[0]?.handlers.status({ mode: "off", reason: "limit" })
+  assert.equal(reconciliations, 1)
+  follower.focus()
+  assert.deepEqual(fake.changes, [everything])
+  fake.streams[0]?.handlers.status(watching)
+  assert.equal(reconciliations, 1)
 })
 
 test("a stream the browser gave up on is reopened, and rereads what it missed", () => {

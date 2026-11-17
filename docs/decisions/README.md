@@ -160,3 +160,4 @@ rewriting history; update `Status` on the old record.
 | [0157](0157-resident-review-diffs.md) | Resident review diffs | Accepted; amends 0035, 0155; replaces 0034's instance patch |
 | [0158](0158-preview-work-scheduling.md) | Preview fence and Mermaid work scheduling | Accepted; amends 0029, 0025 |
 | [0159](0159-feedback-directory-mutations.md) | Serialize feedback directory mutations | Accepted; amends 0120 |
+| [0160](0160-feature-ui-state-ownership.md) | Feature UI state ownership | Accepted; extends 0020, 0040, 0129 |

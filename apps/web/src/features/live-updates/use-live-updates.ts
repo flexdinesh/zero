@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 
-import { isFeedbackEvent, isLiveChange, isLiveStatus, type FeedbackEvent, type LiveChange, type LiveStatus } from "../../api/events-contract.ts"
+import { isFeedbackEvent, isLiveChange, isLiveStatus, type LiveChange, type LiveStatus } from "../../api/events-contract.ts"
 import { projectUrl } from "../../api/project-url.ts"
 import { everything } from "./live-updates.ts"
 
@@ -30,6 +30,8 @@ export interface LiveDeps {
   schedule(run: () => void, delay: number): () => void
   status(value: LiveStatus): void
   change(value: LiveChange): void
+  // Reconcile data whose initial read can precede the first subscription.
+  subscribed(): void
 }
 
 export interface LiveFollower {
@@ -51,6 +53,7 @@ export function followLiveUpdates(deps: LiveDeps): LiveFollower {
   // following is true while a stream delivers changes.
   let following = false
   let missed = false
+  let initial = true
   let lastReturn = 0
   const returned = () => {
     if (deps.now() - lastReturn < returnThrottle) return
@@ -62,6 +65,10 @@ export function followLiveUpdates(deps: LiveDeps): LiveFollower {
       status(value) {
         following = value.mode !== "off"
         deps.status(value)
+        if (initial) {
+          initial = false
+          deps.subscribed()
+        }
         if (missed) {
           missed = false
           deps.change(everything)
@@ -118,16 +125,17 @@ function eventData(event: Event): unknown {
 }
 
 // useLiveUpdates runs followLiveUpdates for project and calls onChange with
-// each batch, and onFeedback with each feedback announcement (decision
-// 0120). Mount it once per project.
+// each batch. Feedback rereads on announcements and initial subscription:
+// its initial read can precede an announcement the stream cannot replay
+// (decision 0120). Mount it once per project.
 export function useLiveUpdates(project: string, onChange: (change: LiveChange) => void,
-  onFeedback?: (event: FeedbackEvent) => void): LiveStatus | null {
+  refreshFeedback?: () => void): LiveStatus | null {
   const [status, setStatus] = useState<LiveStatus | null>(null)
   const latest = useRef(onChange)
-  const latestFeedback = useRef(onFeedback)
+  const latestFeedback = useRef(refreshFeedback)
   useLayoutEffect(() => {
     latest.current = onChange
-    latestFeedback.current = onFeedback
+    latestFeedback.current = refreshFeedback
   })
 
   useEffect(() => {
@@ -145,7 +153,7 @@ export function useLiveUpdates(project: string, onChange: (change: LiveChange) =
         })
         source.addEventListener("feedback", (event) => {
           const value = eventData(event)
-          if (isFeedbackEvent(value)) latestFeedback.current?.(value)
+          if (isFeedbackEvent(value)) latestFeedback.current?.()
         })
         source.addEventListener("error", () => handlers.error())
         return {
@@ -161,6 +169,7 @@ export function useLiveUpdates(project: string, onChange: (change: LiveChange) =
       },
       status: setStatus,
       change: (change) => latest.current(change),
+      subscribed: () => latestFeedback.current?.(),
     })
     const visibility = () => follower.visibility()
     const focus = () => follower.focus()

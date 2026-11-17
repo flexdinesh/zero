@@ -4,6 +4,9 @@ import { endsWith, fixtureRoot, projectParam, rootParam } from "./fixture-root.t
 
 const at = (...segments: string[]) => [fixtureRoot, ...segments].join("/")
 
+// The mounted workspace can still be reading projects when URL assertions end.
+test.afterEach(async ({ page }) => { await page.unrouteAll({ behavior: "wait" }) })
+
 // The fixture root has no repositories; present some of its folders as
 // discovered projects, so a link without a project has a choice.
 async function mockProjects(page: Page) {

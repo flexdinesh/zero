@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test"
 import { endsWith, rootParam } from "./fixture-root.ts"
 import { apiOrigin } from "./ports.ts"
-import { grantClipboard } from "./clipboard.ts"
+import { grantClipboard, readClipboard } from "./clipboard.ts"
 
 const mermaidCaseCount = 5
 const mermaidDiagramCount = 4
@@ -272,7 +272,7 @@ test("tree folders show folder icons and source shows the characters typed", asy
 
   const line = page.getByRole("textbox", { name: "Go source" }).locator('[data-line="2"] .source-document-line-content')
   await expect(line).toHaveText("package main")
-  expect(await line.evaluate((element) => getComputedStyle(element).fontFamily)).toMatch(/^"JetBrains Mono Variable"/)
+  expect(await line.evaluate((element) => getComputedStyle(element).fontFamily.split(",")[0]?.trim().replace(/^"(.*)"$/, "$1"))).toBe("JetBrains Mono Variable")
   await expect(line).toHaveCSS("font-variant-ligatures", "none")
 })
 
@@ -319,7 +319,8 @@ test("labels and copies fenced code", async ({ page }) => {
   await expect(copy.locator(".code-block-control-language")).toBeHidden()
   await expect(copy.locator(".code-block-control-copy")).toBeVisible()
   await expect(codeBlock.getByRole("status")).toHaveText("Copied")
-  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('"host": "localhost"')
+  const expectedCode = '{\n  "host": "localhost",\n  "port": 8080,\n  "features": ["search", "themes"]\n}\n'
+  await expect.poll(() => readClipboard(page)).toBe(expectedCode)
 })
 
 test("switches document modes and remembers mode per open tab", async ({ page }) => {
