@@ -2,6 +2,10 @@
   margin: 0 var(--space-1);
 }
 
+.document-loading {
+  padding: var(--space-3) var(--space-4);
+}
+
 /* The zoom level keeps its width as the percentage changes. */
 .image-zoom-level {
   min-width: 3.25rem;

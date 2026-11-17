@@ -98,6 +98,7 @@ import { useDocumentFormats } from "./features/documents/use-document-format.ts"
 import { useDelayedFlag } from "./lib/use-delayed-flag.ts"
 import { useDocumentNavigation } from "./features/documents/use-document-navigation.ts"
 import { useDocumentWorkspace } from "./workspace/use-document-workspace.ts"
+import { pendingDocumentPage, usePendingDocument } from "./workspace/use-pending-document.ts"
 import { useImageViewer } from "./features/documents/use-image-viewer.ts"
 import { usePreviewPreference } from "./features/documents/use-preview-preference.ts"
 import { useProjectMemory } from "./workspace/use-project-memory.ts"
@@ -181,6 +182,8 @@ export function App({ project }: AppProps) {
   const routed = useRouterState({ select: (state) => activePageResult(state.matches) })
   const result = routed?.kind === "page" && routed.page.project !== project ? null : routed
   const isLoading = useRouterState({ select: (state) => state.isLoading })
+  const pendingDocument = usePendingDocument(project)
+  const pendingFile = pendingDocument !== null
   const hash = useRouterState({ select: (state) => state.location.hash })
   const lineRange = parseLineAnchor(hash)
   // A review tab routes without a path as /view?review=working,
@@ -188,6 +191,7 @@ export function App({ project }: AppProps) {
   // ?from=<hash>&to=<hash>; its page carries only the tree, and #f=<path>
   // names the current file.
   const searchPath = useSearch({ strict: false, select: (search) => typeof search.path === "string" ? search.path : "" })
+  const searchAt = useSearch({ strict: false, select: (search) => typeof search.at === "string" ? search.at : "" })
   const searchReview = useSearch({ strict: false, select: (search) => search.review === "working" || search.review === "branch" ? search.review : "" })
   const searchBase = useSearch({ strict: false, select: (search) => typeof search.base === "string" ? search.base : "" })
   const searchHead = useSearch({ strict: false, select: (search) => typeof search.head === "string" ? search.head : "" })
@@ -202,7 +206,7 @@ export function App({ project }: AppProps) {
     })
     return compare ? reviewTab(compare) : null
   }, [searchBase, searchCommit, searchFrom, searchHead, searchPath, searchReview, searchTo, searchUncommitted])
-  const reviewCompare = reviewRoute?.kind === "review" ? reviewRoute.compare : null
+  const reviewCompare = !pendingDocument && reviewRoute?.kind === "review" ? reviewRoute.compare : null
   // wt=<id> follows a walkthrough, at step=<n>; without a path or review the
   // route is the walkthrough's own tab (decision 0047).
   const searchWalkthrough = useSearch({ strict: false, select: (search) => routeWalkthrough(search.wt) ?? "" })
@@ -339,23 +343,28 @@ export function App({ project }: AppProps) {
   const chooseWorktree = useCallback(() => openProjects.current({ worktrees: true }), [])
   const chooseFolder = useCallback(() => openProjects.current({ browse: true }), [])
 
-  const page = result?.kind === "page" ? result.page : lastPage ?? emptyPage
+  const documentPending = pendingDocument !== null && (result?.kind !== "page"
+    || result.page.selected !== pendingDocument.path || result.page.at !== pendingDocument.at)
+  const loadedPage = result?.kind === "page" ? result.page : lastPage ?? emptyPage
+  const page = useMemo(() => documentPending && pendingDocument ? pendingDocumentPage(loadedPage, pendingDocument) : loadedPage,
+    [documentPending, loadedPage, pendingDocument])
   const hasData = result?.kind === "page" || lastPage !== null
-  const loadError = result?.kind === "failure" ? result.message : ""
-  const routedPage = result?.kind === "page" ? result.page : null
-  const routedDocument = routedPage?.hasFile ? routedPage.selected : ""
-  const routedAt = routedPage?.hasFile ? routedPage.at : ""
+  const loadError = !documentPending && result?.kind === "failure" ? result.message : ""
+  const routedPage = !documentPending && result?.kind === "page" ? result.page : null
+  const routedDocument = searchPath
+  const routedAt = searchAt
   const routedTab = useMemo(() => routeTab(reviewRoute, routedDocument, routedAt, walkthroughRoute, welcomeRoute),
     [reviewRoute, routedAt, routedDocument, walkthroughRoute, welcomeRoute])
-  const activeDocument = page.hasFile ? page.selected : ""
-  const activeAt = page.hasFile ? page.at : ""
-  const activeTab = useMemo(() => routeTab(reviewRoute, activeDocument, activeAt, walkthroughRoute, welcomeRoute),
-    [activeAt, activeDocument, reviewRoute, walkthroughRoute, welcomeRoute])
+  const activeDocument = pendingDocument?.path ?? routedDocument
+  const activeAt = pendingDocument?.at ?? routedAt
+  const activeTab = useMemo(() => routeTab(pendingFile ? null : reviewRoute, activeDocument, activeAt, walkthroughRoute, welcomeRoute),
+    [activeAt, activeDocument, pendingFile, reviewRoute, walkthroughRoute, welcomeRoute])
   // pageKey keys the document's mode, format, and scroll.
   const pageKey = documentKey(page.selected, page.at)
   // A walkthrough step opens its document or review as the preview tab
   // (decision 0113).
-  const workspace = useDocumentWorkspace(routedTab, searchWalkthrough !== "" && searchStep !== undefined && !walkthroughRoute)
+  const workspace = useDocumentWorkspace(activeTab, pendingDocument?.preview
+    ?? (searchWalkthrough !== "" && searchStep !== undefined && !walkthroughRoute))
   const { setDocumentMode } = workspace
   const previewPreference = usePreviewPreference(project)
   const { settings } = useSettings()
@@ -1032,6 +1041,7 @@ export function App({ project }: AppProps) {
             hasData={hasData}
             image={image}
             isLoading={isLoading}
+            documentPending={documentPending}
             lineSelection={{ path: page.selected, range: lineRange, onChange: selectLines }}
             loadError={loadError}
             main={main}

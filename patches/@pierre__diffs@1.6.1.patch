@@ -1,3 +1,51 @@
+diff --git a/dist/components/Virtualizer.js b/dist/components/Virtualizer.js
+index 4063b992bf7c4958c0d8a305977280ea9a3a7330..cb1f153ace06c0218cbb0df320e230b01569f111 100644
+--- a/dist/components/Virtualizer.js
++++ b/dist/components/Virtualizer.js
+@@ -300,9 +300,10 @@ var Virtualizer = class Virtualizer {
+ 	}
+ 	getScrollAnchor(viewportHeight) {
+ 		const scrollContainer = this.getScrollContainerElement();
++		const containerTop = scrollContainer?.getBoundingClientRect().top ?? 0;
+ 		let bestAnchor;
+ 		for (const [fileElement] of this.visibleInstances.entries()) {
+-			const fileTop = getRelativeBoundingTop(fileElement, scrollContainer);
++			const fileTop = fileElement.getBoundingClientRect().top - containerTop;
+ 			const fileBottom = fileTop + fileElement.offsetHeight;
+ 			let fileOffset;
+ 			let fileTypeOffset;
+@@ -315,14 +316,24 @@ var Virtualizer = class Virtualizer {
+ 			}
+ 			let bestLineIndex;
+ 			let bestLineOffset;
+-			if (fileBottom > 0 && fileTop < viewportHeight) for (const line of fileElement.shadowRoot?.querySelectorAll("[data-line][data-line-index]") ?? []) {
++			// Each content column is ordered vertically, including wrapped rows
++			// and annotations. Split columns must be searched independently.
++			// Find the same first nonnegative row without measuring the entire
++			// overscan buffer or rereading the scroller for every row.
++			if (fileBottom > 0 && fileTop < viewportHeight) for (const column of fileElement.shadowRoot?.querySelectorAll("[data-code] > [data-content]") ?? []) {
++				const lines = column.querySelectorAll("[data-line][data-line-index]");
++				let low = 0;
++				let high = lines.length;
++				while (low < high) {
++					const middle = (low + high) >>> 1;
++					const line = lines[middle];
++					if (line.getBoundingClientRect().top < containerTop) low = middle + 1;
++					else high = middle;
++				}
++				const line = lines[low];
+ 				if (!(line instanceof HTMLElement)) continue;
+-				const lineIndex = line.dataset.lineIndex;
+-				if (lineIndex == null) continue;
+-				const lineOffset = getRelativeBoundingTop(line, scrollContainer);
+-				if (lineOffset < 0) continue;
+-				bestLineIndex = lineIndex;
+-				bestLineOffset = lineOffset;
++				bestLineIndex = line.dataset.lineIndex;
++				bestLineOffset = line.getBoundingClientRect().top - containerTop;
+ 				break;
+ 			}
+ 			if (bestAnchor?.lineOffset != null && bestLineOffset == null) continue;
 diff --git a/dist/react/FileDiff.d.ts b/dist/react/FileDiff.d.ts
 index d149462dc809694e66f38f124e1852878f46f6fe..88f96f46d9cb280b9dbb37cca7562af3833549fc 100644
 --- a/dist/react/FileDiff.d.ts
