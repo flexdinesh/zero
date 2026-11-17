@@ -1,6 +1,7 @@
 import { Activity, type ReactNode, type RefObject } from "react"
 
 import { Button } from "@/components/ui/button"
+import { StatusMessage } from "@/components/ui/notice"
 
 import { BinaryDocument, TooLargeDocument } from "./BinaryDocument.tsx"
 import { FormatErrorNotice, LargeFileNotice, SnapshotNotice } from "./DocumentNotice.tsx"
@@ -16,6 +17,7 @@ import { projectUrl } from "../../api/project-url.ts"
 import { FolderProblem } from "../projects/FolderProblem.tsx"
 import { isFolderProblem } from "../projects/folder-problem.ts"
 import type { ImageViewer } from "./use-image-viewer.ts"
+import { useDelayedFlag } from "../../lib/use-delayed-flag.ts"
 
 interface DocumentPaneProps {
   // diff is a review tab's content, shown instead of the page's file while
@@ -39,6 +41,7 @@ interface DocumentPaneProps {
   hasData: boolean
   image: ImageViewer
   isLoading: boolean
+  documentPending: boolean
   lineSelection: LineSelection
   loadError: string
   main: RefObject<HTMLElement | null>
@@ -60,10 +63,11 @@ function fileName(path: string): string {
 
 export function DocumentPane({
   diff, diffShown = true, empty, hasData, image, isLoading, lineSelection, loadError, main, navigate, onChooseProject, onLeaveProject, page, retry, sourceAnnotation,
-  sourceBlame, sourceChanges, sourceComments, sourceNavigation, view, walkthrough, welcome,
+  sourceBlame, sourceChanges, sourceComments, sourceNavigation, view, walkthrough, welcome, documentPending,
 }: DocumentPaneProps) {
-  const showDiff = Boolean(diff) && diffShown && !loadError && !page.projectUnavailable && !page.error
-  const viewKind = loadError || page.error ? "none" : showDiff ? "diff" : walkthrough ? "walkthrough" : welcome ? "welcome" : view.kind
+  const showLoading = useDelayedFlag(documentPending, 150)
+  const showDiff = !documentPending && Boolean(diff) && diffShown && !loadError && !page.projectUnavailable && !page.error
+  const viewKind = documentPending || loadError || page.error ? "none" : showDiff ? "diff" : walkthrough ? "walkthrough" : welcome ? "welcome" : view.kind
 
   return (
     <main
@@ -76,7 +80,9 @@ export function DocumentPane({
     >
       {/* First, so the diff virtualizer finds it as the pane's content. */}
       {diff && <Activity mode={showDiff ? "visible" : "hidden"}>{diff}</Activity>}
-      {showDiff ? null : loadError ? (
+      {documentPending ? (
+        showLoading ? <StatusMessage className="document-loading">Loading file…</StatusMessage> : null
+      ) : showDiff ? null : loadError ? (
         <div className="error" role="alert">
           <p>{loadError}</p>
           <Button type="button" variant="outline" onClick={retry}>Try again</Button>

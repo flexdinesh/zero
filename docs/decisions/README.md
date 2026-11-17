@@ -154,3 +154,4 @@ rewriting history; update `Status` on the old record.
 | [0151](0151-desktop-app-named-zero.md) | Desktop app named Zero; process names | Accepted; supersedes 0095's and 0118's desktop names; revises 0101's PATH launcher |
 | [0152](0152-persistent-logs-and-problem-reports.md) | Persistent logs and Report a Problem | Accepted; extends 0061, 0080, 0081, 0094 |
 | [0153](0153-links-name-their-project.md) | Links name their project; a link without one asks | Accepted; supersedes 0052's Landing and 0007's landing project; extends 0098, 0127 |
+| [0154](0154-document-tabs-before-content-and-bounded-scroll-anchors.md) | Document tabs before content and bounded scroll anchors | Accepted; extends 0048, 0111 |
