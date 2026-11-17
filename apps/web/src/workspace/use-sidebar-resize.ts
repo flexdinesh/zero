@@ -90,6 +90,7 @@ export function useSidebarResize() {
   function resizeWithKeyboard(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return
     event.preventDefault()
+    if (resizeStart.current) return
     const next = clampWidth(currentWidth.current + (event.key === "ArrowLeft" ? -16 : 16))
     applyWidth(next)
     writeWidth(next)

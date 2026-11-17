@@ -97,7 +97,9 @@ export async function exerciseResizeLifecycle(page: Page, separator: Locator, re
 
   for (const interruption of ["pointercancel", "lostpointercapture", "blur"]) {
     const start = await begin()
+    const before = await size()
     await page.mouse.move(start.x + delta.x, start.y + delta.y)
+    await expect.poll(size).not.toBeCloseTo(before, 1)
     const interruptedSize = await size()
     if (interruption === "blur") await page.evaluate(() => window.dispatchEvent(new Event("blur")))
     else if (interruption === "lostpointercapture") {
