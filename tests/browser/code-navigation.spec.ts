@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test"
-import { grantClipboard } from "./clipboard.ts"
+import { grantClipboard, readClipboard } from "./clipboard.ts"
 
 function source(page: Page, label: string) {
   return page.getByRole("textbox", { name: label })
@@ -113,7 +113,7 @@ for (const modifier of [process.platform === "darwin" ? "Meta" : "Control"]) {
     await expect(greet).not.toHaveClass(/navigation-linking/)
     await expect.poll(readSelection).toBe(selected)
     await page.keyboard.press("ControlOrMeta+c")
-    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(selected)
+    await expect.poll(() => readClipboard(page)).toBe(selected)
   })
 }
 

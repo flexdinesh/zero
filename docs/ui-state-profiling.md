@@ -92,3 +92,32 @@ Final capture IDs: original `8c81b97849c51b2452d4a9b06699050f`, candidate
 `15f5ee28d0305291bda25e5186a1480c`. Raw artifacts and the analysis script are
 retained with task 225's handoff. Existing diff virtualization, workers, bounded
 caches, pointer scheduling, and polling equality are unchanged.
+
+## WebKit compatibility follow-up
+
+The full WebKit run exposed six cases that also failed with the original
+feature source from freshly fetched `origin/main` (`17301dba`). Two font checks
+required Chromium's quoted CSSOM serialization. They now compare the exact
+first family after removing optional quotes. Three clipboard checks used
+`readText()`, which Playwright WebKit cannot grant permission to call. They now
+verify the native clipboard through trusted keyboard paste into a temporary
+textarea, restoring focus and selection afterward. Chromium retains native
+`readText()`. Native Ctrl+C and exact copied text remain covered.
+
+The review-anchor failure was a product bug. Moving over an expanded gutter
+re-appended Pierre's gutter utility to its existing parent. Instrumented native
+hover captured `main.scrollTop` changing from 4033 to 216 synchronously inside
+that `appendChild`, before pointerdown or focus and without a JavaScript scroll
+call. The existing Pierre patch now skips same-parent utility reattachment
+and uses Pierre's existing WebKit rebuild guard during actual utility moves.
+The first guard-only trial fixed hover but exposed the same collapse during
+the selection's real utility move. The original anchor click, URL,
+selection, scroll and refresh assertions remain, with an added hover-position
+assertion. The initial automation-only diagnosis was disproved by native mouse
+input. This guard changes no virtualization, worker or cache policy.
+
+The performance captures above predate this gutter guard and browser-test
+repairs. The hover diagnosis is correctness evidence, not a measured speedup.
+Original-runtime comparison: `8a0198f3945f0e0b6a58d1b65fe35dbd`; synchronous
+mutation diagnosis: `52dec08fc85642f3ea2a6d73ba7d593a`. Traces and logs remain
+in task 225's artifact archive.

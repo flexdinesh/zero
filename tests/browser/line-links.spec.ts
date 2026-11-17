@@ -1,10 +1,6 @@
-import { expect, test, type Page } from "@playwright/test"
+import { expect, test } from "@playwright/test"
 import { fixtureRoot, rootParam } from "./fixture-root.ts"
-import { grantClipboard } from "./clipboard.ts"
-
-function readClipboard(page: Page) {
-  return page.evaluate(() => navigator.clipboard.readText())
-}
+import { grantClipboard, readClipboard } from "./clipboard.ts"
 
 test.beforeEach(async ({ page }) => {
   await grantClipboard(page)
