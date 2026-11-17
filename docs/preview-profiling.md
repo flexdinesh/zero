@@ -58,46 +58,57 @@ and the built Linux desktop app provide separate compatibility coverage.
 ## Recorded comparison
 
 Captured on 2026-11-18 with Chromium 153.0.8010.12. Baseline runtime was
-`17301dbaaf0623f4b54d5cbc5ca150d18426d6de`; candidate was `05821cec` plus
-the stable-chunk revision. The identical harness produced 30 production traces
+`17301dbaaf0623f4b54d5cbc5ca150d18426d6de`; final candidate was
+`f293e39f8767483a70eadec8871661949d1ee00f`. The identical harness produced 30 production traces
 and 30 profiling samples per version. Every diagram resize changed its frame
-from 607px to 435px. Baseline run: `ea815582412e4aa8e400706353a61fc5`.
-Candidate run: `6a9d8edc09790081660eab09cb2becef`.
+from 607px to 435px. Baseline run: `463f1370ac64d68276c372c1b35eeace`.
+Candidate run: `c3e3c4493a21683d628943e7863e574b`.
 
 Values below are medians across ten production samples, with before → after.
 Times are milliseconds. Function-call sums include nested calls.
 
 | Workload | Long tasks >50ms | Longest task | Function calls | Style | Layout | Paint |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 600 small fences | 19 → 8 | 215 → 267 | 355.8 → 447.5 | 739.1 → 691.9 | 247.6 → 233.1 | 83.5 → 118.3 |
-| One large fence | 22 → 20 | 199.5 → 181.5 | 225.7 → 347.3 | 1616.0 → 1615.0 | 563.1 → 522.2 | 63.5 → 67.3 |
-| 12 diagrams | 1.5 → 1.5 | 97.5 → 80 | 218.7 → 175.5 | 133.2 → 132.8 | 31.9 → 26.2 | 25.5 → 24.2 |
+| 600 small fences | 19.5 → 21 | 256.5 → 352 | 387.2 → 726.4 | 792.4 → 1186.9 | 276.4 → 439.5 | 93.7 → 235.0 |
+| One large fence | 22 → 21 | 183.5 → 312.5 | 247.6 → 511.6 | 1534.6 → 2881.4 | 547.4 → 854.1 | 60.8 → 108.7 |
+| 12 diagrams | 2 → 1.5 | 87 → 112.5 | 206.3 → 239.9 | 118.2 → 226.0 | 26.7 → 39.0 | 23.1 → 42.1 |
 
 | Workload, resize window | Function calls | Style | Layout | Paint | Per-sample mouse-move latency p95 |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Small fences | 26.2 → 31.6 | 621.6 → 524.1 | 154.2 → 135.1 | 60.7 → 58.7 | 16.5 → 17.3 |
-| Large fence | 29.3 → 78.8 | 1482.1 → 1454.8 | 405.9 → 313.1 | 54.4 → 46.3 | 17.1 → 20.7 |
-| Diagrams | 50.4 → 26.3 | 105.8 → 104.5 | 9.6 → 9.2 | 16.5 → 15.6 | 15.2 → 15.2 |
+| Small fences | 26.3 → 41.8 | 689.5 → 958.1 | 169.3 → 224.0 | 73.1 → 117.3 | 15.8 → 18.9 |
+| Large fence | 26.2 → 77.1 | 1407.2 → 2550.7 | 377.3 → 497.6 | 51.3 → 69.3 | 20.5 → 21.5 |
+| Diagrams | 45.4 → 35.7 | 89.2 → 189.2 | 9.1 → 15.0 | 15.1 → 28.9 | 14.4 → 16.7 |
 
 Cold and warm samples each contain five runs. React totals come from the
 separate profiling build, not the production traces.
 
 | Workload | Cold long tasks | Warm long tasks | Cold longest task | Warm longest task | Cold React total | Warm React total |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Small fences | 20 → 13 | 18 → 7 | 271 → 304 | 175 → 186 | 187.2 → 193.8 | 146.7 → 149.1 |
-| Large fence | 22 → 20 | 21 → 19 | 200 → 183 | 191 → 162 | 83.9 → 77.2 | 41.9 → 51.8 |
-| Diagrams | 2 → 2 | 1 → 1 | 111 → 105 | 54 → 55 | 135.9 → 153.6 | 111.8 → 98.2 |
+| Small fences | 21 → 22 | 19 → 21 | 268 → 537 | 181 → 342 | 203.0 → 320.0 | 130.5 → 221.2 |
+| Large fence | 22 → 21 | 21 → 20 | 215 → 304 | 173 → 375 | 94.7 → 108.9 | 54.0 → 87.3 |
+| Diagrams | 2 → 2 | 1 → 1 | 100 → 141 | 59 → 83 | 124.8 → 135.6 | 74.2 → 83.1 |
 
-Results are mixed. Diagram resize scripting decreased in this protocol, and
-stable chunks removed the earlier growing-tail layout regression. That rejected
-candidate (`b92a1573f1aa9d6b04df62482c4e0f5d`) had large-fence resize p95
-147.9ms and resize layout 1585.7ms; stable chunks measured 20.7ms and 313.1ms.
-Against the original baseline, large-fence resize latency increased from 17.1ms
-to 20.7ms. Its per-run p95 ranges overlap: 14.2–46.2ms before, 16.0–28.4ms
-after. Small-fence longest tasks increased, with ranges 160–294ms before and
-158–406ms after. These captures do not establish a general startup or React
-speedup. Concurrent desktop validation affected machine load during part of the
-candidate capture; its contribution is not isolated.
+The final sequential captures show higher costs in several metrics. Small-fence
+longest-task ranges were 157–318ms before and 225–610ms after. Large-fence
+per-run resize p95 ranges were 15.2–29.9ms before and 15.6–45.4ms after.
+Diagram resize function-call duration decreased, while its style/layout/paint
+costs increased. Three other browser validation containers were active on the
+host immediately after the candidate capture. This task started no concurrent
+validation during these sequential captures; other work was not isolated.
+Contention is a possible confounder, not a proven explanation for the increases.
+The measurements do not establish an overall responsiveness or React speedup.
+
+Earlier captures remain evidence rather than being replaced by a favorable
+selection. The initial baseline (`ea815582412e4aa8e400706353a61fc5`) and
+contained-block candidate (`6a9d8edc09790081660eab09cb2becef`, before the
+final WebKit boundary correction) measured small-fence long tasks 19 → 8,
+longest tasks 215 → 267ms, large-fence resize p95 17.1 → 20.7ms, and diagram
+resize function calls 50.4 → 26.3ms. That candidate overlapped this task's
+desktop validation. The rejected growing-tail candidate
+(`b92a1573f1aa9d6b04df62482c4e0f5d`) measured large-fence resize p95 147.9ms
+and resize layout 1585.7ms. Stable chunks measured 20.7ms/313.1ms in the earlier
+capture and 21.5ms/497.6ms in the final capture. Results vary with capture load;
+no controlled attribution of the remaining startup costs is claimed.
 
 Behavior checks independently verify exact block heights for LF, CRLF, mixed
 endings and bare CR, live font-size changes, native selection/copy/Find,
