@@ -408,6 +408,7 @@ function ReviewBody({
   // selected file. Refreshes and manual collapse leave the override alone.
   const [openedReveal, setOpenedReveal] = useState({ key: "", request: 0 })
   const revealKey = `${target}#${anchor}`
+  if (!target && openedReveal.key) setOpenedReveal({ key: "", request: 0 })
   if (ready && target && files.some((file) => file.path === target)
     && (openedReveal.key !== revealKey || (request !== 0 && openedReveal.request !== request))) {
     setOpenedReveal({ key: revealKey, request })

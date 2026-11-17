@@ -967,14 +967,51 @@ for (const activation of ["Files rail", "mobile Files sheet", "Uncommitted list"
       await expect(diffLines(page, "change-addition", "src/app.ts").filter({ hasText: "answer = 2" })).toBeInViewport()
       await expect(viewed).toHaveAttribute("aria-pressed", "true")
       await expect(fileToggle(page, "notes/removed.md")).toHaveAttribute("aria-expanded", "false")
+      if (!mobile) {
+        const row = activation === "Uncommitted list" ? changeRow(page, "src/app.ts")
+          : (working ? pane(page, "Uncommitted") : rail(page)).getByRole("treeitem", { name: "app.ts", exact: true })
+        await expect(row).toBeFocused()
+      }
       if (attempt === 1) expect(await page.evaluate(() => window.history.length)).toBe(historyLength)
       if (attempt === 0) {
         await fileToggle(page, "src/app.ts").click()
         await expect(fileToggle(page, "src/app.ts")).toHaveAttribute("aria-expanded", "false")
       }
     }
+    if (!mobile) {
+      const row = activation === "Uncommitted list" ? changeRow(page, "src/app.ts")
+        : (working ? pane(page, "Uncommitted") : rail(page)).getByRole("treeitem", { name: "app.ts", exact: true })
+      for (const key of ["Space", "Enter"]) {
+        await fileToggle(page, "src/app.ts").click()
+        await expect(fileToggle(page, "src/app.ts")).toHaveAttribute("aria-expanded", "false")
+        await row.focus()
+        await row.press(key)
+        await expect(fileToggle(page, "src/app.ts")).toHaveAttribute("aria-expanded", "true")
+        await expect(viewed).toHaveAttribute("aria-pressed", "true")
+        await expect(fileToggle(page, "notes/removed.md")).toHaveAttribute("aria-expanded", "false")
+        await expect(key === "Space" ? row : page.getByRole("main")).toBeFocused()
+      }
+      await fileToggle(page, "src/app.ts").click()
+      await row.dblclick()
+      await expect(fileToggle(page, "src/app.ts")).toHaveAttribute("aria-expanded", "true")
+      await expect(page.getByRole("main")).toBeFocused()
+    }
   })
 }
+
+test("restoring a cleared file fragment reopens its diff and preserves other folds", async ({ page }) => {
+  await openReview(page, "review=working#f=src/app.ts")
+  await expect(fileToggle(page, "src/app.ts")).toHaveAttribute("aria-expanded", "true")
+  await fileToggle(page, "notes/removed.md").click()
+  await fileToggle(page, "src/app.ts").click()
+  await expect(fileToggle(page, "src/app.ts")).toHaveAttribute("aria-expanded", "false")
+  await page.evaluate(() => { location.hash = "" })
+  await expect(page).not.toHaveURL(/#f=/)
+  await page.goBack()
+  await expect(page).toHaveURL(/#f=src\/app\.ts$/)
+  await expect(fileToggle(page, "src/app.ts")).toHaveAttribute("aria-expanded", "true")
+  await expect(fileToggle(page, "notes/removed.md")).toHaveAttribute("aria-expanded", "false")
+})
 
 for (const outcome of ["unchanged files", "failed changes read"]) {
   test(`focus refresh with ${outcome} preserves a cached visible diff and scroll away from the selected file`, async ({ page }) => {
