@@ -11,6 +11,12 @@ export function releaseHighlightResources(): void {
   highlighter.release()
 }
 
+// Fences share the Source worker, including small fences: many small blocks
+// must not collect synchronous tokenization on the main thread.
+export function highlightFence(source: string, language: string, signal: AbortSignal): Promise<string[] | null> {
+  return highlighter.highlight(source, language, signal, "worker")
+}
+
 const noLines: readonly string[] = []
 
 interface Highlighted {

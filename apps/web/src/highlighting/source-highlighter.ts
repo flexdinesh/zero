@@ -39,6 +39,7 @@ export function createSourceHighlighter(createWorker: () => HighlightWorker) {
   function release(): void {
     worker?.removeEventListener("message", onMessage)
     worker?.removeEventListener("error", onError)
+    worker?.removeEventListener("messageerror", onError)
     worker?.terminate()
     worker = undefined
     const released = [...pending.values()]
@@ -62,6 +63,7 @@ export function createSourceHighlighter(createWorker: () => HighlightWorker) {
           worker = createWorker()
           worker.addEventListener("message", onMessage)
           worker.addEventListener("error", onError)
+          worker.addEventListener("messageerror", onError)
         }
         worker.postMessage({ type: "highlight", requestId, source, language })
       } catch {
@@ -72,8 +74,9 @@ export function createSourceHighlighter(createWorker: () => HighlightWorker) {
     })
   }
 
-  async function highlight(source: string, language: string, signal: AbortSignal): Promise<string[] | null> {
-    if (!highlightsOnMainThread(source.length)) return inWorker(source, language, signal)
+  async function highlight(source: string, language: string, signal: AbortSignal, thread: "auto" | "worker" = "auto"): Promise<string[] | null> {
+    if (signal.aborted) return null
+    if (thread === "worker" || !highlightsOnMainThread(source.length)) return inWorker(source, language, signal)
     const highlights = await loadHighlights()
     return highlights && !signal.aborted ? highlightLines(highlights, source, language) : null
   }

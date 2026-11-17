@@ -11,6 +11,10 @@ export const TOKENIZE_MAX_LINE_LENGTH = 1000
 // Languages that mean "no highlighting"; they skip tokenizing.
 const plainLanguages: ReadonlySet<string> = new Set(["", "text", "plain", "plaintext", "txt"])
 
+export function isPlainLanguage(language: string): boolean {
+  return plainLanguages.has(language.toLowerCase())
+}
+
 // Token colors are `var(--color-syntax-<role>, ...)` from SYNTAX_THEME. Each
 // role renders as an `hl-<role>` class, which is shorter than an inline style
 // and keeps file text out of attributes. Unknown roles render unstyled.
@@ -50,7 +54,7 @@ function renderLine(tokens: readonly ThemedToken[], line: string): string {
 // null when the language has no lexer or highlighting fails; callers then
 // show plain text. Syntax recognition never blocks viewing.
 export function highlightLines(highlights: HighlightsModule, source: string, language: string): string[] | null {
-  if (plainLanguages.has(language.toLowerCase()) || !highlights.isSupportedLanguage(language)) return null
+  if (isPlainLanguage(language) || !highlights.isSupportedLanguage(language)) return null
   const lines = splitSourceLines(source)
   let tokens: ThemedToken[][]
   try {

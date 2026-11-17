@@ -32,6 +32,41 @@ test("small text highlights on the main thread without a worker", async () => {
   assert.match(lines?.[0] ?? "", /hl-keyword/)
 })
 
+test("preview fences explicitly use the worker even for small text", async () => {
+  const worker = new FakeWorker()
+  const highlighter = createSourceHighlighter(() => worker)
+  const result = highlighter.highlight("const ready = true;", "javascript", new AbortController().signal, "worker")
+  assert.equal(worker.posted[0]?.source, "const ready = true;")
+  worker.reply({ type: "highlighted", requestId: worker.posted[0]?.requestId, lines: ["highlighted"] })
+  assert.deepEqual(await result, ["highlighted"])
+  highlighter.release()
+})
+
+test("already canceled work never loads or creates a worker", async () => {
+  const controller = new AbortController()
+  controller.abort()
+  const highlighter = createSourceHighlighter(() => { throw new Error("Canceled work must not create a worker") })
+  assert.equal(await highlighter.highlight("small", "javascript", controller.signal, "worker"), null)
+  assert.equal(await highlighter.highlight(large, "javascript", controller.signal), null)
+})
+
+test("an unreadable worker response releases pending work and permits recovery", async () => {
+  const workers: FakeWorker[] = []
+  const highlighter = createSourceHighlighter(() => {
+    const worker = new FakeWorker()
+    workers.push(worker)
+    return worker
+  })
+  const result = highlighter.highlight("const ready = true;", "javascript", new AbortController().signal, "worker")
+  workers[0]?.dispatchEvent(new Event("messageerror"))
+  assert.equal(await result, null)
+  assert.equal(workers[0]?.terminated, true)
+  const retry = highlighter.highlight("const retry = true;", "javascript", new AbortController().signal, "worker")
+  workers[1]?.reply({ type: "highlighted", requestId: workers[1].posted[0]?.requestId, lines: ["retry"] })
+  assert.deepEqual(await retry, ["retry"])
+  highlighter.release()
+})
+
 test("large text goes to one shared worker and replies match requests", async () => {
   const workers: FakeWorker[] = []
   const highlighter = createSourceHighlighter(() => {

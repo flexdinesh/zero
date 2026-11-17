@@ -16,6 +16,12 @@
   display: block;
 }
 
+/* Retain and scale the inline SVG while its next layout waits for quiet. */
+.mermaid-diagram .mermaid-svg svg {
+  max-width: 100%;
+  height: auto;
+}
+
 .mermaid-svg .ondine {
   --ondine-bg: var(--color-surface);
   --ondine-fg: var(--color-text-primary);
