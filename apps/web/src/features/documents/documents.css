@@ -6,6 +6,28 @@
   padding: var(--space-3) var(--space-4);
 }
 
+article pre > .preview-fence-chunks,
+.preview-fence-chunk {
+  display: block;
+}
+
+article pre > .preview-fence-chunks {
+  font: inherit;
+}
+
+.preview-fence-chunk {
+  width: max-content;
+  min-width: 100%;
+  contain: layout style;
+}
+
+/* WebKit includes a final block boundary in native text selection. Keep the
+   final contained chunk inline-level so an unterminated fence stays exact. */
+.preview-fence-chunk:last-child {
+  display: inline-block;
+  vertical-align: top;
+}
+
 /* The zoom level keeps its width as the percentage changes. */
 .image-zoom-level {
   min-width: 3.25rem;

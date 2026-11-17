@@ -1,10 +1,9 @@
-import { type MouseEvent, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { type MouseEvent, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
 
 import { CodeBlockControls } from "./CodeBlockControls.tsx"
-import { loadHighlights } from "../../highlighting/highlights-loader.ts"
 import { MermaidBlock } from "./MermaidBlock.tsx"
-import { highlightLines } from "../../highlighting/syntax-highlight.ts"
+import { createPreviewFence, previewScrollRoot, schedulePreviewFences, type PreviewFence } from "./preview-fences.ts"
 
 interface DiagramPortal {
   host: HTMLDivElement
@@ -15,8 +14,7 @@ interface DiagramPortal {
 interface CodeBlockPortal {
   host: HTMLDivElement
   key: number
-  language: string | null
-  source: string
+  fence: PreviewFence
 }
 
 interface DocumentPreviewProps {
@@ -43,6 +41,11 @@ function fenceLanguage(code: HTMLElement): string | null {
   return languageClass?.slice("language-".length) || null
 }
 
+function PreviewCodeControls({ fence }: { fence: PreviewFence }) {
+  const language = useSyncExternalStore(fence.subscribe, fence.snapshot)
+  return <CodeBlockControls language={language} source={fence.source} />
+}
+
 export function DocumentPreview({ html, navigate }: DocumentPreviewProps) {
   const article = useRef<HTMLElement>(null)
   const [codeBlocks, setCodeBlocks] = useState<CodeBlockPortal[]>([])
@@ -61,7 +64,6 @@ export function DocumentPreview({ html, navigate }: DocumentPreviewProps) {
       restoreBlocks.push(() => host.replaceWith(pre))
       return [{ host, key: index, source: code.textContent ?? "" }]
     })
-    const fences: Array<{ code: HTMLElement; language: string | null; source: string }> = []
     const nextCodeBlocks = [...article.current.querySelectorAll<HTMLElement>("pre > code")].flatMap((code, index) => {
       const pre = code.parentElement
       if (!pre) return []
@@ -73,27 +75,14 @@ export function DocumentPreview({ html, navigate }: DocumentPreviewProps) {
       wrapper.append(pre, host)
       restoreBlocks.push(() => wrapper.replaceWith(pre))
       const source = code.textContent ?? ""
-      fences.push({ code, language: fenceLanguage(code), source })
       // Fences gain a language label once Highlights recognizes it.
-      return [{ host, key: index, language: null, source }]
+      return [{ host, key: index, fence: createPreviewFence(code, fenceLanguage(code), source) }]
     })
     setDiagrams(nextDiagrams)
     setCodeBlocks(nextCodeBlocks)
-    // Fences highlight in the browser (decision 0029); unknown languages and
-    // a failed Highlights load stay escaped plain text.
-    let current = true
-    void loadHighlights().then((highlights) => {
-      if (!current || !highlights) return
-      const labels = fences.map(({ code, language, source }) => {
-        const lines = language ? highlightLines(highlights, source, language) : null
-        if (!lines) return null
-        code.innerHTML = lines.join("\n")
-        return language
-      })
-      setCodeBlocks((blocks) => blocks.map((block, index) => ({ ...block, language: labels[index] ?? null })))
-    })
+    const cancelHighlighting = schedulePreviewFences(nextCodeBlocks.map((block) => block.fence), previewScrollRoot(article.current))
     return () => {
-      current = false
+      cancelHighlighting()
       for (const restore of restoreBlocks) restore()
     }
   }, [html])
@@ -111,8 +100,8 @@ export function DocumentPreview({ html, navigate }: DocumentPreviewProps) {
         }}
       />
       {diagrams.map(({ host, key, source }) => createPortal(<MermaidBlock source={source} />, host, key))}
-      {codeBlocks.map(({ host, key, language, source }) => (
-        createPortal(<CodeBlockControls language={language} source={source} />, host, key)
+      {codeBlocks.map(({ host, key, fence }) => (
+        createPortal(<PreviewCodeControls fence={fence} />, host, key)
       ))}
     </>
   )

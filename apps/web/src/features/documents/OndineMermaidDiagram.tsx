@@ -17,9 +17,14 @@ import {
   type DiagramView,
 } from "./diagram.ts"
 import { MermaidSource } from "./MermaidSource.tsx"
+import { createMermaidWidthScheduler, scheduleMermaidTask } from "./mermaid-scheduler.ts"
 import { loadOndineRenderer, type OndineRenderer } from "./ondine-renderer.ts"
 
 type RenderedDiagram = { error: string } | { diagram: Render.render.ReturnType }
+interface DiagramResult {
+  source: string
+  rendered: RenderedDiagram
+}
 
 function renderDiagram(renderer: OndineRenderer, source: string, options: Render.render.Options): RenderedDiagram {
   try {
@@ -55,31 +60,46 @@ export default function OndineMermaidDiagram({ source }: { source: string }) {
   const renderer = use(loadOndineRenderer())
   const idPrefix = `mermaid-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`
   const frame = useRef<HTMLDivElement>(null)
-  const [width, setWidth] = useState<number | null>(null)
+  const [inlineResult, setInlineResult] = useState<DiagramResult | null>(null)
+  const [expandedResult, setExpandedResult] = useState<DiagramResult | null>(null)
   const [expanded, setExpanded] = useState(false)
 
   useLayoutEffect(() => {
     const element = frame.current
     if (!element) return undefined
-    const measure = () => setWidth(Math.round(element.getBoundingClientRect().width))
+    const scheduler = createMermaidWidthScheduler((width) => {
+      setInlineResult({ source, rendered: renderDiagram(renderer, source, { idPrefix, maxWidth: width, padding: 16 }) })
+    })
+    const measure = () => scheduler.resize(element.getBoundingClientRect().width)
     measure()
     if (typeof ResizeObserver === "undefined") {
       window.addEventListener("resize", measure)
-      return () => window.removeEventListener("resize", measure)
+      return () => {
+        window.removeEventListener("resize", measure)
+        scheduler.dispose()
+      }
     }
     const observer = new ResizeObserver(measure)
     observer.observe(element)
-    return () => observer.disconnect()
-  }, [])
+    return () => {
+      observer.disconnect()
+      scheduler.dispose()
+    }
+  }, [idPrefix, renderer, source])
 
-  const rendered = useMemo(
-    () => width === null ? null : renderDiagram(renderer, source, { idPrefix, maxWidth: width, padding: 16 }),
-    [idPrefix, renderer, source, width],
-  )
-  const expandedDiagram = useMemo(
-    () => expanded ? renderDiagram(renderer, source, { autoDirection: false, idPrefix: `${idPrefix}-expanded`, padding: 16 }) : null,
-    [expanded, idPrefix, renderer, source],
-  )
+  useLayoutEffect(() => {
+    if (!expanded) return undefined
+    return scheduleMermaidTask(() => {
+      setExpandedResult({ source, rendered: renderDiagram(renderer, source, { autoDirection: false, idPrefix: `${idPrefix}-expanded`, padding: 16 }) })
+    })
+  }, [expanded, idPrefix, renderer, source])
+
+  const rendered = inlineResult?.source === source ? inlineResult.rendered : null
+  const expandedDiagram = expanded && expandedResult?.source === source ? expandedResult.rendered : null
+  const closeExpanded = () => {
+    setExpanded(false)
+    setExpandedResult(null)
+  }
 
   return (
     <div ref={frame} className="mermaid-frame">
@@ -99,7 +119,7 @@ export default function OndineMermaidDiagram({ source }: { source: string }) {
       )}
       {/* The dialog renders outside the article so prose styles stay off its chrome. */}
       {expandedDiagram !== null && "diagram" in expandedDiagram && createPortal(
-        <MermaidDiagramDialog diagram={expandedDiagram.diagram} onClose={() => setExpanded(false)} />,
+        <MermaidDiagramDialog diagram={expandedDiagram.diagram} onClose={closeExpanded} />,
         document.body,
       )}
     </div>
