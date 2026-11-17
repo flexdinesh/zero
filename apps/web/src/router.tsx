@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-router"
 
 import { App } from "./App.tsx"
+import { SourceControlProvider } from "./features/source-control/SourceControlProvider.tsx"
 import { isAbort } from "./api/http.ts"
 import { loadPage } from "./api/page-data.ts"
 import { parseDiffLineAnchor } from "./features/source-control/diff-line-selection.ts"
@@ -96,7 +97,7 @@ function RoutedApp() {
   // The index route without a project asks which to open (decision 0153).
   const asking = useRouterState({ select: (state) => state.matches.some((match) => match.routeId === indexRoute.id && isChoosing(match.loaderData)) })
   if (asking) return <ChooseProject />
-  return <App key={project} project={project} />
+  return <SourceControlProvider key={project} project={project}><App project={project} /></SourceControlProvider>
 }
 
 const rootRoute = createRootRoute({

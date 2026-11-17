@@ -6,7 +6,7 @@ import { ThemeProvider } from "../src/settings/ThemeProvider.tsx"
 import { DocumentPreview } from "../src/features/documents/DocumentPreview.tsx"
 import type { SearchMatch } from "../src/features/search/search-engine.ts"
 import { SearchView } from "../src/features/search/SearchView.tsx"
-import { useSearchSession } from "../src/features/search/use-search-session.ts"
+import { SearchProvider, type SearchCommands } from "../src/features/search/SearchProvider.tsx"
 import { StatusBar } from "../src/workspace/StatusBar.tsx"
 import { emptyPage } from "../src/api/page-data.ts"
 import "../src/style.css"
@@ -27,10 +27,9 @@ function LifecycleFixture() {
   const openMatch = useCallback((path: string, match: SearchMatch) => {
     setNavigation(`${navigationPrefix}:${path}:${match.line}`)
   }, [navigationPrefix])
-  const registerOpen = useCallback((open: (() => void) | null) => { openSearch.current = open }, [])
-  const session = useSearchSession({ documentPane: pane, openMatch, project, registerOpen, reveal: () => {} })
+  const registerCommands = useCallback((commands: SearchCommands | null) => { openSearch.current = commands?.open ?? null }, [])
   return (
-    <>
+    <SearchProvider documentPane={pane} openMatch={openMatch} project={project} registerCommands={registerCommands} reveal={() => {}}>
       <Button variant="outline" onClick={() => setHTML(replacementHTML)}>Update Markdown</Button>
       <Button variant="outline" onClick={() => setVisible((current) => !current)}>Toggle document</Button>
       <Button variant="outline" onClick={() => setNavigationPrefix("updated")}>Update navigation</Button>
@@ -38,8 +37,8 @@ function LifecycleFixture() {
       <output aria-label="Navigation">{navigation}</output>
       {visible && <DocumentPreview html={html} navigate={() => {}} />}
       {visible && <StatusBar isLoading={false} error="" page={emptyPage} onSearch={() => openSearch.current?.()} onSettings={() => {}} />}
-      <SearchView mobile={false} onDismiss={() => {}} onLeave={() => {}} session={session} />
-    </>
+      <SearchView mobile={false} onDismiss={() => {}} onLeave={() => {}} />
+    </SearchProvider>
   )
 }
 

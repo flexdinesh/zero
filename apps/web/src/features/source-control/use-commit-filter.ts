@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { appliedFilter, emptyFilter, fileHistory, type CommitFilter, type HistoryFilter } from "./commit-filter.ts"
 
@@ -40,7 +40,10 @@ export function useCommitFilter() {
     if (focus) requestFocus()
   }, [requestFocus, update])
 
-  return { filter, applied, focusPending, setQuery, clearPath, clear, showFileHistory, requestFocus, focused }
+  // The feature provider also owns independent layout state. Retain this
+  // subscription value when only a pane or the review rail changes.
+  return useMemo(() => ({ filter, applied, focusPending, setQuery, clearPath, clear, showFileHistory, requestFocus, focused }),
+    [filter, applied, focusPending, setQuery, clearPath, clear, showFileHistory, requestFocus, focused])
 }
 
 export type CommitFilterState = ReturnType<typeof useCommitFilter>

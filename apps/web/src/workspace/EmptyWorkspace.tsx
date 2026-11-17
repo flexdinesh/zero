@@ -1,6 +1,7 @@
 import { Button } from "../components/ui/button.tsx"
 import { Kbd } from "../components/ui/kbd.tsx"
-import type { EmptyWorkspace as EmptyWorkspaceState, EmptyWorkspaceAction } from "./empty-workspace.ts"
+import { useSearchSummary } from "../features/search/SearchProvider.tsx"
+import { emptyWorkspace, type EmptyWorkspace as EmptyWorkspaceState, type EmptyWorkspaceAction, type EmptyWorkspaceInput } from "./empty-workspace.ts"
 
 const mac = typeof navigator !== "undefined" && navigator.platform.includes("Mac")
 
@@ -19,6 +20,15 @@ interface EmptyWorkspaceProps {
   viewName: string
   onAction(action: EmptyWorkspaceAction): void
   onWelcome(): void
+}
+
+// This leaf is mounted only when the pane has no document. Search updates
+// its contextual hint without invalidating the document workspace.
+export function WorkspaceEmptyState({ input, ...props }: Omit<EmptyWorkspaceProps, "state"> & {
+  input: Omit<EmptyWorkspaceInput, "searchPattern" | "searchFiles">
+}) {
+  const summary = useSearchSummary()
+  return <EmptyWorkspace {...props} state={emptyWorkspace({ ...input, ...summary })} />
 }
 
 // EmptyWorkspace fills the document pane while no tab is open, naming what
