@@ -6,6 +6,21 @@
   padding: var(--space-3) var(--space-4);
 }
 
+article pre > .preview-fence-chunks,
+.preview-fence-chunk {
+  display: block;
+}
+
+article pre > .preview-fence-chunks {
+  font: inherit;
+}
+
+.preview-fence-chunk {
+  width: max-content;
+  min-width: 100%;
+  contain: layout style;
+}
+
 /* The zoom level keeps its width as the percentage changes. */
 .image-zoom-level {
   min-width: 3.25rem;

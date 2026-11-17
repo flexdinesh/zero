@@ -16,9 +16,20 @@ const queue = '<h1>Queued fences</h1><section aria-label="First fence" style="po
 const plain = '<h1>Plain fences</h1><pre><code>unlabeled &lt;source&gt;\n</code></pre><pre><code class="language-text">text &lt;source&gt;\n</code></pre><pre><code class="language-plain">plain &lt;source&gt;\n</code></pre><pre><code class="language-plaintext">plaintext &lt;source&gt;\n</code></pre><pre><code class="language-txt">txt &lt;source&gt;\n</code></pre>'
 // Enough horizontal content to require a different layout at the final width.
 const mermaid = '<h1>Responsive diagram</h1><pre><code class="language-mermaid">flowchart LR\nA[Read the original source] --> B[Prepare the preview] --> C[Schedule the compiler] --> D[Render the diagram] --> E[Review the final result]\n</code></pre>'
+const params = new URLSearchParams(window.location.search)
+const endings = params.get("ending") === "mixed" ? ["\n", "\r\n", "\r"] : [params.get("ending") === "crlf" ? "\r\n" : params.get("ending") === "cr" ? "\r" : "\n"]
+const chunkSource = Array.from({ length: 325 }, (_, index) => {
+  const row = [99, 100, 199, 200, 323].includes(index) ? "" : index === 175
+    ? `const wide = "${"wide ".repeat(300)}";`
+    : `const row${index} = "<row & ${index}>"; // café 中文`
+  const ending = index === 324 && params.get("final") === "no" ? "" : endings[index % endings.length] ?? "\n"
+  return row + ending
+}).join("")
+// Character references keep CR/CRLF intact through the initial HTML parser.
+const chunks = `<h1>Chunked preview</h1><pre><code class="language-javascript">${chunkSource.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("\r", "&#13;")}</code></pre><p><a href="/view?path=next.md">Next document</a></p>`
 
 function PreviewSchedulingFixture() {
-  const [html, setHTML] = useState(mode === "queue" ? queue : mode === "plain" ? plain : mode === "mermaid" ? mermaid : original)
+  const [html, setHTML] = useState(mode === "queue" ? queue : mode === "plain" ? plain : mode === "mermaid" ? mermaid : mode === "chunks" ? chunks : original)
   const [visible, setVisible] = useState(true)
   const [navigation, setNavigation] = useState("")
 

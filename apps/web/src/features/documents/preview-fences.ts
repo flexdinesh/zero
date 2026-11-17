@@ -22,53 +22,95 @@ export function createPreviewFence(code: HTMLElement, language: string | null, s
 
 export type PreviewFence = ReturnType<typeof createPreviewFence>
 
-// A row is indivisible; an unusually long plain row may exceed the markup
-// target. Highlights already bounds tokenization per line (decision 0029).
-export function fenceHighlightBatch(lines: readonly string[], start: number): { html: string; next: number } {
-  let html = ""
-  let next = start
-  while (next < lines.length && next - start < 100) {
-    const line = lines[next] ?? ""
-    if (next > start && html.length + line.length + 1 > 16_384) break
-    html += `${next > start ? "\n" : ""}${line}`
-    next++
+// Partition at visual newline boundaries, using the worker's markup budget. All
+// chunks retain their original line endings, including a final missing newline.
+// A row is indivisible; one unusually long row may exceed the markup target.
+export function fenceHighlightChunks(source: string, lines: readonly string[]): Array<{ source: string; html: string }> | null {
+  const rows = source.match(/[^\r\n]*(?:\r\n|\r|\n|$)/g) ?? []
+  if (rows.length > 1 && rows.at(-1) === "") rows.pop()
+  if (rows.length !== lines.length || lines.length === 0) return null
+  const chunks: Array<{ source: string; html: string }> = []
+  let chunk = { source: "", html: "" }
+  let count = 0
+  for (const [index, line] of lines.entries()) {
+    const row = rows[index] ?? ""
+    const ending = /(?:\r\n|\r|\n)$/.exec(row)?.[0] ?? ""
+    // HTML parsing normalizes literal CRs. Character references preserve them.
+    const html = line + ending.replaceAll("\r", "&#13;")
+    // A bare CR is source data, not a visual break in preformatted DOM text.
+    // Keep those worker rows together rather than introducing block breaks.
+    if (chunk.source.endsWith("\n") && (count >= 100 || chunk.html.length + html.length > 16_384)) {
+      chunks.push(chunk)
+      chunk = { source: "", html: "" }
+      count = 0
+    }
+    chunk.source += row
+    chunk.html += html
+    count++
   }
-  return { html, next }
+  chunks.push(chunk)
+  return chunks
 }
 
 function applyHighlight(fence: PreviewFence, lines: readonly string[], signal: AbortSignal): Promise<boolean> {
+  const chunks = fenceHighlightChunks(fence.source, lines)
+  if (!chunks || signal.aborted) return Promise.resolve(false)
   return new Promise((resolve) => {
     let frame = 0
     let offset = 0
-    // Keep the unprocessed source in one text node throughout progressive
-    // replacement. Copy and browser Find always see the complete text.
-    let plain = document.createTextNode(fence.source)
+    let elements: HTMLElement[] | undefined
     const finish = (complete: boolean) => {
       cancelAnimationFrame(frame)
       signal.removeEventListener("abort", onAbort)
+      document.removeEventListener("selectionchange", onSelectionChange)
       resolve(complete)
     }
     const onAbort = () => finish(false)
+    const onSelectionChange = () => {
+      document.removeEventListener("selectionchange", onSelectionChange)
+      frame = requestAnimationFrame(apply)
+    }
     const apply = () => {
       if (signal.aborted) { finish(false); return }
-      const batch = fenceHighlightBatch(lines, offset)
+      // Replacing selected text nodes collapses native selection and Find
+      // ranges. Leave them intact until the user moves or clears the range.
+      const selection = window.getSelection()
+      if (selection && !selection.isCollapsed && Array.from({ length: selection.rangeCount }, (_, index) => selection.getRangeAt(index)).some((range) => range.intersectsNode(fence.code))) {
+        document.addEventListener("selectionchange", onSelectionChange)
+        return
+      }
+      if (!elements) {
+        elements = chunks.map((chunk) => {
+          const element = document.createElement("span")
+          element.className = "preview-fence-chunk"
+          const text = document.createElement("span")
+          text.className = "preview-fence-chunk-text"
+          text.textContent = chunk.source
+          element.append(text)
+          return text
+        })
+        // Every byte remains present throughout highlighting. Stable block
+        // boundaries contain layout work within the chunk being replaced.
+        // Outer chunks retain the pre's line-box strut; inner inline spans
+        // retain the original code typography, including live font changes.
+        fence.code.classList.add("preview-fence-chunks")
+        fence.code.replaceChildren(...elements.flatMap((element) => element.parentElement ? [element.parentElement] : []))
+        frame = requestAnimationFrame(apply)
+        return
+      }
+      const chunk = chunks[offset]
+      const element = elements[offset]
+      if (!chunk || !element) { finish(false); return }
       const template = document.createElement("template")
-      template.innerHTML = batch.html + (batch.next < lines.length || fence.source.endsWith("\n") ? "\n" : "")
+      template.innerHTML = chunk.html
       const text = template.content.textContent ?? ""
       // Never let malformed output change the source's spelling or line breaks.
-      if (!plain.data.startsWith(text)) { finish(false); return }
-      const remaining = plain.splitText(text.length)
-      plain.replaceWith(template.content)
-      plain = remaining
-      offset = batch.next
-      if (offset === lines.length) {
-        const complete = plain.length === 0
-        if (complete) plain.remove()
-        finish(complete)
-      } else frame = requestAnimationFrame(apply)
+      if (text !== chunk.source) { finish(false); return }
+      element.replaceChildren(template.content)
+      offset++
+      if (offset === chunks.length) finish(true)
+      else frame = requestAnimationFrame(apply)
     }
-    if (signal.aborted || lines.length === 0) { resolve(false); return }
-    fence.code.replaceChildren(plain)
     signal.addEventListener("abort", onAbort, { once: true })
     frame = requestAnimationFrame(apply)
   })
