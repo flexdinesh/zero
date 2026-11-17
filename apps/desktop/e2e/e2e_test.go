@@ -351,6 +351,9 @@ func TestWebViewApp(t *testing.T) {
 		defer func() {
 			app.eval(`location.href = "/view?project=" + encodeURIComponent(` + strconv.Quote(w.project) + `) + "&path=README.md"; return true`)
 			app.waitEval("the original project after the review", `return new URLSearchParams(location.search).get('project') === `+strconv.Quote(w.project)+` && document.body.innerText.includes('A paragraph.')`)
+			if got := app.eval(`return (await fetch('/api/roots?path=' + encodeURIComponent(` + strconv.Quote(project) + `), {method: 'DELETE'})).ok`); got != true {
+				t.Error("could not remove the review fixture root")
+			}
 		}()
 		app.eval(`location.href = "/view?project=" + encodeURIComponent(` + strconv.Quote(project) + `) + "&review=working#f=a.txt"; return true`)
 		app.waitEval("A's rendered review", `return (document.querySelector('[data-review-path="a.txt"] .diff-view')?.shadowRoot?.querySelectorAll('[data-line]').length ?? 0) > 0
