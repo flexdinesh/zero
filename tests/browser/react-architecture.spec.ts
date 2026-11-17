@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test"
 import { rootParam } from "./fixture-root.ts"
 
 import { apiOrigin } from "./ports.ts"
+import { dragWithoutSelection, exerciseResizeLifecycle, resizeBox, selectContent } from "./resize.ts"
 
 for (const entry of [
   { name: "embedded binary", url: `${apiOrigin}/` },
@@ -164,17 +165,32 @@ test("search keeps its session while callbacks change", async ({ page }) => {
   expect(indexRequests).toBe(1)
 })
 
-test("sidebar pointer resize clamps and double click resets width", async ({ page }) => {
-  await page.goto("/")
+test("sidebar pointer resize crosses source without selecting; keyboard and double click still work", async ({ page }) => {
+  await page.goto("/view?path=guides%2Fgetting-started.md")
+  await page.getByRole("button", { name: "Source", exact: true }).click()
+  const content = page.getByRole("textbox", { name: "Markdown source" }).locator('[data-line="3"] .source-document-line-content')
+  await expect(content).toContainText("Use this guide")
   const separator = page.getByRole("separator", { name: "Resize file tree" })
-  const bounds = await separator.boundingBox()
-  if (!bounds) throw new Error("Sidebar separator not found")
-  await page.mouse.move(bounds.x, bounds.y + 50)
-  await page.mouse.down()
-  await page.mouse.move(bounds.x + 500, bounds.y + 50)
-  await page.mouse.up()
+  const before = await resizeBox(page.getByRole("main"))
+  const line = await resizeBox(content)
+  await dragWithoutSelection(page, separator, { x: 500, y: 0 }, line.y + line.height / 2)
   await expect(separator).toHaveAttribute("aria-valuenow", "480")
+  expect((await resizeBox(page.getByRole("main"))).x - before.x).toBeCloseTo(192, 0)
+  await selectContent(page, content)
   await separator.dblclick()
   await expect(separator).toHaveAttribute("aria-valuenow", "288")
+  await separator.press("ArrowRight")
+  await expect(separator).toHaveAttribute("aria-valuenow", "304")
+  await separator.press("ArrowLeft")
+  await expect(separator).toHaveAttribute("aria-valuenow", "288")
   expect(await page.evaluate(() => localStorage.getItem("zero-sidebar-width"))).toBe("288")
+})
+
+test("sidebar resize ignores other pointers and recovers after cancel, lost capture, and blur", async ({ page }) => {
+  await page.goto("/view?path=guides%2Fgetting-started.md")
+  await page.getByRole("button", { name: "Source", exact: true }).click()
+  const content = page.getByRole("textbox", { name: "Markdown source" }).locator('[data-line="3"] .source-document-line-content')
+  await expect(content).toContainText("Use this guide")
+  await exerciseResizeLifecycle(page, page.getByRole("separator", { name: "Resize file tree" }),
+    page.getByRole("complementary", { name: "Files", exact: true }), "x", content)
 })

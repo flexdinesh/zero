@@ -138,6 +138,8 @@
   z-index: var(--z-raised);
   cursor: row-resize;
   touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .scm-sash::after {
@@ -775,6 +777,8 @@
   z-index: var(--z-raised);
   cursor: col-resize;
   touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 /* The accent line runs the rail's full height over its hairline. */

@@ -10,6 +10,7 @@ import {
 } from "./git-fixture.ts"
 import { gitApiOrigin } from "./ports.ts"
 import { grantClipboard } from "./clipboard.ts"
+import { dragWithoutSelection, exerciseResizeLifecycle, resizeBox, selectContent } from "./resize.ts"
 
 // The fixture repository is built by the git server's webServer command.
 test.skip(() => !existsSync(path.join(gitFixtureRoot, ".git")), "git is not installed")
@@ -106,6 +107,76 @@ function reviewSearch(page: Page): Record<string, string> {
   params.delete("project")
   return Object.fromEntries(params)
 }
+
+for (const [above, below] of [["Uncommitted", "Commits"], ["Commits", "Branches"]] satisfies [PaneTitle, PaneTitle][]) {
+  test(`Source Control ${above}/${below} sash resizes across content without selecting; keyboard and double click still work`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 })
+    await openSourceControl(page)
+    await commitRow(page, featureSubject).click()
+    const description = page.locator(".review-body")
+    await expect(description).toContainText("Explain how the fixture")
+    const separator = page.getByRole("separator", { name: `Resize ${above} and ${below}` })
+    const before = await resizeBox(pane(page, above))
+    const other = await resizeBox(pane(page, below))
+    await dragWithoutSelection(page, separator, { x: 500, y: 60 })
+    expect((await resizeBox(pane(page, above))).height).toBeGreaterThan(before.height + 20)
+    expect((await resizeBox(pane(page, below))).height).toBeLessThan(other.height - 20)
+    await selectContent(page, description)
+    const dragged = await resizeBox(pane(page, above))
+    await separator.press("ArrowUp")
+    expect((await resizeBox(pane(page, above))).height).toBeLessThan(dragged.height - 10)
+    await separator.press("ArrowDown")
+    expect((await resizeBox(pane(page, above))).height).toBeCloseTo(dragged.height, 0)
+    await separator.dblclick()
+    expect((await resizeBox(pane(page, above))).height).toBeCloseTo(before.height, 0)
+    await commitRow(page, featureSubject).getByRole("button", { name: "Show commit details" }).click()
+    await selectContent(page, page.locator(".commit-details-body"))
+    await selectContent(page, diffLines(page, "change-addition", "clean.md").filter({ hasText: "Edited on the feature branch." }))
+  })
+
+  test(`Source Control ${above}/${below} sash ignores other pointers and recovers after cancel, lost capture, and blur`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 })
+    await openSourceControl(page)
+    await commitRow(page, featureSubject).click()
+    await expect(page.locator(".review-body")).toContainText("Explain how the fixture")
+    await exerciseResizeLifecycle(page, page.getByRole("separator", { name: `Resize ${above} and ${below}` }),
+      pane(page, above), "y", page.locator(".review-body"))
+  })
+}
+
+test("review Files rail resizes across diffs without selecting; keyboard and double click still work", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await openSourceControl(page)
+  await commitRow(page, featureSubject).click()
+  const separator = page.getByRole("separator", { name: "Resize review files" })
+  const description = page.locator(".review-body")
+  const diff = diffLines(page, "change-addition", "clean.md").filter({ hasText: "Edited on the feature branch." })
+  await expect(diff).toBeVisible()
+  const before = await resizeBox(rail(page))
+  const main = await resizeBox(page.getByRole("main"))
+  const line = await resizeBox(diff)
+  await dragWithoutSelection(page, separator, { x: -500, y: 0 }, line.y + line.height / 2)
+  expect((await resizeBox(rail(page))).width).toBeGreaterThan(before.width + 100)
+  expect((await resizeBox(page.getByRole("main"))).width).toBeLessThan(main.width - 100)
+  await selectContent(page, diff)
+  await selectContent(page, description)
+  await separator.dblclick()
+  expect((await resizeBox(rail(page))).width).toBeCloseTo(before.width, 0)
+  await separator.press("ArrowLeft")
+  expect((await resizeBox(rail(page))).width).toBeGreaterThan(before.width)
+  await separator.press("ArrowRight")
+  expect((await resizeBox(rail(page))).width).toBeCloseTo(before.width, 0)
+})
+
+test("review Files rail ignores other pointers and recovers after cancel, lost capture, and blur", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await openSourceControl(page)
+  await commitRow(page, featureSubject).click()
+  await expect(page.locator(".review-body")).toContainText("Explain how the fixture")
+  await exerciseResizeLifecycle(page, page.getByRole("separator", { name: "Resize review files" }),
+    rail(page), "x", page.locator(".review-body"), -1)
+  await selectContent(page, diffLines(page, "change-addition", "clean.md").filter({ hasText: "Edited on the feature branch." }))
+})
 
 test("Source Control lists every pending change and reviews them in one tab", async ({ page }) => {
   await page.goto(`${gitApiOrigin}/?project=${project}`)

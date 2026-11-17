@@ -1,5 +1,5 @@
 import { EyeOffIcon, FoldVerticalIcon, FunnelIcon, PanelRightCloseIcon, UnfoldVerticalIcon, XIcon } from "lucide-react"
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from "react"
 
 import { Badge } from "../../components/ui/badge.tsx"
 import { Button } from "../../components/ui/button.tsx"
@@ -127,7 +127,22 @@ function remSize(): number {
 // ReviewFilesRail is a commit, range, or branch review's files beside its
 // diffs: full height, resizable from its leading edge, and hideable.
 export function ReviewFilesRail({ width, onHide, onResetWidth, onResize, ...list }: ReviewFilesRailProps) {
-  const dragging = useRef<{ pointer: number; x: number; width: number } | null>(null)
+  const dragging = useRef<{ pointer: number; element: HTMLDivElement; x: number; width: number } | null>(null)
+  const finishResize = useCallback(() => {
+    const drag = dragging.current
+    dragging.current = null
+    if (drag?.element.hasPointerCapture(drag.pointer)) drag.element.releasePointerCapture(drag.pointer)
+  }, [])
+  useEffect(() => {
+    window.addEventListener("blur", finishResize)
+    return () => {
+      window.removeEventListener("blur", finishResize)
+      finishResize()
+    }
+  }, [finishResize])
+  function stopResize(event: PointerEvent<HTMLDivElement>) {
+    if (dragging.current?.pointer === event.pointerId) finishResize()
+  }
   return (
     <aside className="review-rail" aria-label="Review files" style={{ width: `${width}rem` }}>
       <div className="review-rail-resizer" role="separator" aria-orientation="vertical" aria-label="Resize review files"
@@ -139,7 +154,10 @@ export function ReviewFilesRail({ width, onHide, onResetWidth, onResize, ...list
           onResize(width + (event.key === "ArrowLeft" ? widthStep : -widthStep))
         }}
         onPointerDown={(event) => {
-          dragging.current = { pointer: event.pointerId, x: event.clientX, width }
+          if (event.button !== 0 || !event.isPrimary || dragging.current) return
+          event.preventDefault()
+          event.currentTarget.focus({ preventScroll: true })
+          dragging.current = { pointer: event.pointerId, element: event.currentTarget, x: event.clientX, width }
           event.currentTarget.setPointerCapture(event.pointerId)
         }}
         onPointerMove={(event) => {
@@ -148,12 +166,9 @@ export function ReviewFilesRail({ width, onHide, onResetWidth, onResize, ...list
           // The rail grows as its leading edge moves left.
           onResize(drag.width + (drag.x - event.clientX) / remSize())
         }}
-        onPointerUp={(event) => {
-          if (dragging.current?.pointer !== event.pointerId) return
-          dragging.current = null
-          if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
-        }}
-        onPointerCancel={() => { dragging.current = null }} />
+        onPointerUp={stopResize}
+        onPointerCancel={stopResize}
+        onLostPointerCapture={stopResize} />
       <div className="review-rail-panel">
         <FilesList {...list}
           close={<IconButton size="xs" label="Hide Files" icon={<PanelRightCloseIcon aria-hidden="true" />} onClick={onHide} />} />

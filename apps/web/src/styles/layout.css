@@ -55,6 +55,8 @@ main.image-mode {
   z-index: var(--z-sticky);
   cursor: col-resize;
   touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
   background: var(--color-border);
 }
 
