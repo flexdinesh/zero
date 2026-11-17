@@ -3,8 +3,72 @@ import { expect } from "@playwright/test"
 import { test } from "./live-test.ts"
 import { gitFixtureRoot } from "./git-fixture.ts"
 import { gitApiOrigin } from "./ports.ts"
+import { dragWithoutSelection, resizeBox } from "./resize.ts"
 
 test.use({ seed: gitFixtureRoot })
+
+test("sidebar reaches half the window and preserves its preferred width across window sizes", async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 900 })
+  await page.goto(`${gitApiOrigin}/?project=${encodeURIComponent(gitFixtureRoot)}`)
+  const separator = page.getByRole("separator", { name: "Resize file tree" })
+  await expect(separator).toHaveAttribute("aria-valuenow", "288")
+  await dragWithoutSelection(page, separator, { x: 312, y: 0 })
+  await expect(separator).toHaveAttribute("aria-valuenow", "600")
+  expect(await page.evaluate(() => localStorage.getItem("zero-sidebar-width"))).toBe("600")
+
+  await page.setViewportSize({ width: 1000, height: 900 })
+  await expect.poll(async () => (await resizeBox(separator)).x).toBeCloseTo(500, 0)
+  const maximum = Number(await separator.getAttribute("aria-valuemax"))
+  await expect(separator).toHaveAttribute("aria-valuenow", String(maximum))
+  expect(maximum).toBeLessThan(480)
+  expect(await page.evaluate(() => localStorage.getItem("zero-sidebar-width"))).toBe("600")
+  await page.reload()
+  await expect(separator).toHaveAttribute("aria-valuenow", String(maximum))
+  await page.setViewportSize({ width: 1920, height: 900 })
+  await expect(separator).toHaveAttribute("aria-valuenow", "600")
+
+  await dragWithoutSelection(page, separator, { x: 500, y: 0 })
+  await expect.poll(async () => (await resizeBox(separator)).x).toBeCloseTo(960, 0)
+  const wideMaximum = Number(await separator.getAttribute("aria-valuemax"))
+  await expect(separator).toHaveAttribute("aria-valuenow", String(wideMaximum))
+  await separator.press("ArrowRight")
+  await expect(separator).toHaveAttribute("aria-valuenow", String(wideMaximum))
+  await separator.press("ArrowLeft")
+  await expect(separator).toHaveAttribute("aria-valuenow", String(wideMaximum - 16))
+  await page.evaluate(() => document.documentElement.style.setProperty("--font-size-base", "20px"))
+  await expect.poll(async () => Number(await separator.getAttribute("aria-valuemax"))).toBeLessThan(wideMaximum)
+  const scaledMaximum = Number(await separator.getAttribute("aria-valuemax"))
+  await expect(separator).toHaveAttribute("aria-valuenow", String(scaledMaximum))
+  expect((await resizeBox(separator)).x).toBeLessThanOrEqual(960)
+  expect((await resizeBox(separator)).x).toBeGreaterThan(959)
+  expect(await page.evaluate(() => localStorage.getItem("zero-sidebar-width"))).toBe(String(wideMaximum - 16))
+  await page.evaluate(() => document.documentElement.style.removeProperty("--font-size-base"))
+  await expect(separator).toHaveAttribute("aria-valuenow", String(wideMaximum - 16))
+  await dragWithoutSelection(page, separator, { x: -1000, y: 0 })
+  await expect(separator).toHaveAttribute("aria-valuenow", "208")
+  await separator.press("ArrowLeft")
+  await expect(separator).toHaveAttribute("aria-valuenow", "208")
+  await separator.dblclick()
+  await expect(separator).toHaveAttribute("aria-valuenow", "288")
+})
+
+test("sidebar clamps a saved wide preference without changing the mobile drawer", async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 900 })
+  await page.addInitScript(() => localStorage.setItem("zero-sidebar-width", "800"))
+  await page.goto(`${gitApiOrigin}/?project=${encodeURIComponent(gitFixtureRoot)}`)
+  const separator = page.getByRole("separator", { name: "Resize file tree" })
+  await expect.poll(async () => (await resizeBox(separator)).x).toBeCloseTo(500, 0)
+  expect(await page.evaluate(() => localStorage.getItem("zero-sidebar-width"))).toBe("800")
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(separator).toBeHidden()
+  await page.getByRole("button", { name: "Open files" }).click()
+  const drawer = page.getByRole("dialog", { name: "Files", exact: true })
+  await expect(drawer).toBeVisible()
+  expect((await resizeBox(drawer)).width).toBeLessThan(390)
+  expect(await page.evaluate(() => localStorage.getItem("zero-sidebar-width"))).toBe("800")
+  await page.setViewportSize({ width: 1920, height: 900 })
+  await expect(separator).toHaveAttribute("aria-valuenow", "800")
+})
 
 test("sidebar applies pointer bursts once per frame and ignores keys during the drag", async ({ page }) => {
   await page.goto(`${gitApiOrigin}/?project=${encodeURIComponent(gitFixtureRoot)}`)

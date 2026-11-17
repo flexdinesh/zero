@@ -2,17 +2,16 @@ import { type KeyboardEvent, type PointerEvent, useCallback, useEffect, useLayou
 
 const defaultWidth = 288
 const minimumWidth = 208
-const maximumWidth = 480
 const storageKey = "zero-sidebar-width"
 
-function clampWidth(width: number): number {
+function clampWidth(width: number, maximumWidth: number): number {
   return Math.min(maximumWidth, Math.max(minimumWidth, width))
 }
 
 function readWidth(): number {
   try {
     const stored = Number(window.localStorage.getItem(storageKey))
-    return Number.isFinite(stored) && stored > 0 ? clampWidth(stored) : defaultWidth
+    return Number.isFinite(stored) && stored > 0 ? Math.max(minimumWidth, stored) : defaultWidth
   } catch {
     return defaultWidth
   }
@@ -27,18 +26,41 @@ function writeWidth(width: number) {
 }
 
 export function useSidebarResize() {
-  const [width, setWidth] = useState(readWidth)
+  const element = useRef<HTMLDivElement>(null)
+  const [preferredWidth, setPreferredWidth] = useState(readWidth)
+  const [maximumWidth, setMaximumWidth] = useState(() => Math.max(minimumWidth, Math.floor(window.innerWidth / 2)))
+  // A smaller window constrains display without replacing the saved preference.
+  const width = clampWidth(preferredWidth, maximumWidth)
   const currentWidth = useRef(width)
+  const currentMaximum = useRef(maximumWidth)
   const frame = useRef<number | null>(null)
   const resizeStart = useRef<{ pointerID: number; element: HTMLDivElement; width: number; x: number; nextWidth: number } | null>(null)
 
   useLayoutEffect(() => {
+    const layout = element.current?.parentElement
+    const activityBar = layout?.querySelector(".activity-bar")
+    if (!layout || !activityBar) return
+    const measure = () => setMaximumWidth(Math.max(minimumWidth,
+      Math.floor(layout.getBoundingClientRect().width / 2 - activityBar.getBoundingClientRect().width)))
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(layout)
+    // Font settings change the rail's rem width independently of the window.
+    observer.observe(activityBar)
+    return () => observer.disconnect()
+  }, [])
+
+  useLayoutEffect(() => {
+    currentWidth.current = width
+    currentMaximum.current = maximumWidth
     document.documentElement.style.setProperty("--sidebar-width", `${width}px`)
-  }, [width])
+  }, [maximumWidth, width])
 
   const applyWidth = useCallback((next: number) => {
-    currentWidth.current = next
-    setWidth(next)
+    const clamped = clampWidth(next, currentMaximum.current)
+    currentWidth.current = clamped
+    setPreferredWidth(clamped)
+    return clamped
   }, [])
 
   const finishResize = useCallback(() => {
@@ -50,8 +72,7 @@ export function useSidebarResize() {
       frame.current = null
     }
     // Flush the last pointer position even when release beats the next frame.
-    applyWidth(start.nextWidth)
-    writeWidth(start.nextWidth)
+    writeWidth(applyWidth(start.nextWidth))
     if (start.element.hasPointerCapture(start.pointerID)) start.element.releasePointerCapture(start.pointerID)
   }, [applyWidth])
 
@@ -74,7 +95,7 @@ export function useSidebarResize() {
   function moveResize(event: PointerEvent<HTMLDivElement>) {
     const start = resizeStart.current
     if (!start || start.pointerID !== event.pointerId) return
-    start.nextWidth = clampWidth(start.width + event.clientX - start.x)
+    start.nextWidth = clampWidth(start.width + event.clientX - start.x, currentMaximum.current)
     // Coalesce high-frequency input into one React/layout update per frame.
     if (frame.current === null) frame.current = window.requestAnimationFrame(() => {
       frame.current = null
@@ -91,11 +112,9 @@ export function useSidebarResize() {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return
     event.preventDefault()
     if (resizeStart.current) return
-    const next = clampWidth(currentWidth.current + (event.key === "ArrowLeft" ? -16 : 16))
-    applyWidth(next)
-    writeWidth(next)
+    writeWidth(applyWidth(currentWidth.current + (event.key === "ArrowLeft" ? -16 : 16)))
   }
 
-  return { width, minimumWidth, maximumWidth, startResize, moveResize, stopResize,
-    resizeWithKeyboard, resetWidth: () => { applyWidth(defaultWidth); writeWidth(defaultWidth) } }
+  return { element, width, minimumWidth, maximumWidth, startResize, moveResize, stopResize,
+    resizeWithKeyboard, resetWidth: () => { writeWidth(applyWidth(defaultWidth)) } }
 }

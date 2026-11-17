@@ -166,6 +166,7 @@ test("search keeps its session while callbacks change", async ({ page }) => {
 })
 
 test("sidebar pointer resize crosses source without selecting; keyboard and double click still work", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto("/view?path=guides%2Fgetting-started.md")
   await page.getByRole("button", { name: "Source", exact: true }).click()
   const content = page.getByRole("textbox", { name: "Markdown source" }).locator('[data-line="3"] .source-document-line-content')
@@ -174,8 +175,10 @@ test("sidebar pointer resize crosses source without selecting; keyboard and doub
   const before = await resizeBox(page.getByRole("main"))
   const line = await resizeBox(content)
   await dragWithoutSelection(page, separator, { x: 500, y: 0 }, line.y + line.height / 2)
-  await expect(separator).toHaveAttribute("aria-valuenow", "480")
-  expect((await resizeBox(page.getByRole("main"))).x - before.x).toBeCloseTo(192, 0)
+  const maximum = Number(await separator.getAttribute("aria-valuemax"))
+  await expect(separator).toHaveAttribute("aria-valuenow", String(maximum))
+  expect((await resizeBox(separator)).x).toBeCloseTo(720, 0)
+  expect((await resizeBox(page.getByRole("main"))).x - before.x).toBeCloseTo(maximum - 288, 0)
   await selectContent(page, content)
   await separator.dblclick()
   await expect(separator).toHaveAttribute("aria-valuenow", "288")

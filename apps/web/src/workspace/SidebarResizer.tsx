@@ -4,6 +4,7 @@ export function SidebarResizer() {
   const sidebar = useSidebarResize()
   return (
     <div
+      ref={sidebar.element}
       className="sidebar-resizer"
       role="separator"
       aria-label="Resize file tree"

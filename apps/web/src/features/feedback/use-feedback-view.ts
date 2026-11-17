@@ -25,8 +25,8 @@ export interface FeedbackViewOptions {
 
 // useFeedbackView holds the Feedback activity's state (decision 0120): the
 // feedback shown ("" for the checkout's branch), a file it is narrowed to,
-// the status filter (saved per browser), and the agent replies not yet seen,
-// which badge the activity.
+// the status filter (saved per browser), the open threads for the activity
+// badge, and the agent replies not yet seen inside the view.
 export function useFeedbackView({ onChanged, project, shown, version }: FeedbackViewOptions) {
   const [selectedId, setSelectedId] = useState("")
   const [path, setPath] = useState("")
@@ -35,6 +35,7 @@ export function useFeedbackView({ onChanged, project, shown, version }: Feedback
   const list = useFeedbackList(project, shown, version)
   const seen = useFeedbackSeen()
   const unseen = unseenCount(seen, session.feedback)
+  const openThreadCount = session.feedback?.threads.filter((thread) => thread.status === "open").length ?? 0
 
   // show selects feedback by id ("" for the checkout's branch), narrowed to
   // path when given.
@@ -52,7 +53,7 @@ export function useFeedbackView({ onChanged, project, shown, version }: Feedback
     }
   }, [])
 
-  return { selectedId, show, path, clearPath, filter, setFilter, session, list, seen, unseen }
+  return { selectedId, show, path, clearPath, filter, setFilter, session, list, seen, unseen, openThreadCount }
 }
 
 export type FeedbackViewState = ReturnType<typeof useFeedbackView>

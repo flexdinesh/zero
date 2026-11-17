@@ -956,7 +956,7 @@ export function App({ project }: AppProps) {
           search={<SearchView mobile={sidebar.mobile} onDismiss={sidebar.dismiss}
             onLeave={() => main.current?.focus({ preventScroll: true })} session={search} />}
           unseenWalkthroughs={walkthroughs.unseen}
-          unseenFeedback={feedbackView.unseen}
+          openFeedbackThreads={feedbackView.openThreadCount}
           feedback={<FeedbackView project={project} branch={page.branch} view={feedbackView} mobile={sidebar.mobile}
             onDismiss={sidebar.dismiss} onOpenThread={openThread} navigate={navigateToHref} />}
           walkthroughs={<WalkthroughsView project={project} session={walkthroughs} context={compareContext} mobile={sidebar.mobile} onPresent={present}

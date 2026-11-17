@@ -1,12 +1,13 @@
 import { execFileSync } from "node:child_process"
-import { existsSync } from "node:fs"
+import { existsSync, writeFileSync } from "node:fs"
 import path from "node:path"
 
 import { expect, type APIRequestContext, type Page } from "@playwright/test"
+import { isFeedback } from "../../packages/contracts/src/index.ts"
 import { test } from "./live-test.ts"
 
 import { copiedText, grantClipboard, recordClipboard } from "./clipboard.ts"
-import { gitFixtureRoot } from "./git-fixture.ts"
+import { gitFixtureRoot, upperBranch } from "./git-fixture.ts"
 
 // Review feedback threads (decision 0120). Each test serves its own copy of
 // the git fixture, so its repository's feedback starts empty.
@@ -23,6 +24,14 @@ function gutter(page: Page, file: string, side: "deletions" | "additions", line:
 
 function thread(page: Page, number: number) {
   return page.getByRole("region", { name: new RegExp(`^Thread ${number}: `) })
+}
+
+async function expectFeedbackBadge(page: Page, count: number) {
+  const activity = page.getByRole("navigation", { name: "Views" }).getByRole("button", { name: /^Feedback/ })
+  await expect(activity).toHaveAccessibleName(count === 0 ? "Feedback" : `Feedback, ${count} open thread${count === 1 ? "" : "s"}`)
+  const badge = activity.locator(".activity-badge")
+  if (count === 0) await expect(badge).toHaveCount(0)
+  else await expect(badge).toHaveText(String(count))
 }
 
 async function feedbackId(request: APIRequestContext, origin: string, root: string): Promise<string> {
@@ -48,9 +57,11 @@ test("lines in a review take a comment, replies, an agent's answer, and resolve"
   const project = encodeURIComponent(live.root)
   await page.goto(`${live.origin}/view?project=${project}&review=working#f=src/app.ts`)
   await expect(gutter(page, "src/app.ts", "additions", 1)).toBeVisible({ timeout: 20_000 })
+  await expectFeedbackBadge(page, 0)
 
   // C opens the composer at the selection; submitting clears the selection.
   await comment(page, "src/app.ts", 1, "Name the **answer** after what it counts.")
+  await expectFeedbackBadge(page, 1)
   const first = thread(page, 1)
   await expect(first).toHaveAccessibleName("Thread 1: Open, src/app.ts:1")
   await expect(first.locator("strong")).toHaveText("answer")
@@ -63,6 +74,7 @@ test("lines in a review take a comment, replies, an agent's answer, and resolve"
   await page.getByRole("textbox", { name: "Comment on src/app.ts:4" }).fill("Two spaces, as before.")
   await page.getByRole("button", { name: "Comment", exact: true }).click()
   await expect(thread(page, 2)).toHaveAccessibleName("Thread 2: Open, src/app.ts:4")
+  await expectFeedbackBadge(page, 2)
 
   // Cancel keeps the draft for the same anchor in this session.
   await gutter(page, "src/app.ts", "additions", 3).click()
@@ -80,6 +92,7 @@ test("lines in a review take a comment, replies, an agent's answer, and resolve"
   await page.keyboard.press("ControlOrMeta+Enter")
   await expect(first.locator(".feedback-message")).toHaveCount(2)
   await expect(reply).toHaveValue("")
+  await expectFeedbackBadge(page, 2)
 
   // An agent's reply arrives over the live stream.
   const id = await feedbackId(request, live.origin, live.root)
@@ -89,10 +102,12 @@ test("lines in a review take a comment, replies, an agent's answer, and resolve"
   })
   expect(answered.ok()).toBe(true)
   await expect(first.locator(".feedback-message-author").last()).toHaveText("agent · codex")
+  await expectFeedbackBadge(page, 2)
 
   // Resolve collapses the thread to one line; Show resolved comments hides it.
   await first.getByRole("button", { name: "Resolve" }).click()
   await expect(first).toHaveAccessibleName("Thread 1: Resolved, src/app.ts:1")
+  await expectFeedbackBadge(page, 1)
   await expect(first.getByRole("button", { name: /Name the answer after what it counts\./ })).toBeVisible()
   await page.getByRole("button", { name: "View options" }).click()
   await page.getByRole("menuitemcheckbox", { name: "Show resolved comments" }).click()
@@ -108,15 +123,18 @@ test("lines in a review take a comment, replies, an agent's answer, and resolve"
   await first.getByRole("button", { name: "Reopen" }).click()
   await expect(first).toHaveAccessibleName("Thread 1: Open, src/app.ts:1")
   await expect(first.locator(".feedback-message-status").last()).toHaveText("reopened this")
+  await expectFeedbackBadge(page, 2)
 
   // Delete removes a thread.
   await thread(page, 2).getByRole("button", { name: "More Thread Actions" }).click()
   await page.getByRole("menuitem", { name: "Delete thread" }).click()
   await expect(thread(page, 2)).toHaveCount(0)
+  await expectFeedbackBadge(page, 1)
 
   // Threads persist across a reload.
   await page.reload()
   await expect(thread(page, 1)).toBeVisible({ timeout: 20_000 })
+  await expectFeedbackBadge(page, 1)
 
   // A branch review with uncommitted changes shows them, and its Files rail
   // counts each file's open threads.
@@ -212,7 +230,7 @@ test("the Feedback view lists, filters, opens, and copies threads", async ({ pag
     data: { project: live.root, id, thread: 2, body: "Fixed.", status: "resolved", author: "agent" },
   })
   expect(answered.ok()).toBe(true)
-  const activity = page.getByRole("button", { name: "Feedback, 1 new reply" })
+  const activity = page.getByRole("button", { name: "Feedback, 1 open thread" })
   await expect(activity).toBeVisible()
   await activity.click()
 
@@ -226,8 +244,14 @@ test("the Feedback view lists, filters, opens, and copies threads", async ({ pag
   await view.getByRole("button", { name: "Resolved", exact: true }).click()
   await expect(rows).toHaveCount(1)
   await expect(rows.first()).toHaveAccessibleName(/^Thread 2, Resolved, new reply: Two spaces, as before\./)
+  await expect(view.locator(".feedback-meta-counts")).toContainText("1 new reply")
+  await expectFeedbackBadge(page, 1)
+  await view.getByRole("button", { name: "Awaiting agent", exact: true }).click()
+  await expect(rows).toHaveCount(1)
+  await expectFeedbackBadge(page, 1)
   await view.getByRole("button", { name: "All", exact: true }).click()
   await expect(rows).toHaveCount(2)
+  await expectFeedbackBadge(page, 1)
 
   // Copy Prompt sends an agent to the CLI; the copy succeeds.
   const copyPrompt = view.getByRole("button", { name: "Copy Prompt" })
@@ -249,7 +273,8 @@ test("the Feedback view lists, filters, opens, and copies threads", async ({ pag
   await expect(thread(page, 1)).toBeVisible()
   // Expanded, the agent's reply is seen.
   await thread(page, 2).getByRole("button", { name: /Two spaces/ }).click()
-  await expect(page.getByRole("button", { name: "Feedback", exact: true })).toBeVisible()
+  await expect(view.locator(".feedback-meta-counts")).not.toContainText("new reply")
+  await expectFeedbackBadge(page, 1)
 
   // The fb route reveals the view at that feedback.
   await page.goto(`${live.origin}/view?project=${project}&fb=${id}`)
@@ -261,4 +286,104 @@ test("the Feedback view lists, filters, opens, and copies threads", async ({ pag
   await page.getByRole("menuitem", { name: "Delete feedback" }).click()
   await page.getByRole("group", { name: "Delete feedback" }).getByRole("button", { name: "Delete" }).click()
   await expect(page.locator(".feedback-view")).toContainText("Select lines in a diff or file and press C to comment.")
+  await expectFeedbackBadge(page, 0)
+})
+
+test("the Feedback badge follows the selected branch and reloads", async ({ page, request, live }) => {
+  const project = encodeURIComponent(live.root)
+  const current = await request.post(`${live.origin}/api/feedback-threads`, {
+    data: { project: live.root, path: "src/app.ts", body: "Current branch comment." },
+  })
+  expect(current.ok()).toBe(true)
+  for (const body of ["First branch comment.", "Second branch comment."]) {
+    const created = await request.post(`${live.origin}/api/feedback-threads`, {
+      data: { project: live.root, compare: { kind: "branch", base: "main", head: upperBranch, uncommitted: false }, path: "docs/changelog.md", body },
+    })
+    expect(created.ok()).toBe(true)
+  }
+  const read = await request.get(`${live.origin}/api/feedback?project=${project}&compare=branch&base=main&head=${upperBranch}`)
+  expect(read.ok()).toBe(true)
+  const { id }: { id: string } = await read.json()
+
+  await page.goto(`${live.origin}/?project=${project}`)
+  await expectFeedbackBadge(page, 1)
+  await page.getByRole("button", { name: /^Feedback/ }).click()
+  const view = page.locator(".feedback-view")
+  await view.getByRole("button", { name: "Branch: feature", exact: true }).click()
+  await page.getByRole("menuitemradio", { name: `${upperBranch} 2 open`, exact: true }).click()
+  await page.keyboard.press("Escape")
+  await expectFeedbackBadge(page, 2)
+  await page.getByRole("button", { name: /^Explorer/ }).click()
+  await expectFeedbackBadge(page, 2)
+
+  // A reload without an fb route returns to the checkout's branch.
+  await page.reload()
+  await expectFeedbackBadge(page, 1)
+  // An explicit document prevents workspace restoration from replacing the fb route.
+  await page.goto(`${live.origin}/view?project=${project}&path=src/app.ts&fb=${id}`)
+  await expect(view.getByRole("button", { name: `Branch: ${upperBranch}`, exact: true })).toBeVisible()
+  await expectFeedbackBadge(page, 2)
+  await page.reload()
+  await expectFeedbackBadge(page, 2)
+
+  // Resolved and declined threads both stop counting, even with unread replies.
+  for (const { thread: number, status } of [{ thread: 1, status: "resolved" }, { thread: 2, status: "wontfix" }]) {
+    const closed = await request.post(`${live.origin}/api/feedback-messages`, {
+      data: { project: live.root, id, thread: number, status, body: "Handled.", author: "agent" },
+    })
+    expect(closed.ok()).toBe(true)
+  }
+  await expect(view.locator(".feedback-meta-counts")).toContainText("2 new replies")
+  await expectFeedbackBadge(page, 0)
+  await view.getByRole("button", { name: `Branch: ${upperBranch}`, exact: true }).click()
+  await page.getByRole("menuitemradio", { name: "feature 1 open", exact: true }).click()
+  await page.keyboard.press("Escape")
+  await expectFeedbackBadge(page, 1)
+})
+
+test("the Feedback badge caps at 99+ while its label gives the full count", async ({ page, request, live }) => {
+  const project = encodeURIComponent(live.root)
+  const created = await request.post(`${live.origin}/api/feedback-threads`, {
+    data: { project: live.root, path: "src/app.ts", body: "Keep the count clear." },
+  })
+  expect(created.ok()).toBe(true)
+  const read = await request.get(`${live.origin}/api/feedback?project=${project}`)
+  expect(read.ok()).toBe(true)
+  const feedback: unknown = await read.json()
+  if (!isFeedback(feedback)) throw new Error("Invalid feedback response")
+  const first = feedback.threads[0]
+  if (!first) throw new Error("Missing feedback thread")
+  const threads = Array.from({ length: 100 }, (_, index) => ({ ...first, number: index + 1 }))
+  await page.route("**/api/feedback?**", async (route) => {
+    if (route.request().method() !== "GET") return route.continue()
+    await route.fulfill({ json: { ...feedback, threads } })
+  })
+  await page.goto(`${live.origin}/?project=${project}`)
+  const activity = page.getByRole("navigation", { name: "Views" }).getByRole("button", { name: /^Feedback/ })
+  await expect(activity).toHaveAccessibleName("Feedback, 100 open threads")
+  await expect(activity.locator(".activity-badge")).toHaveText("99+")
+})
+
+test("narrowing Feedback to a file keeps every open thread in the badge", async ({ page, request, live }) => {
+  const project = encodeURIComponent(live.root)
+  const created = await request.post(`${live.origin}/api/feedback-threads`, {
+    data: { project: live.root, path: "src/app.ts", lines: [1, 1], body: "Keep the answer clear." },
+  })
+  expect(created.ok()).toBe(true)
+  const other = await request.post(`${live.origin}/api/feedback-threads`, {
+    data: { project: live.root, path: "README.md", body: "Explain installation." },
+  })
+  expect(other.ok()).toBe(true)
+  // Removing the anchored text exposes the file's outdated-thread action.
+  writeFileSync(path.join(live.root, "src/app.ts"), "export const count = 3\n")
+  await page.goto(`${live.origin}/view?project=${project}&review=working#f=src/app.ts`)
+  await reviewFile(page, "src/app.ts").getByRole("button", { name: "1 outdated", exact: true }).click()
+  const view = page.locator(".feedback-view")
+  await expect(view.locator(".feedback-narrowed")).toContainText("Only src/app.ts")
+  const rows = view.getByRole("listbox", { name: "Threads" }).getByRole("option")
+  await expect(rows).toHaveCount(1)
+  await expectFeedbackBadge(page, 2)
+  await view.getByRole("button", { name: "Show Every File" }).click()
+  await expect(rows).toHaveCount(2)
+  await expectFeedbackBadge(page, 2)
 })
