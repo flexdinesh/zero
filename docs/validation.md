@@ -67,6 +67,9 @@ relevant extended checks. Ordinary copy or unrelated backend changes do not.
 Extended groups have separate certificates; they cannot certify correctness.
 Report extended failures even when correctness passes.
 
+For production scrollbar performance traces and their interpretation, see
+[scrollbar profiling](scrollbar-profiling.md).
+
 Public mise tasks invoke the coordinator. Hidden `_host:*` and `_container:*`
 tasks contain leaf commands and never invoke public wrappers. This prevents
 container execution from recursively launching the host coordinator.
