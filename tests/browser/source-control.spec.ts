@@ -528,6 +528,60 @@ test("trailing row content stays clear of the scrollbar lane", async ({ page }) 
   }
 })
 
+for (const theme of ["light", "dark"]) {
+  test(`row highlights end before the scrollbar lane in ${theme}`, async ({ page }, info) => {
+    await page.addInitScript((value) => window.localStorage.setItem("zero-theme", value), theme)
+    await page.setViewportSize({ width: 1100, height: 360 })
+    await openSourceControl(page)
+    const row = commitRow(page, featureSubject)
+    const paintedState = () => row.evaluate((element) => {
+      const rect = element.getBoundingClientRect()
+      const style = getComputedStyle(element)
+      const paint = getComputedStyle(element, "::before")
+      return {
+        right: rect.right - Number.parseFloat(paint.right),
+        width: Number.parseFloat(paint.width),
+        rowWidth: rect.width,
+        background: paint.backgroundColor,
+        shadow: paint.boxShadow,
+        outline: paint.outlineStyle,
+        rowBackground: style.backgroundColor,
+        rowShadow: style.boxShadow,
+        rowOutline: style.outlineStyle,
+      }
+    })
+    await row.hover()
+    await expect(verticalBar(page)).toHaveAttribute("data-visible", "")
+    const lane = await verticalBar(page).boundingBox()
+    if (!lane) throw new Error("the scrollbar lane is not laid out")
+    const hover = await paintedState()
+    expect(hover.right).toBeCloseTo(lane.x)
+    expect(hover.width).toBeCloseTo(hover.rowWidth - lane.width)
+    expect(hover.background).not.toBe("rgba(0, 0, 0, 0)")
+
+    await row.click()
+    await expect(row).toHaveAttribute("aria-selected", "true")
+    const selected = await paintedState()
+    expect(selected.right).toBe(hover.right)
+    expect(selected.shadow).not.toBe("none")
+    expect(selected.rowBackground).toBe("rgba(0, 0, 0, 0)")
+    expect(selected.rowShadow).toBe("none")
+
+    await row.press("Space")
+    expect(await row.evaluate((element) => element.matches(":focus-visible"))).toBe(true)
+    const focused = await paintedState()
+    expect(focused.outline).toBe("solid")
+    expect(focused.rowOutline).toBe("none")
+    expect(focused.right).toBe(hover.right)
+    await page.screenshot({ path: info.outputPath(`commit-highlight-${theme}.png`) })
+
+    // Fading the bar never widens the highlight or moves the content.
+    await page.mouse.move(1090, 350)
+    await expect(verticalBar(page)).not.toHaveAttribute("data-visible", "")
+    expect((await paintedState()).right).toBe(hover.right)
+  })
+}
+
 // Source Control's tree shares the Explorer's folder icons (decision 0138).
 test("the changes tree marks folders with folder icons", async ({ page }) => {
   await openSourceControl(page)
@@ -1037,6 +1091,22 @@ test("Shift-clicking commits opens their range's diff", async ({ page }) => {
   await expect(commitTab(page, featureSubject)).toHaveAttribute("aria-selected", "true")
   await initial.click({ modifiers: ["Shift"] })
   for (const row of [feature, lower, initial]) await expect(row).toHaveAttribute("aria-selected", "true")
+  // The state layer keeps a single border around the range, inside the lane.
+  for (const [row, top, bottom] of [[feature, 1, 0], [lower, 0, 0], [initial, 0, 1]] satisfies [Locator, number, number][]) {
+    const edges = await row.evaluate((element) => {
+      const paint = getComputedStyle(element, "::before")
+      return {
+        top: Number.parseFloat(paint.getPropertyValue("--range-top") || "1"),
+        bottom: Number.parseFloat(paint.getPropertyValue("--range-bottom") || "1"),
+        inset: Number.parseFloat(paint.right),
+        shadow: paint.boxShadow,
+      }
+    })
+    expect(edges.top).toBe(top)
+    expect(edges.bottom).toBe(bottom)
+    expect(edges.inset).toBeGreaterThan(0)
+    expect(edges.shadow).not.toBe("none")
+  }
   // Only the newest selected commit carries the range's glyph.
   await lower.hover()
   await expect(glyph(lower)).toHaveCount(0)

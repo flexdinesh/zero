@@ -55,12 +55,6 @@
   padding-block: var(--space-1);
 }
 
-.walkthrough-row:focus-visible,
-.walkthrough-step:focus-visible {
-  outline: 1px solid var(--color-focus);
-  outline-offset: -1px;
-}
-
 .walkthrough-row-icon,
 .walkthrough-step-icon {
   display: flex;

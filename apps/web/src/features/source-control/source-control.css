@@ -264,14 +264,9 @@
   color: var(--color-selected-text);
 }
 
-.compare-row:focus-visible {
-  outline: 1px solid var(--color-focus);
-  outline-offset: -1px;
-}
-
 /* A range's commits share one fill and one mark around the whole run, so no
    middle commit reads as the cursor. */
-.compare-row[data-range] {
+.compare-row[data-range]::before {
   box-shadow:
     inset 1px 0 var(--color-selected-border),
     inset -1px 0 var(--color-selected-border),
@@ -287,7 +282,7 @@
   --range-bottom: 0px;
 }
 
-.compare-row[data-pending] {
+.compare-row[data-pending]::before {
   outline: 1px dashed var(--color-accent);
   outline-offset: -1px;
 }
