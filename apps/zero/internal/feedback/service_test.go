@@ -238,6 +238,54 @@ func TestEnsureEvictsTheLeastRecentlyUpdated(t *testing.T) {
 	}
 }
 
+func TestUpdateWaitsForBranchLookup(t *testing.T) {
+	service, _ := testService(t)
+	created, _, err := service.AddThread(Target{Repository: "r", Branch: "b", Project: "/p"}, NewThread{Anchor: lineAnchor("a", 1, 1), Author: AuthorUser, Body: "original"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A branch lookup owns the repository lock while it enumerates feedback.
+	// An atomic file replacement must not change that directory mid-scan.
+	release, err := lockFile(filepath.Join(service.store.repositoryDirectory("r"), repositoryLock))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if release != nil {
+			release()
+		}
+	}()
+	entered := make(chan struct{}, 1)
+	done := make(chan error, 1)
+	go func() {
+		_, err := service.store.Update("r", created.ID, func(f *Feedback) error {
+			entered <- struct{}{}
+			f.Project = "/updated"
+			return nil
+		})
+		done <- err
+	}()
+	select {
+	case <-entered:
+		t.Fatal("update replaced feedback while a branch lookup held the repository lock")
+	case <-time.After(50 * time.Millisecond):
+	}
+	release()
+	release = nil
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("update did not resume after branch lookup released the repository lock")
+	}
+	stored, err := service.Get("r", created.ID)
+	if err != nil || stored.Project != "/updated" || len(stored.Threads) != 1 {
+		t.Fatalf("stored update = %+v, %v", stored, err)
+	}
+}
+
 func TestConcurrentWritersLoseNothing(t *testing.T) {
 	directory := filepath.Join(t.TempDir(), "feedback")
 	// Two services over one directory stand in for the CLI and a server.
