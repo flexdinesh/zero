@@ -213,3 +213,76 @@ implementation passed desktop vet and race-enabled tests in
 `1276db4dca2fae1c219cf157ad64aca5`. Independent static review found no
 actionable issues. These establish the lifetime gap and its repair, not the
 exact cause of the intermittent native failure.
+
+## Final sequential comparison on latest main
+
+The final pair uses freshly fetched `origin/main` `defcc5f0` as the frontend
+runtime baseline and the complete candidate runtime `fc1613f6`. Both use the
+same committed measurement harness and diagnostic configuration. The baseline
+snapshot's frontend source, Pierre patch, lockfile and document fixture were
+verified against main; candidate files were restored immediately after its
+immutable snapshot was created. No shared-main files were edited.
+
+Runs `588885da4f8a0f3b3c17a7850095a05f` and
+`a496d7bd19bd01739da71c84b3761638` ran sequentially with one worker and no
+other validation group from this task alongside them. Each completed 30
+scenario records: five production and five React-profile repetitions per
+interaction, with 15 normal production traces. Chromium, viewport, fixture,
+typing delay and readiness conditions match the protocol above. Other host
+load was not controlled. These compare the combined frontend changes, without
+isolating individual compatibility repairs.
+
+Median production interval work, milliseconds, fresh main / candidate:
+
+| Interaction | Scripting | Layout | Style recalculation | Paint |
+| --- | ---: | ---: | ---: | ---: |
+| Search typing | 908.90 / 132.82 | 63.73 / 61.78 | 37.63 / 31.35 | 86.43 / 82.96 |
+| Source Control panes | 543.68 / 160.44 | 45.57 / 40.42 | 76.39 / 63.42 | 58.95 / 52.10 |
+| Review rail | 52.84 / 18.58 | 6.01 / 4.95 | 10.40 / 8.48 | 3.45 / 3.11 |
+
+The median of five per-run native key-down-to-frame-swap p95 values was
+93.44 / 39.65 ms. Every typing repetition on both sides contained 16 completed
+key event pairs. This is headless Chromium timing, not physical display
+latency or field INP.
+
+Median summed React actual duration per interaction, milliseconds:
+
+| Interaction and boundary | Fresh main | Candidate |
+| --- | ---: | ---: |
+| Search: SourceDocument | 461.80 | 54.30 |
+| Search: FileTree | 3.90 | 0.50 |
+| Panes: SourceDocument | 272.10 | 45.70 |
+| Panes: FileTree | 2.10 | 0.30 |
+| Rail: ReviewDocument | 3.30 | 0.00 |
+| Rail: FileTree | 1.20 | 0.00 |
+
+SourceDocument/FileTree recorded 18–19 commits during baseline typing and
+8–10 during baseline pane changes. The candidate recorded zero or two during
+each of those interactions. Rail changes recorded zero ReviewDocument/FileTree
+commits in all five candidate repetitions. Background data updates remain;
+their individual origins were not isolated. These are observed profiles,
+not exact-render-count assertions or a claim of zero total unrelated work.
+
+The same candidate captured during concurrent full validation
+`b25709a1f01809c70585644c2eaa35eb` showed substantially different medians:
+
+| Interaction | Scripting | Layout | Style recalculation | Paint |
+| --- | ---: | ---: | ---: | ---: |
+| Search typing | 547.87 | 131.39 | 100.41 | 298.48 |
+| Source Control panes | 713.93 | 81.43 | 169.82 | 144.60 |
+| Review rail | 45.57 | 12.18 | 19.07 | 7.99 |
+
+Its native key-to-frame p95 median was 174.27 ms. Some concurrent pane costs
+exceed the isolated baseline. These captures demonstrate measurement
+variation; they do not establish universal speedups or attribute the variation
+to a specific code change. Production measurements exclude React profiling
+overhead. All raw metrics, environment records and traces are retained in
+task 225's artifact archive.
+
+Full validation `b25709a1f01809c70585644c2eaa35eb` passed all 13 groups at
+`fc1613f6`, including 210 Chromium cases, 210 WebKit cases, 21 extended cases,
+native desktop correctness/resources, production builds, static checks and
+race-enabled tests. The native remote-window close/shutdown case passed in
+51.04 seconds; the complete native correctness scenario took 148.92 seconds.
+Independent static reviews reported no actionable issues. The report update
+is validated separately before publication using repository input certificates.
