@@ -43,6 +43,16 @@ The task's initial artifacts were `/tmp/scrollbar-baseline-{source,shadow,dialog
 and `/tmp/zero-scrollbar-234-baseline.json`. They are local artifacts; the table
 preserves the conclusion independently of their retention.
 
+Repeating the original host protocol after adding coverage, with runtime source
+unchanged at `64f8d740`, found no discovery-attributed forced layout again.
+Source pointerover/wheel p95 was 0.559/0.648 ms, dialog 0.760/0.482 ms, and
+nested areas 0.396/0.373 ms. Shadow-tree wheel p95 was 0.984 ms; pointerover
+still had only one document callback. The dialog again had 42 discovery style
+recalculations, totaling 8.556 ms. Concurrent container validation contributed
+machine load. These fluctuations are not an optimization result or a speedup.
+The repeated captures and summary were `/tmp/scrollbar-after-{source,shadow,dialog,nested}.json`
+and `/tmp/zero-scrollbar-234-after.json`.
+
 ## Repeatable production capture
 
 ```sh

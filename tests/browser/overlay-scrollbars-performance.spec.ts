@@ -95,10 +95,12 @@ test("production scrollbar discovery profiles representative areas @extended", a
   const environment = await page.evaluate(() => ({ userAgent: navigator.userAgent, viewport: [innerWidth, innerHeight], dpr: devicePixelRatio,
     finePointer: matchMedia("(pointer: fine)").matches, highlightedSpans: document.querySelectorAll(".source-document span").length,
     nestedDescendants: document.querySelectorAll("#scrollbar-profile *").length }))
-  await info.attach("scrollbar-measurements", { body: JSON.stringify({
+  const summaryPath = info.outputPath("scrollbar-measurements.json")
+  writeFileSync(summaryPath, JSON.stringify({
     browser: browser.version(), environment, repeat: info.repeatEachIndex, cpuThrottle: 1,
     protocol: "3 cycles/area; 240-step sweep, 8 alternating +/-120px native wheel inputs spaced 32ms; 1ms CPU sampling; production embedded UI",
     limitations: "Headless container; trace overhead; native latency includes compositor scheduling, not INP; dispatch includes all listeners; no isolated React render timings",
     reports,
-  }, null, 2), contentType: "application/json" })
+  }, null, 2))
+  await info.attach("scrollbar-measurements", { path: summaryPath, contentType: "application/json" })
 })
