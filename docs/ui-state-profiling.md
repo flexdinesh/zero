@@ -155,16 +155,61 @@ DELETE returned 204 in 1.460–1.991 ms, and the final empty-view assertion took
 
 A subsequent trace exposed a separate startup gap: the badge read completed
 before an external reply, and the live subscription started afterward. Its
-initial status/head events replayed no feedback write. The follower now treats
-that initial interval as missed work and reconciles once through its existing
-catch-up path. Reconnection and focus fallback retain their behavior. This
-adds one initial refresh burst per follower.
+initial status/head events replayed no feedback write. The follower reconciles
+Feedback once on its first validated subscription status. Reconnection and
+focus fallback retain their existing full catch-up behavior.
 
 The regression holds the real event subscription, reads two open threads,
 resolves one through the API, then releases the stream. Old code failed with
 the badge still at two (`2be46799af645ad7074b4670ac147de5`). The repaired
 code passed three new regressions and three unchanged long flows per engine:
 Chromium `8a3cd4d1eb690241a621ae05deb3566d` and WebKit
-`60ba7ef5da97326925a0fc67216da975`. Traces show a fresh read after status,
+`60ba7ef5da97326925a0fc67216da975`. Those captures used an initial full refresh.
+Traces show a fresh read after status,
 without a replayed feedback event. Frontend tests also passed
 (`0b267fa00fca5a4220fd31680691b11a`). Existing five-second assertions remain.
+
+Combined run `993f8653efd7dd3eae00d9ac7ac7181e` then exposed unnecessary page
+reads from that broad initial refresh: embedded page data and fragment-only
+selection assertions failed. Initial reconciliation is now a separate
+subscription callback mapped only to Feedback. The no-extra-page-read
+assertions remain. The project-choice fixture also waits for its in-flight
+route handlers before teardown, preventing response disposal during JSON
+decoding; its existing navigation assertions remain.
+
+The narrowed path passed frontend tests (`7a51bd075b84df33b4b3a85ab7fd4669`)
+and 15 targeted cases per engine, three repetitions of each affected behavior:
+Chromium `5855f1088531a510b73bdc24d7eecf38`, WebKit
+`0efbafdfdc4673bcce5554bdde267a68`. Web, root tooling and site typechecks passed.
+
+## Saved connection lifetime follow-up
+
+Full run `993f8653efd7dd3eae00d9ac7ac7181e` also closed the remote desktop
+window successfully, then found its server still counting one presence client.
+Fresh-main desktop baseline `edb23efa8fdbcc8e4bbdd87f683ef2f4` passed the
+complete native scenario. The intermittent native failure's exact sequence
+remains unproven: its artifacts contain no request teardown stacks.
+
+Static inspection found a concrete ownership gap: dropping a saved TLS
+connection closed idle transport connections but relied on downstream write
+failure to end active requests. Each saved connection instance now cancels its
+active requests on Drop, replacement or Close. The notifier shares that
+instance's transport. Cancellation remains attached after headers until the
+response body closes; caller cancellation still works. Existing sandbox and
+transport cleanup, other connections and freshly reopened instances retain
+their lifetimes.
+
+The regression uses real TLS presence with a downstream writer that continues
+accepting writes. It covers Drop, Close, replacement, shared notifier requests,
+independent connections, reopening, parent cancellation, body cleanup and a
+request still waiting for headers. The native close/shutdown assertions and
+deadlines remain unchanged. Late requests recreating a connection after window
+closure were not established by the trace and are not changed speculatively.
+
+Old implementation with the new regression failed as expected in
+`f6cac8bebda34fc396411906b6ab54c7`: TLS presence outlived Drop, Close and
+replacement, and a request waiting for headers remained active. The repaired
+implementation passed desktop vet and race-enabled tests in
+`1276db4dca2fae1c219cf157ad64aca5`. Independent static review found no
+actionable issues. These establish the lifetime gap and its repair, not the
+exact cause of the intermittent native failure.
