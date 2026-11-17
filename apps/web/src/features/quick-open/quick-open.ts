@@ -106,18 +106,20 @@ function termScore(file: IndexedFile, term: string, positions?: number[]): numbe
   // can: word starts and runs score, and a run starting the base name reads
   // as its prefix.
   let score = 0
-  let next = term.length - 1
+  let cursor = lower.length - 1
   let placed = -2
-  for (let index = lower.length - 1; index >= 0 && next >= 0; index--) {
-    if (lower.charCodeAt(index) !== term.charCodeAt(next)) continue
+  for (let next = term.length - 1; next >= 0; next--) {
+    // lastIndexOf clamps a negative position to zero; never reuse that unit.
+    if (cursor < 0) return null
+    const index = lower.lastIndexOf(term.charAt(next), cursor)
+    if (index < 0) return null
     if (index >= nameStart) score += 4
     if (boundary(path, index)) score += 8
     if (placed === index + 1) score += 5
     positions?.push(index)
     placed = index
-    next--
+    cursor = index - 1
   }
-  if (next >= 0) return null
   if (placed === nameStart) score += 12
   return Math.min(score, scatteredCeiling)
 }
@@ -140,6 +142,10 @@ function ranges(positions: readonly number[], start: number, end: number): Highl
 export function matchFiles(index: FileIndex, query: readonly string[], limit: number): FileMatches {
   if (query.length === 0) return { total: 0, matches: [] }
   const found: Candidate[] = []
+  // Keep only the requested rows during ordinary queries. Other limits retain
+  // Array.slice's existing semantics (negative, fractional, NaN, Infinity).
+  const bounded = Number.isInteger(limit) && limit >= 0 && limit < index.entries.length
+  let total = 0
   for (const file of index.entries) {
     let score = 0
     let matched = true
@@ -151,9 +157,13 @@ export function matchFiles(index: FileIndex, query: readonly string[], limit: nu
       }
       score += termMatch
     }
-    if (matched) found.push({ file, score })
+    if (matched) {
+      total++
+      if (!bounded) found.push({ file, score })
+      else if (limit > 0) retainCandidate(found, file, score, limit)
+    }
   }
-  found.sort((a, b) => b.score - a.score || a.file.path.length - b.file.path.length || (a.file.path < b.file.path ? -1 : a.file.path > b.file.path ? 1 : 0))
+  found.sort((a, b) => compareRank(a.file, a.score, b))
   // Highlights are built only for the rows shown.
   const matches = found.slice(0, limit).map(({ file, score }): FileMatch => {
     const positions: number[] = []
@@ -166,12 +176,51 @@ export function matchFiles(index: FileIndex, query: readonly string[], limit: nu
       directory: ranges(sorted, 0, Math.max(file.nameStart - 1, 0)),
     }
   })
-  return { total: found.length, matches }
+  return { total, matches }
 }
 
 interface Candidate {
   file: IndexedFile
   score: number
+}
+
+function compareRank(file: IndexedFile, score: number, other: Candidate): number {
+  return other.score - score || file.path.length - other.file.path.length
+    || (file.path < other.file.path ? -1 : file.path > other.file.path ? 1 : 0)
+}
+
+// The worst retained row is the heap's root. Reject weaker incoming matches
+// before allocating, so a broad match neither stores nor sorts every path.
+function retainCandidate(found: Candidate[], file: IndexedFile, score: number, limit: number): void {
+  const worst = found[0]
+  if (found.length === limit && worst && compareRank(file, score, worst) >= 0) return
+  const candidate = { file, score }
+  if (found.length < limit) {
+    let child = found.length
+    found.push(candidate)
+    while (child > 0) {
+      const parent = (child - 1) >>> 1
+      const previous = found[parent]
+      if (!previous || compareRank(file, score, previous) <= 0) break
+      found[child] = previous
+      child = parent
+    }
+    found[child] = candidate
+    return
+  }
+  let parent = 0
+  for (;;) {
+    let child = parent * 2 + 1
+    const left = found[child]
+    if (!left) break
+    const right = found[child + 1]
+    if (right && compareRank(right.file, right.score, left) > 0) child++
+    const next = found[child]
+    if (!next || compareRank(file, score, next) >= 0) break
+    found[parent] = next
+    parent = child
+  }
+  found[parent] = candidate
 }
 
 // recentFiles lists this project's working-tree files this window showed,

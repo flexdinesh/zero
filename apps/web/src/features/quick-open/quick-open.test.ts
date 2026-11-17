@@ -46,6 +46,25 @@ test("in-order characters find a file, preferring word starts in the base name",
   assert.equal(ranked("cmdpal")[0], "apps/web/src/workspace/CommandPalette.tsx")
 })
 
+test("fuzzy matches never reuse a character at the start of a path", () => {
+  const repeated = indexFiles(["ab", "aab", "aba"])
+  assert.deepEqual(matchFiles(repeated, ["aab"], 10).matches.map((match) => match.path), ["aab"])
+  assert.deepEqual(matchFiles(repeated, ["aaa"], 10), { total: 0, matches: [] })
+})
+
+test("fuzzy highlights keep the rightmost in-order occurrences", () => {
+  const [match] = matchFiles(indexFiles(["src/a_b_a_b_z.ts"]), ["abz"], 1).matches
+  assert.deepEqual(match?.name, [{ start: 4, end: 5 }, { start: 6, end: 7 }, { start: 8, end: 9 }])
+  assert.deepEqual(match?.directory, [])
+})
+
+test("matching preserves UTF-16 highlights and length-preserving case folding", () => {
+  const unicode = indexFiles(["src/İstanbul.ts", "src/istanbul.ts", "src/Δelta.ts", "src/😀smile.ts"])
+  assert.deepEqual(matchFiles(unicode, ["istan"], 10).matches.map((match) => match.path), ["src/istanbul.ts"])
+  assert.deepEqual(matchFiles(unicode, ["δel"], 10).matches[0]?.name, [{ start: 0, end: 3 }])
+  assert.deepEqual(matchFiles(unicode, ["😀sl"], 10).matches[0]?.name, [{ start: 0, end: 3 }, { start: 5, end: 6 }])
+})
+
 test("every term must match; terms may match anywhere in the path", () => {
   assert.equal(ranked("tree css")[0], "apps/web/src/lib/tree-css.ts")
   assert.equal(ranked("explorer test")[0], "apps/web/src/features/explorer/filename-filter.test.ts")
@@ -78,6 +97,22 @@ test("results stop at the limit while the total counts every match", () => {
   const result = matchFiles(index, ["a"], 3)
   assert.equal(result.matches.length, 3)
   assert.equal(result.total, paths.filter((path) => path.toLowerCase().includes("a")).length)
+})
+
+test("bounded ranking matches a full sort across shuffled scores, ties, and slice limits", () => {
+  const names = ["Component", "my-component", "C_o_m_p", "other"]
+  const shuffled = Array.from({ length: 809 }, (_, at) => {
+    const id = (at * 137) % 809
+    return `src/component-module-${id % 17}/${names[id % names.length]}-${id}.tsx`
+  })
+  const files = indexFiles([...shuffled, ...shuffled.slice(0, 20)])
+  for (const query of [["comp"], ["cmp"], ["src", "comp"], ["module", "2"], ["none"]]) {
+    const all = matchFiles(files, query, Infinity)
+    for (const limit of [0, 1, 3, 10, 100, 809, 1_000, -1, -3, 1.9, NaN, Infinity]) {
+      assert.deepEqual(matchFiles(files, query, limit), { total: all.total, matches: all.matches.slice(0, limit) },
+        `${query.join(" ")}, limit ${limit}`)
+    }
+  }
 })
 
 test("an empty query matches nothing", () => {
