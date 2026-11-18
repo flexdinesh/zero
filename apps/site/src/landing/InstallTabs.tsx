@@ -1,7 +1,31 @@
 'use client'
 
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { installMethods, links } from './links'
+
+/** Breaks a command between words and after a URL's slashes, never inside a flag like `--`. */
+function CommandText({ command }: { command: string }) {
+  return (
+    <>
+      {command.split(' ').map((word, w) => (
+        <Fragment key={w}>
+          {w > 0 && ' '}
+          {word.includes('/') ? (
+            word.split('/').map((part, p) => (
+              <Fragment key={p}>
+                {p > 0 && '/'}
+                {p > 0 && part !== '' && <wbr />}
+                {part}
+              </Fragment>
+            ))
+          ) : (
+            <span className="landing-install-word">{word}</span>
+          )}
+        </Fragment>
+      ))}
+    </>
+  )
+}
 
 export function InstallTabs() {
   const [selected, setSelected] = useState(0)
@@ -43,7 +67,9 @@ export function InstallTabs() {
           <span className="landing-install-prompt" aria-hidden="true">
             $
           </span>
-          {method.command}
+          <span className="landing-install-text">
+            <CommandText command={method.command} />
+          </span>
         </code>
         <button type="button" className="landing-install-copy" onClick={() => void copy(method.command)}>
           {copied ? 'Copied' : 'Copy'}
