@@ -1,9 +1,24 @@
 diff --git a/dist/components/Virtualizer.js b/dist/components/Virtualizer.js
-index 4063b992bf7c4958c0d8a305977280ea9a3a7330..3db266d19e91e89621d96e2e51a87c737939cc34 100644
+index 4063b992bf7c4958c0d8a305977280ea9a3a7330..6b47f1e5271d5e603619bf6da021817cddc805fe 100644
 --- a/dist/components/Virtualizer.js
 +++ b/dist/components/Virtualizer.js
-@@ -187,7 +187,10 @@ var Virtualizer = class Virtualizer {
+@@ -42,6 +42,11 @@ var Virtualizer = class Virtualizer {
+ 	scrollDirty = true;
+ 	heightDirty = true;
+ 	scrollHeightDirty = true;
++	// The size getters clear the flags above when they refresh their caches.
++	// A clamp or visibility check can do that before the next render pass,
++	// which would then keep every instance's cached top after DOM changes.
++	// Only a render pass consumes this one.
++	domDirty = true;
+ 	renderedObservers = 0;
+ 	connectQueue = /* @__PURE__ */ new Map();
+ 	constructor(config) {
+@@ -185,9 +190,13 @@ var Virtualizer = class Virtualizer {
+ 		this.scrollDirty = true;
+ 		this.heightDirty = true;
  		this.scrollHeightDirty = true;
++		this.domDirty = true;
  	}
  	getOffsetInScrollContainer(element) {
 -		return this.getScrollTop() + getRelativeBoundingTop(element, this.getScrollContainerElement());
@@ -14,7 +29,17 @@ index 4063b992bf7c4958c0d8a305977280ea9a3a7330..3db266d19e91e89621d96e2e51a87c73
  	}
  	connect(container, instance) {
  		if (this.observers.has(container)) throw new Error("Virtualizer.connect: instance is already connected...");
-@@ -300,9 +303,10 @@ var Virtualizer = class Virtualizer {
+@@ -230,7 +239,8 @@ var Virtualizer = class Virtualizer {
+ 	};
+ 	computeRenderRangeAndEmit = () => {
+ 		if (Virtualizer.__STOP) return;
+-		const wrapperDirty = this.heightDirty || this.scrollHeightDirty;
++		const wrapperDirty = this.heightDirty || this.scrollHeightDirty || this.domDirty;
++		this.domDirty = false;
+ 		let instancesHaveChanged = this.instancesChanged.size > 0;
+ 		if (this.instancesChanged.size === 0) {
+ 			const windowSpecs = createWindowFromScrollPosition({
+@@ -300,9 +310,10 @@ var Virtualizer = class Virtualizer {
  	}
  	getScrollAnchor(viewportHeight) {
  		const scrollContainer = this.getScrollContainerElement();
@@ -26,7 +51,7 @@ index 4063b992bf7c4958c0d8a305977280ea9a3a7330..3db266d19e91e89621d96e2e51a87c73
  			const fileBottom = fileTop + fileElement.offsetHeight;
  			let fileOffset;
  			let fileTypeOffset;
-@@ -315,14 +319,24 @@ var Virtualizer = class Virtualizer {
+@@ -315,14 +326,24 @@ var Virtualizer = class Virtualizer {
  			}
  			let bestLineIndex;
  			let bestLineOffset;
@@ -58,6 +83,14 @@ index 4063b992bf7c4958c0d8a305977280ea9a3a7330..3db266d19e91e89621d96e2e51a87c73
  				break;
  			}
  			if (bestAnchor?.lineOffset != null && bestLineOffset == null) continue;
+@@ -417,6 +438,7 @@ var Virtualizer = class Virtualizer {
+ 		this.scrollDirty = true;
+ 		this.scrollHeightDirty = true;
+ 		this.heightDirty = true;
++		this.domDirty = true;
+ 	}
+ 	getScrollContainerElement() {
+ 		return this.root == null || this.root instanceof Document ? void 0 : this.root;
 diff --git a/dist/managers/InteractionManager.js b/dist/managers/InteractionManager.js
 index fbfc10efafa50a07a1b339f6e82baad84c4b70ee..c0b0dabe4d7a232541036c9944567d9c77c12c57 100644
 --- a/dist/managers/InteractionManager.js

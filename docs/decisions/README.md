@@ -170,3 +170,4 @@ rewriting history; update `Status` on the old record.
 | [0168](0168-sidebar-and-picker-visibility.md) | Sidebar and picker visibility | Accepted; extends 0020, 0145, 0160, 0162 |
 | [0169](0169-deferred-review-and-dialogs.md) | Deferred review and dialog assets | Accepted; extends 0048, 0157, 0168 |
 | [0170](0170-window-sidebar-result-lists.md) | Window sidebar result lists | Accepted; extends 0020, 0040, 0168 |
+| [0171](0171-review-remeasure-survives-cache-reads.md) | Review re-measure survives cache reads | Accepted; extends 0157, 0163 |

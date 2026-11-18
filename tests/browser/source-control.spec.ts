@@ -350,6 +350,44 @@ test("review placement uses the pane's current scroll before its scroll event ar
   expect(placement.actual).toBeCloseTo(placement.initial, 2)
 })
 
+test("review files keep their rows when content grows above them and a resize scroll follows", async ({ page }) => {
+  await openReview(page, "review=working#f=README.md")
+  await expect(diffLines(page, "change-addition", "README.md").filter({ hasText: "Four" })).toBeVisible({ timeout: 20_000 })
+  await expect(reviewFile(page, "large.txt").locator("diffs-container")).toBeAttached({ timeout: 20_000 })
+  // A wheel turn ends the reveal's pin, so only the sequence below scrolls.
+  await page.locator("main").dispatchEvent("wheel")
+  await page.evaluate(() => {
+    const root = document.querySelector("main")
+    const above = root?.querySelector('[data-review-path="large.txt"]')
+    const file = root?.querySelector('[data-review-path="README.md"] diffs-container')
+    // Pierre exposes its resident simple virtualizer for diagnostics.
+    const instance: unknown = Reflect.get(window, "__INSTANCE")
+    if (!(root instanceof HTMLElement) || !(above instanceof HTMLElement) || !(file instanceof HTMLElement)
+      || typeof instance !== "object" || instance === null
+      || !("getRoot" in instance) || typeof instance.getRoot !== "function"
+      || !("markDOMDirty" in instance) || typeof instance.markDOMDirty !== "function"
+      || !("scrollTo" in instance) || typeof instance.scrollTo !== "function") {
+      throw new Error("Review virtualizer is not ready")
+    }
+    if (instance.getRoot() !== root) throw new Error("Review virtualizer belongs to another pane")
+    const content: unknown = Reflect.get(instance, "contentContainer")
+    if (!(content instanceof HTMLElement)) throw new Error("Review virtualizer has no content wrapper")
+    const { markDOMDirty, scrollTo } = instance
+    // A diff mounting above grows the content. The virtualizer's own resize
+    // observer sees it first; a reveal pin's observer then scrolls through
+    // the virtualizer, whose clamp reads the sizes the growth left stale.
+    const observer = new ResizeObserver(() => {
+      observer.disconnect()
+      markDOMDirty.call(instance)
+      scrollTo.call(instance, { top: file.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop })
+    })
+    observer.observe(content)
+    above.style.paddingBottom = "4000px"
+  })
+  await expect(diffLines(page, "change-addition", "README.md").filter({ hasText: "Four" })).toBeInViewport()
+  await expect(diffLines(page, "change-deletion", "README.md").filter({ hasText: "Two" })).toBeInViewport()
+})
+
 test("review anchors scroll their lines into view and open the unchanged lines they name", async ({ page }) => {
   test.setTimeout(60_000)
   const gutter = (line: number) => reviewFile(page, "large.txt").locator(`.diff-view [data-additions] [data-column-number="${line}"]`)
