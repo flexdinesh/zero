@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 
 import { isFeedbackFilter, unseenCount, type FeedbackFilter } from "./feedback-model.ts"
 import { useFeedbackSeen } from "./use-feedback-seen.ts"
@@ -34,8 +34,14 @@ export function useFeedbackView({ onChanged, project, shown, version }: Feedback
   const session = useFeedback({ project, id: selectedId, compare: null, version, enabled: project !== "", onChanged })
   const list = useFeedbackList(project, shown, version)
   const seen = useFeedbackSeen()
-  const unseen = unseenCount(seen, session.feedback)
-  const openThreadCount = session.feedback?.threads.filter((thread) => thread.status === "open").length ?? 0
+  const { feedback, index } = session
+  const unseen = useMemo(() => unseenCount(seen, feedback), [seen, feedback])
+  const counts = index?.counts
+  const openThreadCount = useMemo(() => {
+    let total = 0
+    if (counts) for (const count of counts.values()) total += count
+    return total
+  }, [counts])
 
   // show selects feedback by id ("" for the checkout's branch), narrowed to
   // path when given.

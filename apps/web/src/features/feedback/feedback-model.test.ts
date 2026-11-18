@@ -3,9 +3,10 @@ import { readFile } from "node:fs/promises"
 import test from "node:test"
 
 import { isFeedback, type Feedback, type FeedbackThread } from "@zero/contracts"
+import { indexFeedback } from "./feedback-index.ts"
 import {
-  activity, anchorKey, anchorLabel, authorLabel, feedbackCompare, feedbackMarkdown, feedbackMeta, feedbackPrompt, groupByFile, inlineThreads, isUnseen,
-  locationLabel, markSeen, plainLine, matchesFilter, openCounts, outdatedCount, parseSeen, placeLabel, reviewCompareOf, routeFeedback, statusChange,
+  activity, anchorKey, anchorLabel, authorLabel, feedbackCompare, feedbackMarkdown, feedbackMeta, feedbackPrompt, groupByFile, isUnseen,
+  locationLabel, markSeen, plainLine, matchesFilter, parseSeen, placeLabel, reviewCompareOf, routeFeedback, statusChange,
   threadPrompt, threadRoute, threadTitle, unseenCount, utcTime,
 } from "./feedback-model.ts"
 
@@ -102,16 +103,16 @@ test("filters and groups threads by file", async () => {
   assert.deepEqual(groupByFile([...feedback.threads].reverse()).map((group) => [group.path, group.threads.map((entry) => entry.number)]), [
     ["code/app.js", [2]], ["code/main.go", [1]], ["config/zero.toml", [3]], ["guides/getting-started.md", [4]],
   ])
-  assert.deepEqual([...openCounts(feedback.threads)], [["code/main.go", 1], ["config/zero.toml", 1]])
+  assert.deepEqual([...indexFeedback(feedback).counts], [["code/main.go", 1], ["config/zero.toml", 1]])
 })
 
 test("inline threads leave outdated ones to the band, and closed ones to the option", async () => {
-  const feedback = await fixture()
-  assert.deepEqual(inlineThreads(feedback.threads, "code/app.js", true).map((entry) => entry.number), [2])
-  assert.deepEqual(inlineThreads(feedback.threads, "code/app.js", false), [])
-  assert.deepEqual(inlineThreads(feedback.threads, "config/zero.toml", true), [])
-  assert.equal(outdatedCount(feedback.threads, "config/zero.toml", true), 1)
-  assert.equal(outdatedCount(feedback.threads, "code/main.go", true), 0)
+  const { files } = indexFeedback(await fixture())
+  assert.deepEqual(files.get("code/app.js")?.all.map((entry) => entry.number), [2])
+  assert.deepEqual(files.get("code/app.js")?.open, [])
+  assert.deepEqual(files.get("config/zero.toml")?.all, [])
+  assert.equal(files.get("config/zero.toml")?.outdatedAll, 1)
+  assert.equal(files.get("code/main.go")?.outdatedAll, 0)
 })
 
 test("agent replies stay unseen until shown at their version", async () => {

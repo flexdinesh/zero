@@ -1,13 +1,13 @@
 import { Menu } from "@base-ui/react/menu"
 import { CheckIcon, ChevronUpIcon, CircleCheckIcon, CircleDotIcon, CircleSlashIcon, EllipsisIcon, MessageSquareTextIcon, XIcon } from "lucide-react"
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type SyntheticEvent } from "react"
+import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type SyntheticEvent } from "react"
 
 import { Button } from "../../components/ui/button.tsx"
 import { IconButton } from "../../components/ui/icon-button.tsx"
 import { menuItemClass, menuPopupClass, menuPositionerClass } from "../../components/ui/menu.ts"
 import { StatusMessage } from "../../components/ui/notice.tsx"
 import { TextArea } from "../../components/ui/text-field.tsx"
-import type { Feedback, FeedbackStatus, FeedbackThread } from "@zero/contracts"
+import type { FeedbackStatus, FeedbackThread } from "@zero/contracts"
 import { useClipboardCopy } from "../../lib/clipboard.ts"
 import { DocumentPreview } from "../documents/DocumentPreview.tsx"
 import { commitAge, commitDate } from "../source-control/compare.ts"
@@ -16,7 +16,7 @@ import {
   authorLabel, isClosed, lastAuthor, placeLabel, statusChange, statusLabels, threadPrompt, threadTitle,
 } from "./feedback-model.ts"
 import { markFeedbackSeen } from "./use-feedback-seen.ts"
-import type { FeedbackSession } from "./use-feedback.ts"
+import type { FeedbackActions } from "./use-feedback.ts"
 
 const mac = typeof navigator !== "undefined" && navigator.platform.includes("Mac")
 // sendKeys names Cmd/Ctrl+Enter, which sends a comment or reply.
@@ -57,8 +57,9 @@ function CopyThread({ text }: { text(): string }) {
 
 export interface FeedbackThreadZoneProps {
   thread: FeedbackThread
-  feedback: Feedback
-  session: FeedbackSession
+  feedbackId: string
+  project: string
+  actions: Pick<FeedbackActions, "reply" | "removeThread">
   navigate(href: string): void
   // before shows above the conversation, e.g. an outdated thread's text.
   before?: ReactNode
@@ -68,17 +69,20 @@ export interface FeedbackThreadZoneProps {
 // in the code it is about, in the walkthrough narration's treatment, with
 // the conversation and a reply field. Closed threads collapse to one line.
 // Showing a thread expanded marks its agent reply seen.
-export function FeedbackThreadZone({ before, feedback, navigate, session, thread }: FeedbackThreadZoneProps) {
+export const FeedbackThreadZone = memo(function FeedbackThreadZone(props: FeedbackThreadZoneProps) {
+  const draftKey = replyKey(props.project, props.feedbackId, props.thread.number)
+  return <ThreadConversation key={draftKey} {...props} draftKey={draftKey} />
+})
+
+function ThreadConversation({ actions, before, draftKey, feedbackId: id, navigate, project, thread }: FeedbackThreadZoneProps & { draftKey: string }) {
   const closed = isClosed(thread.status)
   const [expandedAt, setExpandedAt] = useState<string | null>(null)
   // A closed thread stays expanded only for the version the user opened.
   const expanded = !closed || expandedAt === thread.updatedAt
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
-  const draftKey = replyKey(feedback.project, feedback.id, thread.number)
   const [reply, setReply] = useState(() => readDraft(draftKey))
   const field = useRef<HTMLTextAreaElement>(null)
-  const id = feedback.id
 
   useEffect(() => {
     if (expanded && thread.awaiting === "user") markFeedbackSeen(id, [thread])
@@ -94,8 +98,9 @@ export function FeedbackThreadZone({ before, feedback, navigate, session, thread
     if (busy || (!body && !status)) return
     setBusy(true)
     setError("")
-    session.reply(thread.number, body, status).then(() => {
-      updateReply("")
+    actions.reply(thread.number, body, status).then(() => {
+      setReply("")
+      if (readDraft(draftKey) === reply) writeDraft(draftKey, "")
       if (status && isClosed(status)) setExpandedAt(null)
     }, (failure: unknown) => {
       setError(failure instanceof Error ? failure.message : "Couldn't send the reply.")
@@ -103,10 +108,12 @@ export function FeedbackThreadZone({ before, feedback, navigate, session, thread
   }
 
   const remove = () => {
+    if (busy) return
+    setBusy(true)
     setError("")
-    session.removeThread(thread.number).catch((failure: unknown) => {
+    actions.removeThread(thread.number).catch((failure: unknown) => {
       setError(failure instanceof Error ? failure.message : "Couldn't delete the thread.")
-    })
+    }).finally(() => setBusy(false))
   }
 
   const label = statusLabels[thread.status]
@@ -134,7 +141,7 @@ export function FeedbackThreadZone({ before, feedback, navigate, session, thread
         <span className="feedback-thread-number">Thread {thread.number}</span>
         <span className="feedback-thread-place" title={place}>{place}</span>
         <div className="feedback-thread-actions">
-          <CopyThread text={() => threadPrompt(feedback, thread)} />
+          <CopyThread text={() => threadPrompt({ id, project }, thread)} />
           <Button size="sm" variant="ghost" disabled={busy || !id} onClick={() => send(closed ? "open" : "resolved")}>
             {closed ? "Reopen" : "Resolve"}
           </Button>
@@ -143,8 +150,8 @@ export function FeedbackThreadZone({ before, feedback, navigate, session, thread
             <Menu.Portal>
               <Menu.Positioner className={menuPositionerClass} sideOffset={4} align="end">
                 <Menu.Popup className={menuPopupClass} aria-label="Thread actions">
-                  {thread.status !== "wontfix" && <Menu.Item className={menuItemClass} disabled={!id} onClick={() => send("wontfix")}>Won't fix</Menu.Item>}
-                  <Menu.Item className={menuItemClass} disabled={!id} onClick={remove}>Delete thread</Menu.Item>
+                  {thread.status !== "wontfix" && <Menu.Item className={menuItemClass} disabled={busy || !id} onClick={() => send("wontfix")}>Won't fix</Menu.Item>}
+                  <Menu.Item className={menuItemClass} disabled={busy || !id} onClick={remove}>Delete thread</Menu.Item>
                 </Menu.Popup>
               </Menu.Positioner>
             </Menu.Portal>

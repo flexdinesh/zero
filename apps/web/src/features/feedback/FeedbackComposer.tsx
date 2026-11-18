@@ -35,7 +35,9 @@ export function FeedbackComposer({ anchor, onCancel, onSubmit }: FeedbackCompose
     if (!body || busy) return
     setBusy(true)
     setError("")
-    onSubmit(body).then(() => writeDraft(key, ""), (failure: unknown) => {
+    onSubmit(body).then(() => {
+      if (readDraft(key) === text) writeDraft(key, "")
+    }, (failure: unknown) => {
       setError(failure instanceof Error ? failure.message : "Couldn't add the comment.")
       setBusy(false)
     })

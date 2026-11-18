@@ -1,6 +1,6 @@
 import { Menu } from "@base-ui/react/menu"
 import { CheckIcon, ChevronDownIcon, ClipboardCopyIcon, EllipsisIcon, GitBranchIcon, XIcon } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useLayoutEffect, useMemo, useRef, useState } from "react"
 
 import { FileIcon } from "../../components/FileIcon.tsx"
 import { Button } from "../../components/ui/button.tsx"
@@ -21,6 +21,7 @@ import {
   placeLabel, statusLabels, threadRoute, threadTitle, type ThreadRoute,
 } from "./feedback-model.ts"
 import { FeedbackStatusIcon, FeedbackThreadZone } from "./FeedbackThreadZone.tsx"
+import type { FeedbackActions } from "./use-feedback.ts"
 import type { FeedbackViewState } from "./use-feedback-view.ts"
 
 interface FeedbackViewProps {
@@ -112,19 +113,26 @@ function BranchPicker({ branch: checkout, view }: { branch: string; view: Feedba
 // an agent to them. A thread opens where it was written; an outdated one
 // opens in place with the text it was about.
 export function FeedbackView({ branch, mobile, navigate, onDismiss, onOpenThread, project, view }: FeedbackViewProps) {
-  const { session } = view
-  const feedback = session.feedback
-  const [confirming, setConfirming] = useState(false)
-  const [deleteError, setDeleteError] = useState("")
+  const { actions, feedback } = view.session
+  const [confirmation, setConfirmation] = useState<{ actions: FeedbackActions; busy: boolean; error: string } | null>(null)
+  const current = useRef<FeedbackActions | null>(null)
+  useLayoutEffect(() => {
+    current.current = actions
+    return () => { current.current = null }
+  }, [actions])
   const markdown = useClipboardCopy()
   const shownThreads = useMemo(() => (feedback?.threads ?? [])
     .filter((thread) => matchesFilter(thread, view.filter) && (!view.path || thread.location.path === view.path)), [feedback, view.filter, view.path])
   const remove = () => {
-    setDeleteError("")
-    session.removeFeedback().then(() => {
-      setConfirming(false)
+    if (!confirmation || confirmation.actions !== actions || confirmation.busy || !feedback?.id) return
+    setConfirmation({ actions, busy: true, error: "" })
+    actions.removeFeedback().then(() => {
+      if (current.current !== actions) return
+      setConfirmation(null)
       view.show("")
-    }, (error: unknown) => setDeleteError(error instanceof Error ? error.message : "Couldn't delete the feedback."))
+    }, (error: unknown) => {
+      if (current.current === actions) setConfirmation({ actions, busy: false, error: error instanceof Error ? error.message : "Couldn't delete the feedback." })
+    })
   }
   const hasThreads = (feedback?.threads.length ?? 0) > 0
   return (
@@ -142,7 +150,8 @@ export function FeedbackView({ branch, mobile, navigate, onDismiss, onOpenThread
                   Copy as Markdown
                 </Menu.Item>
                 <Menu.Separator className={menuSeparatorClass} />
-                <Menu.Item className={menuItemClass} disabled={!feedback?.id} onClick={() => setConfirming(true)}>Delete feedback</Menu.Item>
+                <Menu.Item className={menuItemClass} disabled={!feedback?.id || confirmation?.actions === actions}
+                  onClick={() => setConfirmation({ actions, busy: false, error: "" })}>Delete feedback</Menu.Item>
               </Menu.Popup>
             </Menu.Positioner>
           </Menu.Portal>
@@ -161,13 +170,13 @@ export function FeedbackView({ branch, mobile, navigate, onDismiss, onOpenThread
             </p>
           )}
         </div>
-        {confirming && (
+        {confirmation?.actions === actions && feedback?.id && (
           <Notice tone="warning" layout="bar" role="group" aria-label="Delete feedback" className="feedback-confirm">
-            <span>Delete every thread on {branchLabel(feedback?.branch ?? "")}? Zero keeps no copy.</span>
-            {deleteError && <span role="alert">{deleteError}</span>}
+            <span>Delete every thread on {branchLabel(feedback.branch)}? Zero keeps no copy.</span>
+            {confirmation.error && <span role="alert">{confirmation.error}</span>}
             <span className="feedback-confirm-actions">
-              <Button size="sm" variant="destructive" onClick={remove}>Delete</Button>
-              <Button size="sm" variant="outline" onClick={() => setConfirming(false)}>Cancel</Button>
+              <Button size="sm" variant="destructive" disabled={confirmation.busy} onClick={remove}>Delete</Button>
+              <Button size="sm" variant="outline" disabled={confirmation.busy} onClick={() => setConfirmation(null)}>Cancel</Button>
             </span>
           </Notice>
         )}
@@ -232,7 +241,7 @@ function FeedbackBody({ navigate, onOpenThread, project, threads, view }: BodyPr
     {load.kind === "error" && <StatusMessage tone="error" role="alert" className="feedback-stale">{load.message}</StatusMessage>}
     {threads.length === 0
       ? <div className="feedback-note"><StatusMessage>{view.filter === "resolved" ? "No resolved threads." : view.filter === "awaiting" ? "Nothing awaits the agent." : "No open threads."}</StatusMessage></div>
-      : <ThreadRows feedback={feedback} threads={threads} view={view} navigate={navigate} onOpenThread={onOpenThread} />}
+      : <ThreadRows key={feedback.id} feedback={feedback} threads={threads} view={view} navigate={navigate} onOpenThread={onOpenThread} />}
   </>
 }
 
@@ -295,7 +304,7 @@ function ThreadRows({ feedback, navigate, onOpenThread, threads, view }: RowsPro
               </ListRow>,
               outdated && expanded === thread.number && (
                 <div key={`${thread.number}-thread`} className="feedback-inline">
-                  <FeedbackThreadZone thread={thread} feedback={feedback} session={view.session} navigate={navigate}
+                  <FeedbackThreadZone thread={thread} feedbackId={feedback.id} project={feedback.project} actions={view.session.actions} navigate={navigate}
                     before={thread.anchor.text && thread.anchor.text.length > 0
                       ? <pre className="feedback-original" aria-label="The code this thread was about">{thread.anchor.text.join("\n")}</pre>
                       : undefined} />

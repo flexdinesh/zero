@@ -37,6 +37,15 @@ const profile: Plugin = {
     const names = [...boundaries].find(([suffix]) => id.endsWith(suffix))?.[1]
     if (!names) return
     let instrumented = code
+    if (process.env.ZERO_PROFILE_FEEDBACK === "1") {
+      if (!names.includes("ReviewDocument")) return
+      // Keep the keyed boundary outside ReviewFile so its normal memo
+      // comparison and descendant-only updates run on either revision.
+      const file = /<ReviewFile key=\{file\.path\}([\s\S]*?) \/>/gu
+      if ([...code.matchAll(file)].length !== 1) throw new Error("Expected one keyed ReviewFile")
+      instrumented = code.replace(file,
+        '<ZeroDiagnosticProfiler key={file.path} id={`ReviewFile:${file.path}`} onRender={recordProfile}><ReviewFile$1 /></ZeroDiagnosticProfiler>')
+    }
     for (const name of names) {
       const defaultExport = code.includes(`export default function ${name}(`)
       const declaration = `export ${defaultExport ? "default " : ""}function ${name}(`
