@@ -131,9 +131,16 @@
      Inter at 14px matches the optical size of 13px monospace source. */
   --text-list: var(--text-sm);
   --text-supporting: var(--text-sm);
+  /* Monospace inside the UI: review file paths, navigation snippets, branch
+     names, walkthrough targets (decision 0122). */
   --text-code: 0.8125rem;
+  /* Code in tabs (Source, diffs, preview code) reads a half step over UI
+     monospace: 13.5px at the 13px default (decision 0165). A factor, not a
+     step, so the Font Size setting scales it with everything else. */
+  --code-content-scale: calc(27 / 26);
+  --text-source: calc(var(--text-code) * var(--code-content-scale));
   /* File names in lists (Explorer, Source Control, review rail, search
-     results, palette) set in mono at the source size (decision 0130). */
+     results, palette) set in mono at the UI code size (decisions 0130, 0165). */
   --text-file: var(--text-code);
   /* Tabs, view and pane headers, and the review rail's header (decision 0102). */
   --font-chrome: var(--font-mono);
@@ -201,7 +208,8 @@
      platforms, and in full screen. */
   --titlebar-height: var(--mygo-titlebar-height, 0px);
 
-  /* Source rows and gutter geometry (Pierre and the copy control align to it). */
+  /* Source rows and gutter geometry (Pierre and the copy control align to it).
+     22px rows are Zed's comfortable 1.618 ratio at 13.5px code (decision 0165). */
   --source-line-height: 1.375rem;
   --source-gutter-start: 22px;
   --source-gutter-end: 14px;
