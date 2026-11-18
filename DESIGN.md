@@ -1044,7 +1044,7 @@ Every corner is square. `_root.css` zeroes Vocs' radii with one `border-radius: 
 
 - **Feature row:** a lowercase mono accent label (none in the hero), the heading, the lede, then the row's terminal, links, or install and CTAs; beside it the feature's pane on the dot grid.
 - **Buttons:** primary on `accent` with `on-accent` text, hover `accent-hover`; outline on `surface` with a 1px `border`, hover border `muted`; 120ms color transitions.
-- **Install tabs:** a `surface-2` frame with a 1px border; tabs separated by 1px rules; the selected tab lifts onto `surface` with a 2px accent top edge; the command row shows an accent `$`, the command in 12.5px mono, and an uppercase Copy action behind a 1px rule.
+- **Install tabs:** a `surface-2` frame with a 1px border; tabs separated by 1px rules; the selected tab lifts onto `surface` with a 2px accent top edge; the command row shows an accent `$`, the command in 12.5px mono (wrapping at path boundaries with a hanging indent after `$`, never scrolling, so each tab's full command shows), and an uppercase Copy action behind a 1px rule; the note's code takes the lede's code chip on `surface`.
 - **Terminal:** `surface`, 1px border in the feature's tint, mono 12px, accent `$`.
 - **Pane:** a caption row (label left, "synthetic demo" right), then a `surface` window with a 1px border: chrome tab strip (active tab joins the surface), `surface-2` bands, code rows, side panel, and chrome status bar, mirroring the app.
 - **Walkthrough note:** inline after its lines, as in the app: 1px accent border on `--l-note`, a mono label title with a 16px accent step pin, 12.5px `text-2` prose.
