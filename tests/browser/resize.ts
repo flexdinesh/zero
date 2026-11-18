@@ -6,6 +6,32 @@ export async function resizeBox(locator: Locator) {
   return box
 }
 
+// Start with a real pointer so capture and its browser-generated release events
+// participate even when a test injects several moves in one animation frame.
+export async function beginResize(page: Page, separator: Locator) {
+  await separator.evaluate((element) => {
+    element.removeAttribute("data-test-pointer")
+    element.addEventListener("pointerdown", (event) => {
+      if (event instanceof PointerEvent) {
+        element.setAttribute("data-test-pointer", String(event.pointerId))
+        element.setAttribute("data-test-pointer-x", String(event.clientX))
+        element.setAttribute("data-test-pointer-y", String(event.clientY))
+      }
+    }, { once: true })
+  })
+  const box = await resizeBox(separator)
+  const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+  await page.mouse.move(point.x, point.y)
+  await page.mouse.down()
+  const pointer = await separator.getAttribute("data-test-pointer")
+  if (pointer === null || !Number.isFinite(Number(pointer))) throw new Error("Resize pointer did not start")
+  return {
+    x: Number(await separator.getAttribute("data-test-pointer-x")),
+    y: Number(await separator.getAttribute("data-test-pointer-y")),
+    pointerId: Number(pointer),
+  }
+}
+
 export async function dragWithoutSelection(page: Page, separator: Locator, delta: { x: number; y: number }, y?: number) {
   const box = await resizeBox(separator)
   const start = { x: box.x + box.width / 2, y: y ?? box.y + box.height / 2 }

@@ -5,6 +5,11 @@ import path from "node:path"
 
 import { requestedPort, serverPort, startProcess, stopProcess, type ManagedProcess } from "./browser-process.ts"
 
+// Production measurements use the embedded application. Avoid retaining an
+// unused Vite optimizer beside the large-document renderer in the same cgroup.
+const productionOnly = process.argv.includes("--production-only")
+const playwrightArgs = process.argv.slice(2).filter((argument) => argument !== "--production-only")
+
 // Chromium aborts in-flight requests when Docker changes host interfaces.
 // Re-enter this runner inside a loopback-only namespace before starting any
 // servers. Hosts without unprivileged namespaces still use OS-assigned ports.
@@ -68,12 +73,13 @@ try {
 
   const api = await serve("testdata/markdown", base)
   const git = await serve(env.ZERO_BROWSER_GIT_ROOT, base === 0 ? 0 : base + 2)
-  const vite = await serverPort(launch(process.execPath, [
+  const vite = productionOnly ? api : await serverPort(launch(process.execPath, [
     "apps/web/node_modules/vite/bin/vite.js", "--configLoader", "native", "--host", "127.0.0.1", "--port", String(web), "--strictPort",
     "--config", "apps/web/vite.config.ts",
   ], { ZERO_API_TARGET: `http://127.0.0.1:${api}` }, true))
 
-  const result = await launch("playwright", ["test", ...process.argv.slice(2)], {
+  const result = await launch("playwright", ["test", ...playwrightArgs], {
+    ZERO_BROWSER_PRODUCTION_ONLY: productionOnly ? "1" : "0",
     ZERO_BROWSER_API_PORT: String(api),
     ZERO_BROWSER_GIT_PORT: String(git),
     ZERO_BROWSER_BINARY: binary,

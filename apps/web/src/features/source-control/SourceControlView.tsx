@@ -1,5 +1,5 @@
 import { FileDiffIcon, FoldVerticalIcon, ListIcon, ListTreeIcon, RefreshCwIcon, UnfoldVerticalIcon, XIcon } from "lucide-react"
-import { Fragment, useMemo, useRef, useState, type ReactNode } from "react"
+import { Fragment, useMemo, useState, type ReactNode } from "react"
 
 import { Badge } from "../../components/ui/badge.tsx"
 import { IconButton } from "../../components/ui/icon-button.tsx"
@@ -16,7 +16,7 @@ import { CommitsPane } from "./CommitsPane.tsx"
 import { compareKey, workingCompare, type Compare } from "./compare.ts"
 import type { CollapseRequest } from "./FilesTree.tsx"
 import { Pane, PaneSash } from "./Pane.tsx"
-import { paneIds, paneOpen, paneShares, type PaneId } from "./source-control-layout.ts"
+import { paneIds, paneOpen, type PaneId } from "./source-control-layout.ts"
 import { commitLanes, refChips } from "./source-control-panes.ts"
 import { UncommittedPane } from "./UncommittedPane.tsx"
 import type { BranchStack } from "./use-branch-stack.ts"
@@ -24,9 +24,11 @@ import type { Changes } from "./use-changes.ts"
 import type { Commits } from "./use-commits.ts"
 import type { CompareData } from "./use-compare-data.ts"
 import type { Refs } from "./use-refs.ts"
+import { usePaneResize } from "./use-pane-resize.ts"
 import { useSourceControlFilter, useSourceControlPanes, useSourceControlQuery } from "./SourceControlProvider.tsx"
 
 interface SourceControlViewProps {
+  active: boolean
   changes: Changes
   commits: Commits
   stack: BranchStack
@@ -54,7 +56,7 @@ const paneLabels: Record<PaneId, string> = { working: "Uncommitted", commits: "C
 // choice wins. On desktop open panes split the height with sashes between
 // them; phones stack them and the view scrolls.
 export function SourceControlView({
-  allOnly, changes, commits, mobile, refs, review: routedReview, stack, working, workingPath,
+  active, allOnly, changes, commits, mobile, refs, review: routedReview, stack, working, workingPath,
   onDismiss, onOpenReview,
 }: SourceControlViewProps) {
   const layout = { ...useSourceControlPanes(), ...useSourceControlQuery() }
@@ -68,7 +70,6 @@ export function SourceControlView({
   }
   const scale = uiScale(useSettings().settings)
   const itemHeight = treeRowHeight(mobile, scale)
-  const panes = useRef<HTMLDivElement>(null)
   const [anyExpanded, setAnyExpanded] = useState(true)
   const [collapseRequest, setCollapseRequest] = useState<CollapseRequest | null>(null)
   const repository = (!changes.result || changes.result.repository) && (!stack.result || stack.result.repository)
@@ -83,8 +84,14 @@ export function SourceControlView({
     commits: history ? history.commits.length === 0 && !isFiltered(history) : null,
     branches: stack.result ? stack.result.layers.length === 0 : null,
   }
-  const open = paneIds.filter((id) => paneOpen(layout.collapsed[id], empty[id]))
-  const shares = paneShares(layout.weights, open)
+  const workingOpen = paneOpen(layout.collapsed.working, empty.working)
+  const commitsOpen = paneOpen(layout.collapsed.commits, empty.commits)
+  const branchesOpen = paneOpen(layout.collapsed.branches, empty.branches)
+  const open = useMemo<PaneId[]>(() => paneIds.filter((id) => (
+    id === "working" ? workingOpen : id === "commits" ? commitsOpen : branchesOpen
+  )), [branchesOpen, commitsOpen, workingOpen])
+  const panes = usePaneResize({ active: active && repository, mobile, open, weights: layout.weights,
+    onCommit: layout.setPaneWeights, onReset: layout.resetPanes })
   const refreshAll = () => {
     changes.refresh()
     commits.refresh()
@@ -165,7 +172,7 @@ export function SourceControlView({
           <StatusMessage>This folder isn't a git repository.</StatusMessage>
         </div>
       ) : (
-        <div ref={panes} className="scm-panes" data-mobile={mobile || undefined}>
+        <div ref={panes.container} className="scm-panes" data-mobile={mobile || undefined}>
           {paneIds.map((id) => {
             const isOpen = open.includes(id)
             // A sash sits above each open pane that follows another open pane.
@@ -174,12 +181,12 @@ export function SourceControlView({
             return (
               <Fragment key={id}>
                 {!mobile && isOpen && above && (
-                  <PaneSash container={panes} label={`Resize ${paneLabels[above]} and ${paneLabels[id]}`}
-                    value={layout.weights[above] / (layout.weights[above] + layout.weights[id])}
-                    onResize={(delta) => layout.resizePanes(open, above, id, delta)} onReset={layout.resetPanes} />
+                  <PaneSash elementRef={(element) => panes.setSashElement(id, element)} label={`Resize ${paneLabels[above]} and ${paneLabels[id]}`}
+                    isResizing={panes.isResizing} onStart={(event) => panes.start(above, id, event)} onMove={panes.move} onStop={panes.stop}
+                    onResize={(delta) => layout.resizePanes(open, above, id, delta)} onReset={panes.reset} />
                 )}
-                <Pane title={paneLabels[id]} open={isOpen} weight={shares[id] ?? 0} mobile={mobile}
-                  note={pane.note} actions={pane.actions} onOpenChange={(next) => layout.setPaneCollapsed(id, !next)}>
+                <Pane title={paneLabels[id]} open={isOpen} elementRef={(element) => panes.setPaneElement(id, element)}
+                  note={pane.note} actions={pane.actions} onOpenChange={(next) => { panes.finish(); layout.setPaneCollapsed(id, !next) }}>
                   {pane.body}
                 </Pane>
               </Fragment>

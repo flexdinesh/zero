@@ -5,7 +5,7 @@ import { useCommitFilter, type CommitFilterState } from "./use-commit-filter.ts"
 import { useSourceControlLayout, type SourceControlLayoutState } from "./use-source-control-layout.ts"
 
 type Query = Pick<SourceControlLayoutState, "base" | "range" | "setBase" | "setRange"> & { filter: HistoryFilter }
-type Panes = Pick<SourceControlLayoutState, "weights" | "collapsed" | "changesView" | "setPaneCollapsed" | "resizePanes" | "resetPanes" | "setChangesView">
+type Panes = Pick<SourceControlLayoutState, "weights" | "collapsed" | "changesView" | "setPaneCollapsed" | "setPaneWeights" | "resizePanes" | "resetPanes" | "setChangesView">
 type Rail = Pick<SourceControlLayoutState, "railWidth" | "railHidden" | "railHideViewed" | "setRailWidth" | "setRailHidden" | "setRailHideViewed"> & {
   sheetOpen: boolean
   setSheetOpen(open: boolean): void
@@ -27,11 +27,11 @@ export function SourceControlProvider({ children, project }: { children: ReactNo
   const layout = useSourceControlLayout(project)
   const filter = useCommitFilter()
   const [sheetOpen, setSheetOpen] = useState(false)
-  const { base, range, setBase, setRange, weights, collapsed, changesView, setPaneCollapsed, resizePanes, resetPanes, setChangesView,
+  const { base, range, setBase, setRange, weights, collapsed, changesView, setPaneCollapsed, setPaneWeights, resizePanes, resetPanes, setChangesView,
     railWidth, railHidden, railHideViewed, setRailWidth, setRailHidden, setRailHideViewed } = layout
   const query = useMemo(() => ({ base, range, setBase, setRange, filter: filter.applied }), [base, range, setBase, setRange, filter.applied])
-  const panes = useMemo(() => ({ weights, collapsed, changesView, setPaneCollapsed, resizePanes, resetPanes, setChangesView }),
-    [weights, collapsed, changesView, setPaneCollapsed, resizePanes, resetPanes, setChangesView])
+  const panes = useMemo(() => ({ weights, collapsed, changesView, setPaneCollapsed, setPaneWeights, resizePanes, resetPanes, setChangesView }),
+    [weights, collapsed, changesView, setPaneCollapsed, setPaneWeights, resizePanes, resetPanes, setChangesView])
   const rail = useMemo(() => ({ railWidth, railHidden, railHideViewed, setRailWidth, setRailHidden, setRailHideViewed, sheetOpen, setSheetOpen }),
     [railWidth, railHidden, railHideViewed, setRailWidth, setRailHidden, setRailHideViewed, sheetOpen])
   const { showFileHistory: filterToFile, requestFocus } = filter

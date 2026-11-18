@@ -1,0 +1,57 @@
+# 0161: Resize previews belong to their layout
+
+- Status: Accepted
+- Date: 2026-11-18
+- Extends: [0040](0040-source-control-panes-and-review-files-rail.md), [0156](0156-feedback-badge-and-sidebar-width.md), [0160](0160-feature-ui-state-ownership.md)
+
+## Context
+
+Source Control sashes measured their container and published weights for every
+pointer move. The review Files rail read the root font size and published its
+width on each move. Each publication rendered layout subscribers and persisted
+the whole Source Control preference. The sidebar already scheduled its narrow
+updates by frame and saved only when the interaction completed.
+
+## Decision
+
+- Keep active drag geometry in the layout that applies it. Cache measurements
+  at pointer down, calculate moves without layout reads, and apply visual and
+  accessible-value changes in one animation frame. Commit shared preferences
+  only when the drag finishes. React retains the content's existing lifetime.
+- Keep the pane weight arithmetic, rail bounds in rem, sidebar bounds in pixels,
+  arrow-key steps, double-click reset, and responsive layout. Keyboard actions
+  commit immediately; resize keys do nothing during an active pointer drag.
+- Finish on pointer up, cancellation, lost capture, blur, hiding, or unmount.
+  Flush the latest valid value, save a changed preference once, cancel the
+  pending frame, and release capture. Repeated termination is harmless.
+- A viewport, font, container, or pane-topology change finishes the drag using
+  its cached geometry, then the new layout constrains display. A temporarily
+  smaller viewport still preserves the sidebar's preferred width.
+- Source Control preference actions own persistence, outside React updater
+  functions and effects. A drag commits only its geometry into the latest
+  committed preference, retaining other choices made during the interaction.
+  Storage remains optional and keeps its existing format.
+- Sidebar width is a registered, non-inherited CSS length written only on
+  the layout and status grids. Changing root styles invalidated the large
+  document even when the property was registered; registration alone did not
+  solve that cost. The two grids remain synchronized by the narrow resize
+  owner, with the existing 288 px default and the same bounds.
+- Source keeps a screen-only paint boundary inside its existing scroll box,
+  so a sash repaint does not traverse the adjacent retained Source display
+  list. Print keeps its existing fragmentation. Native Source DOM, scrolling,
+  selection, annotation zones and portaled menus retain their behavior.
+
+## Consequences
+
+Actual width and height changes still require layout and paint. Drag previews
+avoid shared React publications and repeated storage work. Effects manage only
+external synchronization and cleanup. Production browser traces and a separate
+React profiling build establish measured effects; source inspection does not
+establish a speedup. Diff virtualization, workers, and cache policies remain.
+
+The follow-up CSS decisions come from controlled production interventions:
+an inheritance override and registration while retaining root writes did not
+remove broad style work; direct registered owner writes did. Containing the
+Source Control pane owner did not avoid the Source repaint, so that change
+was rejected. Diagnostic timings do not replace the unchanged five-repetition
+acceptance capture; actual Source width changes still require layout.

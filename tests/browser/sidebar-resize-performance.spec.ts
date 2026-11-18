@@ -81,14 +81,16 @@ test("sidebar applies pointer bursts once per frame and ignores keys during the 
       }
     }, { once: true })
     const root = document.documentElement
-    let previous = root.style.getPropertyValue("--sidebar-width")
+    const layout = element.parentElement
+    if (!layout) throw new Error("Missing sidebar layout")
+    let previous = layout.style.getPropertyValue("--sidebar-width")
     root.dataset.sidebarUpdates = "0"
     new MutationObserver(() => {
-      const width = root.style.getPropertyValue("--sidebar-width")
+      const width = layout.style.getPropertyValue("--sidebar-width")
       if (width === previous) return
       previous = width
       root.dataset.sidebarUpdates = String(Number(root.dataset.sidebarUpdates ?? 0) + 1)
-    }).observe(root, { attributes: true, attributeFilter: ["style"] })
+    }).observe(layout, { attributes: true, attributeFilter: ["style"] })
   })
   const box = await separator.boundingBox()
   if (!box) throw new Error("Sidebar separator not found")
