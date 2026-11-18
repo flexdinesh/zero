@@ -169,3 +169,4 @@ rewriting history; update `Status` on the old record.
 | [0167](0167-sans-file-names-and-chrome.md) | Sans file names and chrome | Accepted; supersedes parts of 0102, 0130; amends 0138, 0165 |
 | [0168](0168-sidebar-and-picker-visibility.md) | Sidebar and picker visibility | Accepted; extends 0020, 0145, 0160, 0162 |
 | [0169](0169-deferred-review-and-dialogs.md) | Deferred review and dialog assets | Accepted; extends 0048, 0157, 0168 |
+| [0170](0170-window-sidebar-result-lists.md) | Window sidebar result lists | Accepted; extends 0020, 0040, 0168 |

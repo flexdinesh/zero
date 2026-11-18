@@ -146,6 +146,7 @@ export function SourceControlView({
       </>,
       body: working && (
         <UncommittedPane list={working.list} stats={working.stats} warnings={working.details.kind === "working" ? working.details.warnings : []}
+          visible={active} mobile={mobile}
           view={layout.changesView} activePath={workingPath} itemHeight={itemHeight} collapseRequest={collapseRequest}
           onExpandedChange={setAnyExpanded} onRetry={working.retry}
           onOpen={(path, focusDocument) => review(workingCompare, focusDocument, path)} />
@@ -188,7 +189,7 @@ export function SourceControlView({
           <StatusMessage>This folder isn't a git repository.</StatusMessage>
         </div>
       ) : (
-        <div ref={panes.container} className="scm-panes" data-mobile={mobile || undefined}>
+        <div ref={panes.container} className="scm-panes" data-mobile={mobile || undefined} data-window-scroll-root={mobile || undefined}>
           {paneIds.map((id) => {
             const isOpen = open.includes(id)
             // A sash sits above each open pane that follows another open pane.

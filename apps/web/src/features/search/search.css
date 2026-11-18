@@ -59,7 +59,12 @@
 
 .search-file,
 .search-match {
+  height: var(--row-list);
   white-space: nowrap;
+}
+
+.search-tree:has(> [data-windowed]) {
+  overflow-anchor: none;
 }
 
 .search-file {

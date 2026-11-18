@@ -1,0 +1,12 @@
+.row-window {
+  position: relative;
+}
+
+.row-window-estimate {
+  position: absolute;
+  inset-block-start: 0;
+  width: 0;
+  height: var(--window-row-height, var(--row-list));
+  visibility: hidden;
+  pointer-events: none;
+}

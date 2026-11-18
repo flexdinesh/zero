@@ -1,5 +1,5 @@
 import { ChevronsDownIcon, FileDiffIcon, GitBranchIcon, RefreshCwIcon, SearchIcon, XIcon } from "lucide-react"
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react"
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react"
 
 import { Button } from "../../components/ui/button.tsx"
 import { CopyButton } from "../../components/ui/copy-button.tsx"
@@ -8,6 +8,7 @@ import { ListButton, ListRow } from "../../components/ui/list-row.tsx"
 import { StatusMessage } from "../../components/ui/notice.tsx"
 import { Chevron } from "../../components/ui/section-toggle.tsx"
 import { TextField } from "../../components/ui/text-field.tsx"
+import { rowInViewport, useRowWindow } from "../../components/ui/use-row-window.ts"
 import { FileIcon } from "../../components/FileIcon.tsx"
 import type { Commit } from "@zero/contracts"
 import { shortHash } from "../../lib/commit-hash.ts"
@@ -71,9 +72,10 @@ export function CommitsPane({
     return () => cancelAnimationFrame(frame)
   }, [focusPending, focused, visible])
   const list = useMemo(() => result?.commits ?? [], [result])
+  const keys = useMemo(() => list.map((commit) => commit.hash), [list])
   const selected = useMemo(() => selectedHashes(list, selection), [list, selection])
-  const container = useRef<HTMLDivElement>(null)
-  const [focusedKey, setFocusedKey] = useState("")
+  const selectedSet = useMemo(() => new Set(selected), [selected])
+  const desktopScroll = useRef<HTMLDivElement>(null)
   // anchor is the commit a Shift-selection extends from: the last commit
   // selected without Shift.
   const [anchor, setAnchor] = useState("")
@@ -83,7 +85,10 @@ export function CommitsPane({
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set())
   const press = useRef<{ timer: number; hash: string; fired: boolean } | null>(null)
   const hashCopy = useClipboardCopy()
-  const tabKey = list.some((commit) => commit.hash === focusedKey) ? focusedKey : selected[0] ?? list[0]?.hash ?? ""
+  const rowWindow = useRowWindow({ keys, scroll: desktopScroll, visible, sharedScroll: mobile, selectedKey: selected[0], expanded,
+    onEmptyFocus: () => filterInput.current?.focus() })
+  const { tabKey, focusRow, getScrollRoot, positions } = rowWindow
+  const moreFocus = useRef<{ result: NonNullable<typeof result>; button: HTMLButtonElement } | null>(null)
   // now is read once per list so ages don't shift between renders.
   const now = useMemo(() => result ? Date.now() : 0, [result])
   // focusListOnLoad moves focus to the list's row once Escape's cleared
@@ -93,24 +98,33 @@ export function CommitsPane({
   useEffect(() => {
     if (!visible || !focusListOnLoad.current || !unfiltered || !tabKey) return
     focusListOnLoad.current = false
-    const row = container.current?.querySelector(`[data-row-key="${CSS.escape(tabKey)}"]`)
-    if (row instanceof HTMLElement) row.focus()
-  }, [tabKey, unfiltered, visible])
+    focusRow(tabKey)
+  }, [focusRow, tabKey, unfiltered, visible])
 
-  function focusRow(hash: string) {
-    setFocusedKey(hash)
-    requestAnimationFrame(() => {
-      const row = container.current?.querySelector(`[data-row-key="${CSS.escape(hash)}"]`)
-      if (row instanceof HTMLElement) row.focus()
-    })
-  }
+  useLayoutEffect(() => {
+    if (!visible || loadingMore || !moreFocus.current) return
+    const { result: previous, button } = moreFocus.current
+    moreFocus.current = null
+    if (!result || moreError || previous.head !== result.head || previous.range !== result.range
+      || previous.query !== result.query || previous.path !== result.path) return
+    const root = getScrollRoot()
+    if (!root || (document.activeElement !== button && document.activeElement !== document.body)) return
+    if (button.isConnected && rowInViewport(root, button)) return
+    const commit = list[previous.commits.length] ?? list.at(-1)
+    if (commit) focusRow(commit.hash)
+  }, [focusRow, getScrollRoot, list, loadingMore, moreError, result, visible])
+
+  useEffect(() => () => {
+    if (press.current) clearTimeout(press.current.timer)
+    press.current = null
+  }, [visible])
 
   // setDetails opens or closes a commit's details, dropping commits no longer
   // listed. Opening reads the commit's files, shared with its review.
   function setDetails(hash: string, open: boolean) {
     if (open) loadFiles(hash)
     setExpanded((current) => {
-      const next = new Set([...current].filter((key) => key !== hash && list.some((commit) => commit.hash === key)))
+      const next = new Set([...current].filter((key) => key !== hash && positions.has(key)))
       if (open) next.add(hash)
       return next
     })
@@ -132,7 +146,7 @@ export function CommitsPane({
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    const index = list.findIndex((commit) => commit.hash === tabKey)
+    const index = positions.get(tabKey) ?? -1
     const row = list[index]
     if (!row) return
     if ((event.key === "c" || event.key === "C") && (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey) {
@@ -255,26 +269,44 @@ export function CommitsPane({
         {!result && <Button variant="outline" onClick={refresh}>Retry</Button>}
       </div>}
       {/* Load more ends the list and scrolls with it, as in VS Code. */}
-      <div className="compare-scroll">
-        <div ref={container} className="compare-rows" role="listbox" aria-label="Commits" aria-multiselectable={!mobile || undefined}
-          onKeyDown={onKeyDown}>
-          {list.map((commit) => <CommitRow key={commit.hash} commit={commit} now={now}
-            selected={selected.includes(commit.hash)} inRange={selection?.kind === "range" && selected.includes(commit.hash)}
-            pending={pending === commit.hash} focusable={commit.hash === tabKey} chips={chips.get(commit.hash) ?? []}
-            lane={lanes.get(commit.hash)}
-            expanded={expanded.has(commit.hash)} onExpandedChange={(open) => setDetails(commit.hash, open)}
-            files={files.get(commit.hash)} onRetryFiles={() => loadFiles(commit.hash, true)}
-            glyph={diffGlyph(commit.hash, selection, selected)}
-            onFocus={() => setFocusedKey(commit.hash)}
-            onPointerDown={(event) => onPointerDown(event, commit.hash)} onPointerEnd={endPress}
-            onClick={(event) => onClick(event, commit.hash)}
-            onOpenFile={(path) => onOpen({ kind: "commit", hash: commit.hash }, false, path || at)} />)}
+      <div ref={desktopScroll} className="compare-scroll">
+        <div ref={rowWindow.region} className="compare-rows row-window" role="listbox" aria-label="Commits" aria-multiselectable={!mobile || undefined}
+          style={rowWindow.regionStyle} data-windowed={rowWindow.windowed || undefined} onKeyDown={onKeyDown}
+          onFocusCapture={rowWindow.onFocus} onBlurCapture={rowWindow.onBlur}>
+          <div ref={rowWindow.estimateProbe} className="row-window-estimate" aria-hidden="true" />
+          {rowWindow.indexes.map((index) => {
+            const commit = list[index]
+            if (!commit) return null
+            const previous = list[index - 1]?.hash ?? ""
+            const next = list[index + 1]?.hash ?? ""
+            const isExpanded = expanded.has(commit.hash)
+            const isSelected = selectedSet.has(commit.hash)
+            return <div key={commit.hash} role="presentation" style={rowWindow.rowStyle(index)}
+              ref={isExpanded ? rowWindow.measureDetails : undefined} data-window-detail={isExpanded ? commit.hash : undefined}>
+              <CommitRow commit={commit} now={now} position={index + 1} setSize={result?.more ? -1 : list.length}
+                selected={isSelected} inRange={selection?.kind === "range" && isSelected}
+                continuesFromPrevious={selectedSet.has(previous) && !expanded.has(previous)}
+                continuesToNext={selectedSet.has(next) && !isExpanded}
+                pending={pending === commit.hash} focusable={commit.hash === tabKey} chips={chips.get(commit.hash) ?? []}
+                lane={lanes.get(commit.hash)}
+                expanded={isExpanded} onExpandedChange={(open) => setDetails(commit.hash, open)}
+                files={files.get(commit.hash)} onRetryFiles={() => loadFiles(commit.hash, true)}
+                glyph={diffGlyph(commit.hash, selection, selected)}
+                onPointerDown={(event) => onPointerDown(event, commit.hash)} onPointerEnd={endPress}
+                onClick={(event) => onClick(event, commit.hash)}
+                onOpenFile={(path) => onOpen({ kind: "commit", hash: commit.hash }, false, path || at)} />
+            </div>
+          })}
         </div>
         {(result?.more || moreError) && (
           <div className="commit-more">
             {moreError && <StatusMessage className="commit-more-error" tone="error" role="alert">{moreError}</StatusMessage>}
             <ListButton density="list" indent="nested" className="compare-row commit-more-row" aria-disabled={loadingMore || undefined}
-              onClick={() => { if (!loadingMore) loadMore() }}>
+              onClick={(event) => {
+                if (loadingMore) return
+                if (result && event.currentTarget === document.activeElement) moreFocus.current = { result, button: event.currentTarget }
+                loadMore()
+              }}>
               {moreError ? <RefreshCwIcon className="compare-row-icon" aria-hidden="true" />
                 : <ChevronsDownIcon className="compare-row-icon" aria-hidden="true" />}
               <span className="compare-row-label">{loadingMore ? "Loading…" : moreError ? "Retry" : result ? moreLabel(result) : "Load more"}</span>
@@ -300,8 +332,12 @@ export function CommitsPane({
 interface CommitRowProps {
   commit: Commit
   now: number
+  position: number
+  setSize: number
   selected: boolean
   inRange: boolean
+  continuesFromPrevious: boolean
+  continuesToNext: boolean
   pending: boolean
   focusable: boolean
   chips: readonly RefChip[]
@@ -313,7 +349,6 @@ interface CommitRowProps {
   files: FileList | undefined
   onExpandedChange(expanded: boolean): void
   onRetryFiles(): void
-  onFocus(): void
   onPointerDown(event: PointerEvent<HTMLDivElement>): void
   onPointerEnd(): void
   onClick(event: { shiftKey: boolean }): void
@@ -324,19 +359,22 @@ interface CommitRowProps {
 // under it: message body, author, date, hash, the branches it tips, and its
 // files.
 function CommitRow({
-  chips, commit, expanded, files, focusable, glyph, inRange, lane, now, pending, selected, onClick, onExpandedChange, onFocus, onOpenFile,
+  chips, commit, continuesFromPrevious, continuesToNext, expanded, files, focusable, glyph, inRange, lane, now, pending, position,
+  selected, setSize, onClick, onExpandedChange, onOpenFile,
   onPointerDown, onPointerEnd, onRetryFiles,
 }: CommitRowProps) {
   const age = commitAge(commit.authorTime, now)
   const detailsId = useId()
   return (<>
-    <ListRow indent="toggle" data-row-key={commit.hash} role="option" tabIndex={focusable ? 0 : -1} aria-selected={selected} selected={selected}
+    <ListRow indent="toggle" data-row-key={commit.hash} data-window-key={commit.hash} role="option"
+      aria-posinset={position} aria-setsize={setSize} tabIndex={focusable ? 0 : -1} aria-selected={selected} selected={selected}
       className="compare-row compare-row-commit" data-range={inRange || undefined} data-pending={pending || undefined}
+      data-range-from-previous={inRange && continuesFromPrevious || undefined} data-range-to-next={inRange && continuesToNext || undefined}
       data-diff-pinned={glyph?.pinned || undefined} data-expanded={expanded || undefined} data-lane={lane}
       aria-describedby={expanded ? detailsId : undefined}
       aria-label={`${commit.subject}, ${commit.author.name}, ${age.long}${chips.length ? `, ${chips.map((chip) => chip.name).join(", ")}` : ""}`}
       title={`${commit.subject}\n${commit.author.name} · ${commitDate(commit.authorTime)} · ${shortHash(commit.hash)}`}
-      onFocus={onFocus} onPointerDown={onPointerDown} onPointerUp={onPointerEnd} onPointerCancel={onPointerEnd} onPointerLeave={onPointerEnd}
+      onPointerDown={onPointerDown} onPointerUp={onPointerEnd} onPointerCancel={onPointerEnd} onPointerLeave={onPointerEnd}
       onClick={onClick}>
       {/* The row keeps its own keyboard; Right and Left toggle the same details. */}
       <IconButton size="xs" variant="bare" className="commit-details-toggle" tabIndex={-1} aria-expanded={expanded}

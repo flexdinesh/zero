@@ -45,6 +45,7 @@ export function useSearchSession({ documentPane, openMatch, project, reveal, vis
   const [status, setStatus] = useState<SearchStatus>({ kind: "idle" })
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const [active, setActive] = useState<MatchPosition | null>(null)
+  const [stepped, setStepped] = useState<MatchPosition | null>(null)
   const activeRef = useRef(active)
   const [focusRequest, setFocusRequest] = useState(0)
   const handledFocus = useRef(0)
@@ -81,12 +82,14 @@ export function useSearchSession({ documentPane, openMatch, project, reveal, vis
       clearResults() {
         setResults(null)
         setActive(null)
+        setStepped(null)
       },
       setStatus(next = {}) { setStatus(next) },
       renderResults(next) {
         setResults(next)
         setCollapsed(new Set())
         setActive(null)
+        setStepped(null)
       },
     }
     const controller = createSearchController({
@@ -130,6 +133,7 @@ export function useSearchSession({ documentPane, openMatch, project, reveal, vis
         updated.delete(next.path)
         return updated
       })
+      setStepped(next)
       open(next, false)
     }
     document.addEventListener("keydown", shortcut)
@@ -164,10 +168,10 @@ export function useSearchSession({ documentPane, openMatch, project, reveal, vis
   const retry = useCallback(() => handlers.current?.onRetry(), [])
 
   return useMemo(() => ({
-    active, changeQuery, clear, collapsed, details, focusInput, input, open, query, results, setActive, show,
+    active, changeQuery, clear, collapsed, details, focusInput, input, open, query, results, setActive, show, stepped,
     setAllCollapsed, setDetails, status, toggleFile, refresh, retry, markStale,
   }), [active, changeQuery, clear, collapsed, details, focusInput, markStale, open, query, refresh, results, retry,
-    setAllCollapsed, show, status, toggleFile])
+    setAllCollapsed, show, status, stepped, toggleFile])
 }
 
 export type SearchSession = ReturnType<typeof useSearchSession>

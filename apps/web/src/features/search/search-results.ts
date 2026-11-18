@@ -3,7 +3,7 @@ import type { FileResult, SearchMatch, SearchOutcome } from "./search-engine.ts"
 
 // ResultRow is one visible row of the results tree: a file or one of its matches.
 export type ResultRow =
-  | { kind: "file"; file: FileResult; key: string }
+  | { kind: "file"; file: FileResult; fileIndex: number; key: string }
   | { kind: "match"; file: FileResult; match: SearchMatch; matchIndex: number; key: string }
 
 export interface MatchPosition {
@@ -52,10 +52,14 @@ export function matchRowKey(path: string, matchIndex: number): string {
   return `match:${path}:${matchIndex}`
 }
 
+export function parentResultKey(key: string): string {
+  return key.startsWith("match:") ? fileRowKey(key.slice("match:".length, key.lastIndexOf(":"))) : ""
+}
+
 // resultRows flattens files and their expanded matches in display order.
 export function resultRows(files: readonly FileResult[], collapsed: ReadonlySet<string>): ResultRow[] {
-  return files.flatMap((file): ResultRow[] => [
-    { kind: "file", file, key: fileRowKey(file.path) },
+  return files.flatMap((file, fileIndex): ResultRow[] => [
+    { kind: "file", file, fileIndex, key: fileRowKey(file.path) },
     ...(collapsed.has(file.path) ? [] : file.matches.map((match, matchIndex): ResultRow => ({
       kind: "match", file, match, matchIndex, key: matchRowKey(file.path, matchIndex),
     }))),

@@ -1,7 +1,7 @@
 import {
   EllipsisIcon, FoldVerticalIcon, ListXIcon, RefreshCwIcon, UnfoldVerticalIcon, XIcon,
 } from "lucide-react"
-import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react"
+import { useLayoutEffect, useMemo, useRef, type KeyboardEvent, type ReactNode } from "react"
 
 import { Badge } from "../../components/ui/badge.tsx"
 import { Button } from "../../components/ui/button.tsx"
@@ -13,11 +13,12 @@ import { Chevron } from "../../components/ui/section-toggle.tsx"
 import { TextField } from "../../components/ui/text-field.tsx"
 import { ToggleButton, ToggleGlyph } from "../../components/ui/toggle-button.tsx"
 import { ViewHeader } from "../../components/ui/view-header.tsx"
+import { useRowWindow } from "../../components/ui/use-row-window.ts"
 import { FileIcon } from "../../components/FileIcon.tsx"
 import { SidebarBody } from "../../workspace/SidebarBody.tsx"
 import type { SearchQuery } from "./search-engine.ts"
 import { highlightedParts } from "./search-highlights.ts"
-import { fileRowKey, matchRowKey, resultRows, resultSummary, type ResultRow } from "./search-results.ts"
+import { fileRowKey, matchRowKey, parentResultKey, resultRows, resultSummary, type ResultRow } from "./search-results.ts"
 import { useSearchSessionState } from "./SearchProvider.tsx"
 import type { SearchSession } from "./use-search-session.ts"
 
@@ -51,28 +52,26 @@ interface SearchViewProps {
 
 export function SearchSidebarView({ visible, ...props }: SearchViewProps & { visible: boolean }) {
   const session = useSearchSessionState()
-  return <SidebarBody visible={visible}><SearchView {...props} session={session} /></SidebarBody>
+  return <SidebarBody visible={visible}><SearchView {...props} session={session} visible={visible} /></SidebarBody>
 }
 
-export function SearchView({ mobile, onDismiss, onLeave, session }: SearchViewProps & { session: SearchSession }) {
-  const { active, collapsed, details, query, results, status } = session
-  const tree = useRef<HTMLDivElement>(null)
-  const [focusedKey, setFocusedKey] = useState("")
+export function SearchView({ mobile, onDismiss, onLeave, session, visible }: SearchViewProps & { session: SearchSession; visible: boolean }) {
+  const { active, collapsed, details, query, results, status, stepped } = session
+  const scroll = useRef<HTMLDivElement>(null)
+  const lastStep = useRef<typeof stepped>(null)
   const rows = useMemo(() => results ? resultRows(results.files, collapsed) : [], [collapsed, results])
+  const keys = useMemo(() => rows.map((row) => row.key), [rows])
   const activeKey = active ? matchRowKey(active.path, active.matchIndex) : ""
-  // The roving tab stop: the focused row if still visible, else the active match, else the first row.
-  const tabKey = rows.some((row) => row.key === focusedKey) ? focusedKey
-    : rows.some((row) => row.key === activeKey) ? activeKey : rows[0]?.key ?? ""
+  const rowWindow = useRowWindow({ keys, scroll, visible, selectedKey: activeKey,
+    parentKey: parentResultKey, onEmptyFocus: session.focusInput })
+  const { tabKey, focusRow, positions, reveal } = rowWindow
+  useLayoutEffect(() => {
+    if (!visible || !stepped || stepped === lastStep.current) return
+    lastStep.current = stepped
+    reveal(matchRowKey(stepped.path, stepped.matchIndex), scroll.current?.contains(document.activeElement) ?? false)
+  }, [reveal, stepped, visible])
   const anyExpanded = results ? results.files.some((file) => !collapsed.has(file.path)) : false
   const invalidField = status.kind === "invalid" ? status.field : undefined
-
-  function focusRow(key: string) {
-    setFocusedKey(key)
-    requestAnimationFrame(() => {
-      const row = tree.current?.querySelector(`[data-row-key="${CSS.escape(key)}"]`)
-      if (row instanceof HTMLElement) row.focus()
-    })
-  }
 
   function openRow(row: ResultRow, focusDocument: boolean) {
     if (row.kind === "file") {
@@ -84,7 +83,7 @@ export function SearchView({ mobile, onDismiss, onLeave, session }: SearchViewPr
   }
 
   function onTreeKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    const index = rows.findIndex((row) => row.key === tabKey)
+    const index = positions.get(tabKey) ?? -1
     const row = rows[index]
     if (!row) return
     if (event.key === "ArrowDown") {
@@ -195,33 +194,42 @@ export function SearchView({ mobile, onDismiss, onLeave, session }: SearchViewPr
         )}
       </div>
       {rows.length > 0 && (
-        <div ref={tree} className="search-tree" role="tree" aria-label="Search results" aria-busy={status.kind === "searching"}
-          onKeyDown={onTreeKeyDown}>
-          {rows.map((row) => row.kind === "file" ? (
-            <ListRow key={row.key} data-row-key={row.key} className="search-file" role="treeitem" aria-level={1}
-              aria-expanded={!collapsed.has(row.file.path)} aria-selected={false} tabIndex={row.key === tabKey ? 0 : -1}
-              aria-label={`${row.file.name} ${directoryOf(row.file.path)}, ${row.file.matches.length} ${row.file.matches.length === 1 ? "match" : "matches"}`}
-              title={row.file.path}
-              onFocus={() => setFocusedKey(row.key)} onClick={() => openRow(row, false)}>
-              <Chevron />
-              <FileIcon path={row.file.path} />
-              <span className="search-file-name">{row.file.name}</span>
-              <span className="search-file-directory">{directoryOf(row.file.path)}</span>
-              <Badge aria-hidden="true">{row.file.matches.length.toLocaleString()}</Badge>
-            </ListRow>
-          ) : (
-            <ListRow indent="match" key={row.key} data-row-key={row.key} className="search-match"
-              role="treeitem" aria-level={2} aria-selected={row.key === activeKey} tabIndex={row.key === tabKey ? 0 : -1}
-              title={`${row.file.path}:${row.match.line}`}
-              onFocus={() => setFocusedKey(row.key)} onClick={() => openRow(row, false)} onDoubleClick={() => openRow(row, true)}>
-              <span className="search-match-text">
-                <span className="visually-hidden">Line {row.match.line}: </span>
-                {highlightedParts(row.match.preview, [row.match.highlight]).map((part, index) => (
-                  part.highlighted ? <mark key={index}>{part.text}</mark> : <span key={index}>{part.text}</span>
-                ))}
-              </span>
-            </ListRow>
-          ))}
+        <div ref={scroll} className="search-tree" role="tree" aria-label="Search results" aria-busy={status.kind === "searching"}
+          onKeyDown={onTreeKeyDown} onFocusCapture={rowWindow.onFocus} onBlurCapture={rowWindow.onBlur}>
+          <div ref={rowWindow.region} className="row-window" role="presentation" style={rowWindow.regionStyle} data-windowed={rowWindow.windowed || undefined}>
+            <div ref={rowWindow.estimateProbe} className="row-window-estimate" aria-hidden="true" />
+            {rowWindow.indexes.map((index) => {
+              const row = rows[index]
+              if (!row) return null
+              return row.kind === "file" ? (
+                <ListRow key={row.key} data-window-key={row.key} data-row-key={row.key} className="search-file" role="treeitem" aria-level={1}
+                  style={rowWindow.rowStyle(index)} aria-posinset={row.fileIndex + 1} aria-setsize={results?.files.length}
+                  aria-expanded={!collapsed.has(row.file.path)} aria-selected={false} tabIndex={row.key === tabKey ? 0 : -1}
+                  aria-label={`${row.file.name} ${directoryOf(row.file.path)}, ${row.file.matches.length} ${row.file.matches.length === 1 ? "match" : "matches"}`}
+                  title={row.file.path}
+                  onClick={() => openRow(row, false)}>
+                  <Chevron />
+                  <FileIcon path={row.file.path} />
+                  <span className="search-file-name">{row.file.name}</span>
+                  <span className="search-file-directory">{directoryOf(row.file.path)}</span>
+                  <Badge aria-hidden="true">{row.file.matches.length.toLocaleString()}</Badge>
+                </ListRow>
+              ) : (
+                <ListRow indent="match" key={row.key} data-window-key={row.key} data-row-key={row.key} className="search-match"
+                  style={rowWindow.rowStyle(index)} aria-posinset={row.matchIndex + 1} aria-setsize={row.file.matches.length}
+                  role="treeitem" aria-level={2} aria-selected={row.key === activeKey} tabIndex={row.key === tabKey ? 0 : -1}
+                  title={`${row.file.path}:${row.match.line}`}
+                  onClick={() => openRow(row, false)} onDoubleClick={() => openRow(row, true)}>
+                  <span className="search-match-text">
+                    <span className="visually-hidden">Line {row.match.line}: </span>
+                    {highlightedParts(row.match.preview, [row.match.highlight]).map((part, index) => (
+                      part.highlighted ? <mark key={index}>{part.text}</mark> : <span key={index}>{part.text}</span>
+                    ))}
+                  </span>
+                </ListRow>
+              )
+            })}
+          </div>
         </div>
       )}
     </section>

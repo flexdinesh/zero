@@ -102,7 +102,7 @@ test("sidebar and picker work with hidden bodies @extended", async ({ browser, b
           await page.keyboard.press("ControlOrMeta+Shift+f")
           await input.fill(pattern)
           await expect(results).toHaveAttribute("aria-busy", "false")
-          await expect(results.getByRole("treeitem").filter({ hasText: pattern })).toHaveCount(384)
+          await expect(page.getByRole("status").filter({ hasText: "384 results in 32 files" })).toBeVisible()
 
           await measure("repeat-switches", async () => {
             for (let index = 0; index < 3; index++) {

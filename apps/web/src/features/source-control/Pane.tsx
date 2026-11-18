@@ -1,4 +1,4 @@
-import type { PointerEvent, ReactNode, Ref } from "react"
+import { useLayoutEffect, useRef, type PointerEvent, type ReactNode, type Ref } from "react"
 
 import { SectionToggle } from "../../components/ui/section-toggle.tsx"
 
@@ -15,10 +15,17 @@ interface PaneProps {
 // Pane content retains its React lifetime while the layout owner previews
 // the flex shares through elementRef (decisions 0040, 0123, 0130, 0161).
 export function Pane({ actions, children, elementRef, note, open, title, onOpenChange }: PaneProps) {
+  const header = useRef<HTMLHeadingElement>(null)
+  const bodyFocused = useRef(false)
+  useLayoutEffect(() => {
+    if (open || !bodyFocused.current) return
+    bodyFocused.current = false
+    if (document.activeElement === document.body) header.current?.querySelector("button")?.focus()
+  }, [open])
   return (
     <section ref={elementRef} className="scm-pane" aria-label={title} data-open={open || undefined}>
       <div className="scm-pane-header">
-        <h3 className="scm-pane-heading">
+        <h3 ref={header} className="scm-pane-heading">
           <SectionToggle className="scm-pane-toggle" expanded={open} onExpandedChange={onOpenChange}>
             <span className="scm-pane-title">{title}</span>
             {note}
@@ -26,7 +33,9 @@ export function Pane({ actions, children, elementRef, note, open, title, onOpenC
         </h3>
         {open && actions && <div className="scm-pane-header-actions">{actions}</div>}
       </div>
-      {open && <div className="scm-pane-body">{children}</div>}
+      {open && <div className="scm-pane-body" onFocusCapture={() => { bodyFocused.current = true }} onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) bodyFocused.current = false
+      }}>{children}</div>}
     </section>
   )
 }

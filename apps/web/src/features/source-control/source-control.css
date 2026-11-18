@@ -183,9 +183,6 @@
   min-height: 0;
   flex: 1;
   overflow: auto;
-}
-
-.changes-list {
   padding-bottom: var(--space-1);
 }
 
@@ -253,6 +250,20 @@
   padding-bottom: var(--space-2);
 }
 
+.compare-rows {
+  --commit-subject-height: 1.125rem;
+  --window-row-height: max(var(--row-list), calc(var(--commit-subject-height) + var(--text-xs--line-height) + 2 * var(--space-1)));
+}
+
+.scm-panes[data-mobile] :is(.changes-scroll, .compare-scroll) {
+  overflow: visible;
+}
+
+:is(.changes-scroll, .compare-scroll):has(> [data-windowed]),
+.scm-panes[data-mobile]:has([data-windowed]) {
+  overflow-anchor: none;
+}
+
 /* Compare rows are ListRows; selected rows take the selection fill. */
 .compare-row {
   height: var(--row-list);
@@ -275,11 +286,11 @@
     inset 0 calc(-1 * var(--range-bottom, 1px)) var(--color-selected-border);
 }
 
-.compare-row[data-range] + .compare-row[data-range] {
+.compare-row[data-range-from-previous] {
   --range-top: 0px;
 }
 
-.compare-row[data-range]:has(+ .compare-row[data-range]) {
+.compare-row[data-range-to-next] {
   --range-bottom: 0px;
 }
 
@@ -376,7 +387,7 @@
   min-width: 0;
   align-items: center;
   gap: var(--space-1);
-  line-height: 1.125rem;
+  line-height: var(--commit-subject-height);
 }
 
 .commit-row-meta {
