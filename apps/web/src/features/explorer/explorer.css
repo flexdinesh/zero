@@ -49,7 +49,7 @@
   --trees-accent-override: var(--color-accent);
   --trees-border-color-override: var(--color-border);
   --trees-border-radius-override: 0px;
-  --trees-font-family-override: var(--font-mono);
+  --trees-font-family-override: var(--font-file);
   --trees-font-size-override: var(--text-file);
   --trees-selected-bg-override: var(--color-selected);
   --trees-selected-fg-override: var(--color-selected-text);

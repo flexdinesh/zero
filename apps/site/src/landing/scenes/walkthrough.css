@@ -21,6 +21,7 @@
 }
 
 .ws .ws-view-head {
+  font-family: var(--l-ui);
   display: flex;
   align-items: center;
   height: 32px;

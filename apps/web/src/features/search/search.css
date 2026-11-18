@@ -76,7 +76,8 @@
   max-width: 70%;
   flex: none;
   overflow: hidden;
-  font-family: var(--font-mono);
+  font-family: var(--font-file);
+  font-feature-settings: var(--font-file-features);
   font-size: var(--text-file);
   text-overflow: ellipsis;
 }

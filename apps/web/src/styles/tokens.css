@@ -140,11 +140,16 @@
   --code-content-scale: calc(27 / 26);
   --text-source: calc(var(--text-code) * var(--code-content-scale));
   /* File names in lists (Explorer, Source Control, review rail, search
-     results, palette) set in mono at the UI code size (decisions 0130, 0165). */
-  --text-file: var(--text-code);
-  /* Tabs, view and pane headers, and the review rail's header (decision 0102). */
-  --font-chrome: var(--font-mono);
+     results, palette): Inter at the label size, with its disambiguated
+     l (cv05) and I (cv08) so il1 and Il read apart (decision 0167). */
+  --font-file: var(--font-sans);
+  --font-file-features: "cv05" 1, "cv08" 1;
+  --text-file: var(--text-label);
+  /* Tabs, view and pane headers, and the review rail's header: sans
+     (decision 0167). Tabs take the label size; headers stay a step down. */
+  --font-chrome: var(--font-sans);
   --text-chrome: var(--text-xs);
+  --text-tab: var(--text-label);
   --reading-width: 75ch;
   --preview-font-size: 0.875rem;
   --preview-h1: 1.625rem;

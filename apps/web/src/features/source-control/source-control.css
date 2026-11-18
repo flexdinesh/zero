@@ -206,7 +206,8 @@
   flex: 0 1 auto;
   overflow: hidden;
   color: var(--color-text-primary);
-  font-family: var(--font-mono);
+  font-family: var(--font-file);
+  font-feature-settings: var(--font-file-features);
   font-size: var(--text-file);
   text-overflow: ellipsis;
 }

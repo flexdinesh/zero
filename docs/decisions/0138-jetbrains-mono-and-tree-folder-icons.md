@@ -1,6 +1,6 @@
 # 0138: JetBrains Mono, no ligatures, and folder icons in trees
 
-- Status: Accepted
+- Status: Accepted; mono limited to code by [0167](0167-sans-file-names-and-chrome.md)
 - Date: 2026-11-12
 - Supersedes: the IBM Plex Mono face of [0130](0130-ibm-plex-mono-quiet-scm-chrome-and-container-focus.md)
   (app, site, and the brand's outlined wordmark)

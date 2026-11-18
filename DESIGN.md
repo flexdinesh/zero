@@ -91,6 +91,19 @@ typography:
     fontFamily: "\"Inter Variable\", Inter, ui-sans-serif, system-ui, sans-serif"
     fontSize: "0.875rem"
     fontWeight: 400
+  file-name:
+    fontFamily: "\"Inter Variable\", Inter, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "0.8125rem"
+    fontWeight: 400
+    fontFeature: "\"cv05\" 1, \"cv08\" 1"
+  tab:
+    fontFamily: "\"Inter Variable\", Inter, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "0.8125rem"
+    fontWeight: 400
+  chrome:
+    fontFamily: "\"Inter Variable\", Inter, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "0.75rem"
+    fontWeight: 500
   supporting:
     fontFamily: "\"Inter Variable\", Inter, ui-sans-serif, system-ui, sans-serif"
     fontSize: "0.875rem"
@@ -296,7 +309,7 @@ Workspace identity sits above the explorer as the project picker trigger. App id
 
 - Compact editor navigation.
 - Square corners everywhere; panes meet on 1px hairlines, with no canvas gaps.
-- Left-aligned proportional prose and monospace code; monospace chrome labels.
+- Left-aligned proportional prose and monospace code; sans chrome labels and file names (decision 0167).
 - Shared semantic roles across named editor themes.
 
 Implementation authority (decision 0033): tokens in `apps/web/src/styles/tokens.css` and `themes.css`, UI primitives in `apps/web/src/components/ui/` (each with co-located CSS), feature CSS beside each feature, and `apps/web/src/style.css` as the import manifest and cascade-layer order. `pnpm dev:mock` serves every primitive and state at `/__ui`. Frontmatter captures base Light tokens and effective component roles; theme overrides remain in CSS.
@@ -304,7 +317,7 @@ Implementation authority (decision 0033): tokens in `apps/web/src/styles/tokens.
 ### Token tiers
 
 1. **Theme values**: `light-dark()` colors in Tailwind's `@theme`, resolved by the root `color-scheme`; named themes override them in `themes.css`.
-2. **Semantic roles**: state layers, selection, focus, field colors, type roles (`--text-badge` (10px), `--text-metadata`, `--text-label`, `--text-list` (14px sidebar rows), `--text-supporting`, `--text-code`, `--text-source` (`--text-code` × `--code-content-scale`, code in tabs), `--font-chrome` and `--text-chrome` for chrome labels), motion (`--duration-fast` 100ms, `--duration-base` 120ms, `--delay-progress` 150ms, `--duration-feedback` 1.6s), and z-index (`--z-behind`, `--z-raised`, `--z-sticky`, `--z-popover`, `--z-progress`, `--z-menu`). There are no radius tokens.
+2. **Semantic roles**: state layers, selection, focus, field colors, type roles (`--text-badge` (10px), `--text-metadata`, `--text-label`, `--text-list` (14px sidebar rows), `--text-supporting`, `--text-code`, `--text-source` (`--text-code` × `--code-content-scale`, code in tabs), `--font-chrome`, `--text-chrome`, and `--text-tab` for chrome labels, `--font-file` and `--font-file-features` for file names), motion (`--duration-fast` 100ms, `--duration-base` 120ms, `--delay-progress` 150ms, `--duration-feedback` 1.6s), and z-index (`--z-behind`, `--z-raised`, `--z-sticky`, `--z-popover`, `--z-progress`, `--z-menu`). There are no radius tokens.
 3. **Component tokens**: controls (`--control-xs` 20, `sm` 24, `md` 28, `lg` 32, `touch` 44px), icons (`--icon-xs` 12, `sm` 14, `md` 16, `lg` 18px), rows (`--row-list` 24, `--row-menu` 28, `--row-pick` 32, `--row-drawer` 32px; list 32 and pick/menu 44px on narrow screens), `--chrome-height`, `--field-height`, `--field-height-palette` (40px; 44px narrow), `--status-height`.
 
 Feature CSS references tokens only; stylelint rejects color literals, raw font sizes, z-indexes, durations, px above 2, and any `border-radius` other than `0`. Raw `button`, `input`, `select`, `textarea`, and `dialog` elements live only in `components/ui/`; oxlint rejects them elsewhere.
@@ -331,7 +344,7 @@ Choices: Auto, Zero Light, Zero Dark, Dracula, Solarized Light, and Omarchy's 23
 
 ## Typography
 
-Inter Variable is bundled locally for UI and prose; JetBrains Mono Variable (100 to 800; 700 for bold syntax tokens) is bundled for code/source, chrome labels (tabs, view and pane headers, the rail header; `--font-chrome`), and file names in lists (decisions 0130, 0138). It is the one mono face of the app, the site, and the brand. Ligatures are off at the root (`font-variant-ligatures: none`), so text shows the characters typed. No runtime font service.
+Inter Variable is bundled locally for UI, prose, chrome labels (tabs, view and pane headers, the rail header, the title band; `--font-chrome`), and file names in lists (`--font-file`, decision 0167). File names turn on Inter's `cv05` (l with a tail) and `cv08` (I with serifs) through `--font-file-features`, so `il1` and `Il` read apart; the rest of the UI keeps plain Inter. JetBrains Mono Variable (100 to 800; 700 for bold syntax tokens) is bundled for code/source, paths, hashes, and branch names (decision 0138). It is the one mono face of the app, the site, and the brand. Ligatures are off at the root (`font-variant-ligatures: none`), so text shows the characters typed. No runtime font service.
 
 One base size drives the whole scale: the Font Size setting (default 13px, 10–20px) sets `--font-size-base`, and `html` sets `1rem = base × 16 / 13`. Every size, spacing, and control height is in rem, so the interface scales together; Pierre's px row height is scaled in JS. Sizes below are at the 13px default.
 
@@ -339,17 +352,17 @@ One base size drives the whole scale: the Font Size setting (default 13px, 10–
 | --- | --- | --- |
 | Preview H1 / H2 / H3 / H4 | 26 / 21 / 17 / 15px; 1.25 | 600 weight, -0.02em tracking |
 | Labels, fields, buttons, controls (`--text-label`) | 13px (= base) | Buttons 500 weight; segmented items, small buttons, notices, and status messages too |
-| View and dialog titles, pane headers (`--text-chrome`) | 12px | Monospace, 500 weight, `text-secondary` |
-| Tabs (`--text-chrome`) | 12px | Monospace |
+| View and dialog titles, pane headers (`--text-chrome`) | 12px | Sans (`--font-chrome`), 500 weight, `text-secondary` |
+| Tabs (`--text-tab`) | 13px | Sans (`--font-chrome`) |
 | Preview prose | 14px / 1.6 desktop; 15px / 1.6 mobile | 400 weight, 75ch maximum |
 | Sidebar rows: Explorer, Search, Source Control, Walkthroughs, Feedback (`--text-list`) | 14px | `text-primary` names |
-| File names in lists: Explorer, Source Control changes and trees, review rail, Search files, Quick Open (`--text-file`) | 13px | Monospace, `text-primary` |
+| File names in lists: Explorer, Source Control changes and trees, review rail, Search files, Quick Open (`--text-file`) | 13px | Sans (`--font-file`) with `cv05` and `cv08`, `text-primary` |
 | Supporting UI / search input / tables | 14px / 20px | Shared small text role |
 | Footer / metadata | 12px | Sans; footer line-height 1; counts, ages, folders beside names, stats, git status letters (600), kbd, toggle glyphs |
 | Source and diffs (`--text-source`) | 13.5px / 22px | Monospace, fixed line rows; `--text-code` × 27/26, so it scales with Font Size |
 | Preview code (`--text-source`) | 13.5px | Monospace; block line-height 1.6 |
 
-The UI uses three steps, 12, 13, and 14px, and carries further hierarchy in weight and color; the activity badge's 10px is the one smaller size (decision 0122). Sidebar rows sit at 14px Inter, which matches the optical size of monospace source and of 14px prose, so the sidebar never reads a step smaller than the document beside it; file names in those rows are 13px mono (decision 0130). Code in tabs sits a half step above, at 13.5px (`--text-source`, decision 0165); its 22px rows are Zed's comfortable 1.618 line-height ratio. Monospace content inside the UI (review file paths, navigation snippets, branch names, walkthrough targets) uses `--text-code`. Project name uses 12px and 600 weight. UI uses the `--text-*` roles; preview uses `--preview-*` roles.
+The UI uses three steps, 12, 13, and 14px, and carries further hierarchy in weight and color; the activity badge's 10px is the one smaller size (decision 0122). Sidebar rows sit at 14px Inter, which matches the optical size of monospace source and of 14px prose, so the sidebar never reads a step smaller than the document beside it; file names in those rows are 13px Inter at the label size, as in VS Code's tree (decision 0167). Code in tabs sits a half step above, at 13.5px (`--text-source`, decision 0165); its 22px rows are Zed's comfortable 1.618 line-height ratio. Monospace content inside the UI (review file paths, navigation snippets, branch names, walkthrough targets) uses `--text-code`. Project name uses 12px and 600 weight. UI uses the `--text-*` roles; preview uses `--preview-*` roles.
 
 ## Layout
 
@@ -402,7 +415,7 @@ Every view composes these from `apps/web/src/components/ui/`; a missing capabili
 - **ListRow** / **ListButton**: `text-primary` ink; list density 24px, pick 32px, menu, and drawer. They own their sideways insets (decision 0149): `indent` picks the leading inset by reason, `flush` 8px (default), `toggle` 4px (the row leads with its own chevron), `nested` 24px (under a pane or file header), `match` 40px (a search match under its file), each a `--row-indent-*` token; every row ends at `--row-inset-end` (the scrollbar lane plus 4px) so trailing content clears the overlay scrollbar. Features set no sideways padding on rows; two-line rows set `padding-block` only. Hover adds the state layer; active and selected rows use the selection fill and ink; disabled (`aria-disabled`) rows take no hover.
   Hover, active, selection, and keyboard focus paint live on a noninteractive `::before` state layer behind content (`pointer-events: none`), ending `--scrollbar-size` before the trailing edge (decision 0154). This inset is constant with no overflow, hidden scrollbars, and fine or coarse pointers. Row width, click targets, leading/content insets, and the 4px trailing content clearance stay unchanged. Commit ranges draw one continuous selection border around the run on this layer; a pending range anchor draws its dashed outline there too.
 - **SectionToggle** and **Chevron**: 24px disclosure rows; the chevron rotates inside any `aria-expanded="true"` row.
-- **ViewHeader**: the 32px band naming a view or dialog: 12px 500 monospace title in `text-secondary`, actions at the end.
+- **ViewHeader**: the 32px band naming a view or dialog: 12px 500 sans title (`--font-chrome`) in `text-secondary`, actions at the end.
 - **HoverCard**: details about a trigger on the overlay surface (Base UI Popover): a precise pointer resting 400 ms opens it and leaving closes it after 150 ms; a click or tap toggles it and moves focus to its first control or `initialFocus`; Escape closes it and returns focus. Square, the shared overlay surface (1px `border-strong`, overlay shadow). `tabbable={false}` keeps a trigger inside a one-stop composite (Source) out of the Tab order; it still needs `triggerLabel`.
 - **ChangeMark**: a line gutter's change marker filling the gutter's end inset: a 3px bar (`success` added, `accent` modified) or a `destructive` wedge between rows (deleted). It needs a label (title and accessible name), is no Tab stop, and keeps its presses out of the gutter.
 - **Badge** (neutral counts, accent activity), **Kbd**, **Notice** (info, warning, error; bar or block; errors are alerts), **StatusMessage**, **ProgressBar** (2px sweep, edge or page), **CopyButton** (plain, raised, chip, gutter; check or X feedback for 1.6s, announced), **DialogShell** (palette, panel, viewer, drawer), and the Menu class names for Base UI menus.
@@ -415,7 +428,7 @@ A 2.5rem column on `workspace-chrome` with a 1px right border and 40px-square ro
 
 ### Explorer
 
-Pierre compact tree: complete built-in colored file icons, native folder expansion chevrons each followed by a two-tone folder icon (open or closed with the row, `text-muted` in every state, over its children's icons; `lib/tree-icons.ts`, decision 0138; Source Control's trees share it), square rows, semantic token overrides, 13px mono `text-primary` names, 24px desktop / 32px narrow, both scaled by the Font Size setting. A name reads whole when it fits, else truncates once at the end with “…”; a compact folder chain reads as one `a/b/c` string and truncates the same way, with no tooltip (decision 0166; Source Control's trees share it). The header holds the project name (a trigger for the project picker), the branch, Search files (opens Quick Open; tooltip “Search files (⌘P)” / “Search files (Ctrl+P)”, `aria-haspopup` dialog), Filter files by name (funnel toggle), Collapse/Expand all, and Close (phones). Hover, selection, and focus use the shared state roles. Preserve editor keyboard selection, expansion, and Ctrl/Cmd-click semantics. The tree has no search of its own: file/path search is Quick Open (decision 0145). On phones Search files closes the drawer before the popup opens. Preserve expansion and the filter across the breakpoint.
+Pierre compact tree: complete built-in colored file icons, native folder expansion chevrons each followed by a two-tone folder icon (open or closed with the row, `text-muted` in every state, over its children's icons; `lib/tree-icons.ts`, decision 0138; Source Control's trees share it), square rows, semantic token overrides, 13px Inter `text-primary` names (`--font-file`), 24px desktop / 32px narrow, both scaled by the Font Size setting. A name reads whole when it fits, else truncates once at the end with “…”; a compact folder chain reads as one `a/b/c` string and truncates the same way, with no tooltip (decision 0166; Source Control's trees share it). The header holds the project name (a trigger for the project picker), the branch, Search files (opens Quick Open; tooltip “Search files (⌘P)” / “Search files (Ctrl+P)”, `aria-haspopup` dialog), Filter files by name (funnel toggle), Collapse/Expand all, and Close (phones). Hover, selection, and focus use the shared state roles. Preserve editor keyboard selection, expansion, and Ctrl/Cmd-click semantics. The tree has no search of its own: file/path search is Quick Open (decision 0145). On phones Search files closes the drawer before the popup opens. Preserve expansion and the filter across the breakpoint.
 
 Below the header, a shelf on the same `workspace-chrome` band holds the explorer's
 filename filter (4px top, 8px bottom, 12px sides, 4px between fields) and ends in a
@@ -516,7 +529,7 @@ eyebrow, host name, or status bar.
 
 ### Tabs and view mode
 
-Filenames truncate at 12.5rem maximum tab width; titles expose paths. Tabs fill the strip's height without gaps or an active accent rule (decision 0056), in 12px mono with a 1px `border` divider after each (decision 0102). The active tab is a flat, square block that cuts through the strip's hairline and joins the document surface; inactive tabs stay on workspace chrome and alone receive the chrome hover layer. With a precise hovering pointer, inactive close actions appear on hover or focus within the tab; their space stays reserved. Other devices keep all close actions visible, and the active close action is always visible. The strip reveals the whole active tab, including its close action, when it narrows. Keyboard focus retains an inset accent outline. Keyboard focus on the document draws a 2px accent ring around the visible pane, above the sticky gutter (decision 0046). Closing active selects nearest neighbour. Back and Forward (decision 0131) lead the strip as Zed's pane does: two `bar` IconButtons (arrow left and right) on workspace chrome, closed by a tab's 1px divider. A button whose direction has no entry is `aria-disabled` with “No earlier location” or “No later location”; otherwise its tooltip names the destination and key (“Back to tsconfig.json (Ctrl+Alt+-)”, adding “in <project>” for another project). Right-click, a 500 ms hold, or Shift+F10 lists up to 12 destinations, nearest first, on the shared menu (native in the desktop app). Phones hide them. Right-click or Shift+F10 on a tab opens a themed context menu: Close, Close Others, Close to the Right, and Close All; working-tree document tabs add Show File History (and Reveal in File Manager in the desktop app) after a separator (decision 0114). Unavailable actions are disabled. Right-click preserves the active document; dismissal returns focus to the tab, and closing returns focus to a surviving tab or the document pane. The Document view group follows declared capabilities: Markdown and SVG show [Preview][Source]; formattable types (JSON, YAML) show [Source][Format]; everything else shows no toggle. The mode group is an `md` `SegmentedControl` filling the 32px toolbar. Image zoom controls share the same `SegmentedControl`; icon-only items are 28px wide, so SVG view and zoom controls fit at 320px. View labels/defaults come from file-type metadata. Open tabs and the active document are remembered per project in browser storage and restored against the fresh tree; mode is remembered per open tab and resets on reload; URL/history remain authoritative for the document. Preview failures explain the problem and preserve access to Source.
+Filenames truncate at 12.5rem maximum tab width; titles expose paths. Tabs fill the strip's height without gaps or an active accent rule (decision 0056), in 13px Inter (`--text-tab`, decision 0167) with a 1px `border` divider after each (decision 0102). The active tab is a flat, square block that cuts through the strip's hairline and joins the document surface; inactive tabs stay on workspace chrome and alone receive the chrome hover layer. With a precise hovering pointer, inactive close actions appear on hover or focus within the tab; their space stays reserved. Other devices keep all close actions visible, and the active close action is always visible. The strip reveals the whole active tab, including its close action, when it narrows. Keyboard focus retains an inset accent outline. Keyboard focus on the document draws a 2px accent ring around the visible pane, above the sticky gutter (decision 0046). Closing active selects nearest neighbour. Back and Forward (decision 0131) lead the strip as Zed's pane does: two `bar` IconButtons (arrow left and right) on workspace chrome, closed by a tab's 1px divider. A button whose direction has no entry is `aria-disabled` with “No earlier location” or “No later location”; otherwise its tooltip names the destination and key (“Back to tsconfig.json (Ctrl+Alt+-)”, adding “in <project>” for another project). Right-click, a 500 ms hold, or Shift+F10 lists up to 12 destinations, nearest first, on the shared menu (native in the desktop app). Phones hide them. Right-click or Shift+F10 on a tab opens a themed context menu: Close, Close Others, Close to the Right, and Close All; working-tree document tabs add Show File History (and Reveal in File Manager in the desktop app) after a separator (decision 0114). Unavailable actions are disabled. Right-click preserves the active document; dismissal returns focus to the tab, and closing returns focus to a surviving tab or the document pane. The Document view group follows declared capabilities: Markdown and SVG show [Preview][Source]; formattable types (JSON, YAML) show [Source][Format]; everything else shows no toggle. The mode group is an `md` `SegmentedControl` filling the 32px toolbar. Image zoom controls share the same `SegmentedControl`; icon-only items are 28px wide, so SVG view and zoom controls fit at 320px. View labels/defaults come from file-type metadata. Open tabs and the active document are remembered per project in browser storage and restored against the fresh tree; mode is remembered per open tab and resets on reload; URL/history remain authoritative for the document. Preview failures explain the problem and preserve access to Source.
 
 Within the current project, opening a file selects its tab immediately, before its page response (decision 0154). The pane is busy, with “Loading file…” in quiet status text after 150ms; old file content and view controls disappear while the tree stays available. A failed read stays in its destination tab with Try again. Closing a loading tab or opening another file supersedes that navigation. Project switches still wait for their page before replacing the workspace.
 
@@ -577,7 +590,7 @@ The Color Theme quick pick reuses the frame with the placeholder “Select Color
 
 Ctrl/Cmd+P (Ctrl/Cmd+K alias), Search files, Find a file, or “Navigation › Go to File…” opens a VS Code/Zed-style file popup on the content-palette frame (decision 0145). The palette `TextField` shows a 16px search icon, “Search files by name (append : to go to line)”, and an Esc `Kbd`. Opening never changes the sidebar; on phones the drawer closes first. Scope is every file in the page tree (within `--depth`, gitignored included); the explorer filename filter does not apply.
 
-Rows are 32px pick rows (44px mobile): the Pierre file icon, the base name in mono at `--text-file`, then the folder path in muted 12px; phones put the folder on a second line. Matched characters render in accent, 600 weight (selection ink on the active row). Each option is named “name, folder”, adding “, line N” for a line.
+Rows are 32px pick rows (44px mobile): the Pierre file icon, the base name at `--font-file` and `--text-file`, then the folder path in muted 12px; phones put the folder on a second line. Matched characters render in accent, 600 weight (selection ink on the active row). Each option is named “name, folder”, adding “, line N” for a line.
 
 An empty query lists a lowercase “recently opened” group: this project's working-tree files this window showed (the navigation-history log, decision 0131), most recent first, without the file on screen or files no longer in the tree. With none, the status reads “Type to search N files” (“No files in this project” when empty).
 
@@ -787,7 +800,7 @@ on that edge resizes it, revealing a 2px accent line on hover and focus; Left
 and Right arrows step
 1rem and double-click restores 16rem. Its header matches a file header
 (`control-lg` tall on `surface-secondary`, 1px `border` rule below) and reads
-“Files” (12px, 600 monospace) with a count badge, Collapse/Expand All Folders, and Hide Files.
+“Files” (12px, 600 sans) with a count badge, Collapse/Expand All Folders, and Hide Files.
 Below it, on the tree's surface (8px inset, 4px below), a 28px “Filter files
 by path” field (funnel icon, “Filter files”) keeps files whose path or old
 path holds every term; its trailing slot shows a muted tabular “3 / 12” while
@@ -996,13 +1009,13 @@ Pane replicas carry their own diff and syntax tones (`--l-add*`, `--l-del*`, `--
 
 ### Typography
 
-**Display and body:** the system sans stack (`ui-sans-serif, system-ui, -apple-system, "Segoe UI"`). **Chrome:** JetBrains Mono, bundled (variable, `@fontsource-variable/jetbrains-mono` imported by `_root.css`), then the system mono stack, ligatures off (decision 0138). The landing never loads Inter; docs prose keeps Vocs' self-hosted Geist, and `_root.css` sets the navigation and Vocs' code (`--vocs-font-family-mono`) in JetBrains Mono.
+**Display and body:** the system sans stack (`ui-sans-serif, system-ui, -apple-system, "Segoe UI"`). **Chrome:** JetBrains Mono, bundled (variable, `@fontsource-variable/jetbrains-mono` imported by `_root.css`), then the system mono stack, ligatures off (decision 0138). The landing loads Inter (`@fontsource-variable/inter`, imported by `landing.css`) for its app panes only: tabs, title bands, view and pane heads, and file rows (`--l-ui`; file rows add `cv05` and `cv08`, decision 0167). Docs prose keeps Vocs' self-hosted Geist, and `_root.css` sets the navigation and Vocs' code (`--vocs-font-family-mono`) in JetBrains Mono.
 
 - **Display** (650, `clamp(2rem, 3.2vw, 2.75rem)`, 1.05, -0.035em, balanced): the one h1, in the hero row.
 - **Heading** (650, `clamp(1.625rem, 2.4vw, 2rem)`, 1.1, -0.03em, balanced): each feature row's h2.
 - **Lede** (400, 0.9375rem, 1.55, `text-2`, 34rem max): row copy.
 - **Body** (0.8125rem, 1.5): the landing base, buttons at 550.
-- **Chrome** (mono 0.75rem): the feature label (accent, lowercase name: "browse"), chips, tabs, bands, terminals, pane code (22px rows).
+- **Chrome** (mono 0.75rem): the feature label (accent, lowercase name: "browse"), chips, bands, terminals, pane code (22px rows). App pane tabs and file rows are Inter (`--l-ui`).
 - **Status** (mono 0.6875rem): kbd, pane status bars, the install Copy action (uppercase, 0.08em).
 - **Label** (mono 600, 0.65625rem, 0.1em, uppercase, muted): chrome names only: pane side heads and note titles. Pane captions use the same size at 0.08em, weight 400.
 - **Docs:** sidebar section labels mono 600, 0.6875rem, 0.1em, uppercase, `--sz-muted`; sidebar items sans 0.875rem 400 (500 when current); the breadcrumb, edit link, and Last updated mono 0.75rem; the outline label as a section label, its rows sans 0.8125rem; the H1 650 with the first paragraph as a 1.125rem `text-2` lede; code blocks mono 0.8125rem at 1.6, their band labels and Copy, table headers, pager labels, and home section labels as section labels.
@@ -1058,7 +1071,7 @@ Every corner is square. `_root.css` zeroes Vocs' radii with one `border-radius: 
 - **Do** give each feature one tint and repeat it on its row's top edge, its terminal, and its pane framing.
 - **Do** build demo panes in HTML and CSS from the slate tokens at app density, captioned "synthetic demo"; state facts, not benchmarks.
 - **Do** frame docs code, callouts, tables, pager, and cards with a full 1px border.
-- **Do** keep landing type on the system sans and mono stacks.
+- **Do** keep landing type on the system sans and mono stacks; the app panes' chrome and file names use bundled Inter, as the app does (decision 0167).
 - **Do** grow touch controls to 44px under 900px.
 
 #### Don't:
