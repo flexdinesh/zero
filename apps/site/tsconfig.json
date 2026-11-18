@@ -10,5 +10,5 @@
     "target": "ES2024",
     "types": ["node", "vite/client"]
   },
-  "include": ["vocs.config.ts", "src/**/*.ts", "src/**/*.tsx"]
+  "include": ["vocs.config.ts", "src/**/*.ts", "src/**/*.tsx", "cover/**/*.ts", "cover/**/*.tsx"]
 }

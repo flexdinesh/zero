@@ -11,6 +11,11 @@ JSON/YAML/HTML/CSS/JavaScript, highlighted source, commit, branch, and range dif
 commit search and file history, agent walkthroughs, review feedback threads agents answer, code navigation, and live updates. Desktop app, browser, or a
 remote box served to your laptop.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/cover-dark.webp">
+  <img src="docs/readme/cover-light.webp" alt="The reader comments on a line in zero's Source view and asks an agent CLI to resolve it; the agent runs zero feedback show, edits the line live in zero, and replies with zero feedback reply --resolve" width="880">
+</picture>
+
 ## Install
 
 macOS and Linux, no sudo, no runtime needed. Installs to `~/.local/bin` (or `~/bin`).

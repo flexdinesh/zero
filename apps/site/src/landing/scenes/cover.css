@@ -1,0 +1,302 @@
+/* The README cover (decision 0164): two windows. zero keeps one gutter on the
+   left and top and runs off the bottom; the agent's CLI sits in front of its
+   right edge, whole, one gutter from the stage's right and bottom. */
+
+.cv .cv-window {
+  position: absolute;
+  top: 32px;
+  left: 32px;
+  width: 520px;
+  height: 560px;
+}
+
+.cv .zs-window > .ss-window__bar {
+  position: relative;
+}
+
+.cv .zs-window .ss-window__title {
+  position: absolute;
+  left: 50%;
+  flex: none;
+  margin: 0;
+  translate: -50% 0;
+}
+
+.cv .cv-dim {
+  color: var(--l-muted);
+}
+
+.cv .cv-rest {
+  position: absolute;
+  top: 120px;
+  left: 400px;
+}
+
+/* Breadcrumbs above the source */
+.cv .cv-crumbs {
+  display: flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 16px;
+  font-size: 11px;
+  color: var(--l-muted);
+  border-bottom: 1px solid var(--l-border);
+}
+
+.cv .cv-crumb {
+  display: inline-flex;
+  align-items: center;
+}
+
+.cv .cv-crumb svg {
+  width: 11px;
+  height: 11px;
+  margin: 0 4px;
+}
+
+.cv .cv-crumb[data-file] {
+  color: var(--l-text);
+}
+
+/* Source lines; the change marker sits on the gutter's edge. */
+.cv .cv-source {
+  padding-top: 2px;
+}
+
+.cv .cv-line .zs-code {
+  box-shadow: inset 2px 0 0 transparent;
+  transition: box-shadow 0.4s ease;
+}
+
+.cv .cv-line[data-marker] .zs-code {
+  box-shadow: inset 2px 0 0 var(--l-accent);
+}
+
+/* The thread: an editor zone under its line. */
+.cv .cv-thread {
+  will-change: transform;
+  max-width: 356px;
+  margin: 6px 16px 8px 40px;
+  padding: 10px 12px;
+  font-family: var(--l-sans);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--l-text);
+  background: var(--l-surface);
+  border: 1px solid var(--l-border);
+  box-shadow: inset 2px 0 0 var(--l-accent);
+}
+
+.cv .cv-thread-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 8px;
+  font-family: var(--l-mono);
+  font-size: 11px;
+}
+
+.cv .cv-thread-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 650;
+  color: var(--l-text);
+}
+
+.cv .cv-thread-status .ss-states {
+  width: 14px;
+  height: 14px;
+}
+
+.cv .cv-thread-status svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+  color: var(--l-muted);
+}
+
+.cv .cv-thread-status[data-resolved] svg {
+  color: var(--l-add-mark);
+}
+
+.cv .cv-message {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-bottom: 8px;
+}
+
+.cv .cv-author {
+  font-family: var(--l-mono);
+  font-size: 10.5px;
+  line-height: 1.2;
+  color: var(--l-text-2);
+}
+
+.cv .cv-agent {
+  color: var(--l-accent);
+}
+
+.cv .cv-time {
+  margin-left: 8px;
+  color: var(--l-muted);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.cv .cv-time[data-show] {
+  opacity: 1;
+}
+
+.cv .cv-draft {
+  --ss-draft-pad-y: 3px;
+  --ss-draft-pad-x: 8px;
+  --ss-draft-ring: var(--l-accent);
+  --ss-draft-radius: 0px;
+  line-height: 1.35;
+}
+
+.cv .cv-event {
+  font-family: var(--l-mono);
+  font-size: 10.5px;
+  color: var(--l-muted);
+}
+
+.cv .cv-composer-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 2px;
+  font-family: var(--l-mono);
+  font-size: 10.5px;
+}
+
+.cv .cv-hint {
+  margin-right: auto;
+  color: var(--l-muted);
+}
+
+.cv .cv-button {
+  padding: 3px 10px;
+  font-size: 11px;
+  color: var(--l-text-2);
+}
+
+.cv .cv-button-primary {
+  color: var(--l-on-accent);
+  background: var(--l-accent);
+}
+
+.cv .cv-folded {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--l-text-2);
+}
+
+.cv .cv-folded svg {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  color: var(--l-add-mark);
+}
+
+/* The agent's CLI: the transcript from the top, the input at the foot. */
+.cv .cv-terminal {
+  position: absolute;
+  top: 72px;
+  right: 32px;
+  bottom: 32px;
+  z-index: 10;
+  width: 352px;
+}
+
+.cv .cv-terminal > .ss-window__body {
+  flex: 1;
+  min-height: 0;
+}
+
+.cv .cv-terminal .ss-term {
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.cv .cv-transcript {
+  display: flex;
+  flex-direction: column;
+  padding-top: 6px;
+}
+
+.cv .cv-user {
+  margin: 2px 0 8px;
+  padding: 3px 8px;
+  color: #f1f1f3;
+  background: rgb(255 255 255 / 0.07);
+}
+
+.cv .cv-tool {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 6px;
+  color: #f1f1f3;
+}
+
+.cv .cv-tool-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #8a919c;
+  transition: background-color 0.3s ease;
+}
+
+.cv .cv-tool-dot[data-done] {
+  background: #8fc97a;
+}
+
+.cv .cv-tool-name,
+.cv .cv-tool-out {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cv .cv-tool-out {
+  padding-left: 14px;
+  color: #8a919c;
+}
+
+.cv .cv-tool-out[data-kind='del'] {
+  color: #ee8f98;
+}
+
+.cv .cv-tool-out[data-kind='add'] {
+  color: #8fc97a;
+}
+
+.cv .cv-summary {
+  padding-top: 10px;
+  white-space: normal;
+  color: #c9ced6;
+}
+
+.cv .cv-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+  padding: 6px 10px;
+  color: #f1f1f3;
+  border: 1px solid rgb(255 255 255 / 0.14);
+}
+
+.cv .cv-input-sigil {
+  color: #8fb4f0;
+}
+
+.cv .cv-placeholder {
+  margin-left: -6px;
+  color: #63636b;
+}

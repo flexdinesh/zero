@@ -76,6 +76,11 @@ run = "pnpm dev:mock"
 description = "Run the docs dev server"
 run = "pnpm dev:site"
 
+[tasks."readme:cover"]
+description = "Record the README cover (docs/readme/cover-*.webp and .png) from its Stageshow scene"
+dir = "apps/site"
+run = "node cover/record.ts"
+
 # Builds
 
 [tasks."build:web"]

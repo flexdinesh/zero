@@ -1,0 +1,33 @@
+/* The cover's frame: the landing's dot-grid canvas with rounded corners,
+   captured with a transparent page so the corners stay clear on GitHub's
+   light and dark backgrounds. */
+
+@import '@fontsource-variable/jetbrains-mono';
+@import '../src/landing/landing.css';
+@import '../src/landing/scenes/zero.css';
+
+:root {
+  color-scheme: light dark;
+}
+
+html,
+body {
+  margin: 0;
+  background: transparent;
+}
+
+.landing.cover-page {
+  min-height: 0;
+  padding: 24px;
+  background: transparent;
+}
+
+.cover-frame {
+  width: 880px;
+  overflow: hidden;
+  border: 1px solid var(--l-border);
+  border-radius: 12px;
+  background-color: var(--l-bg);
+  background-image: radial-gradient(var(--l-dot) 1px, transparent 1.2px);
+  background-size: 12px 12px;
+}
