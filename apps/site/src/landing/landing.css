@@ -3,8 +3,9 @@
  * docs styles stay untouched. Colors use light-dark(): Vocs sets color-scheme
  * on <html> together with data-vocs-theme, so both themes follow its toggle.
  * The page is the app's sharp slate world (decision 0102) at app density:
- * square corners, 1px hairlines, mono chrome labels.
+ * square corners, 1px hairlines, sans chrome labels and file names (decision 0167).
  */
+@import '@fontsource-variable/inter';
 
 /* Vocs' blank layout pads its <article> and caps <main>; let the landing go edge to edge. */
 main:has(> article > .landing) {
@@ -56,6 +57,9 @@ article:has(> .landing) {
   --l-mark-ink: light-dark(#2b2d33, #ffffff);
   --l-mono: 'JetBrains Mono Variable', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   --l-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* The app's UI face, for the scenes' chrome and file names (decision 0167). */
+  --l-ui: 'Inter Variable', Inter, ui-sans-serif, system-ui, sans-serif;
+  --l-file-features: 'cv05' 1, 'cv08' 1;
   --l-max: 75rem;
   --l-nav: 2.75rem;
 

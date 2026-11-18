@@ -1,6 +1,6 @@
 # 0130: IBM Plex Mono, quieter Source Control chrome, and no container focus rings
 
-- Status: Accepted
+- Status: Accepted; mono file names and chrome superseded by [0167](0167-sans-file-names-and-chrome.md)
 - Date: 2026-11-11
 - Supersedes: the system monospace stack of [0102](0102-sharp-slate-panes.md)
   and the site; [0104](0104-source-zero-logo.md)'s outlined JetBrains Mono

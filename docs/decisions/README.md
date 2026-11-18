@@ -105,7 +105,7 @@ rewriting history; update `Status` on the old record.
 | [0099](0099-desktop-notifications.md) | Desktop notifications | Accepted |
 | [0100](0100-rename-to-srcz.md) | Rename to srcz (Source Zero) | Accepted |
 | [0101](0101-install-script-installs-cli-and-desktop.md) | Install script installs the CLI and the desktop app | Accepted; edge script replaced by `install-dev.sh` in 0134 |
-| [0102](0102-sharp-slate-panes.md) | Sharp slate panes | Accepted; system mono stack superseded by 0130; review gutter hairline by 0140; Zero Light values by 0143 |
+| [0102](0102-sharp-slate-panes.md) | Sharp slate panes | Accepted; system mono stack superseded by 0130; review gutter hairline by 0140; Zero Light values by 0143; mono chrome labels by 0167 |
 | [0103](0103-site-on-workers-static-assets.md) | Site on Workers Static Assets | Accepted |
 | [0104](0104-source-zero-logo.md) | Source Zero logo | Accepted; mark geometry and macOS icon revised by 0108; wordmark face by 0130, restored by 0138 |
 | [0105](0105-walkthrough-landing.md) | Walkthrough landing and framed docs | Accepted; landing structure superseded by 0106; docs frame superseded by 0142 |
@@ -132,14 +132,14 @@ rewriting history; update `Status` on the old record.
 | [0127](0127-sandbox-attach-and-stdio-transport.md) | `zero attach` to sandboxes, over a stdio transport | Accepted; extends 0080, 0098; development image revised by 0134 |
 | [0128](0128-sandbox-connections-in-the-desktop-app.md) | Sandbox connections in the desktop app | Accepted; extends 0098, 0127 |
 | [0129](0129-base-row-picker-inline-commit-filter-and-lanes.md) | Base row picker, inline commit filter, and stack lanes | Accepted; supersedes 0035 and 0123 base picker trigger, 0114 filter toggle; extends 0040, 0042, 0123; rails and chip borders superseded by 0130 |
-| [0130](0130-ibm-plex-mono-quiet-scm-chrome-and-container-focus.md) | IBM Plex Mono, quieter Source Control chrome, and no container focus rings | Accepted; supersedes 0102 and 0104 mono faces, 0123 pane action row, 0129 rails and chip borders; revises 0122; Plex Mono face superseded by 0138 |
+| [0130](0130-ibm-plex-mono-quiet-scm-chrome-and-container-focus.md) | IBM Plex Mono, quieter Source Control chrome, and no container focus rings | Accepted; supersedes 0102 and 0104 mono faces, 0123 pane action row, 0129 rails and chip borders; revises 0122; Plex Mono face superseded by 0138; mono file names and chrome by 0167 |
 | [0131](0131-back-forward-navigation.md) | Back and forward navigation | Accepted; amends 0056, 0097 |
 | [0133](0133-sidebar-field-edges.md) | Sidebar field edges | Accepted; amends 0045 |
 | [0134](0134-dev-installs-build-from-source.md) | Development installs build any branch or commit from source | Accepted; supersedes 0079 edge, 0093; revises 0101, 0125, 0127 |
 | [0135](0135-walkthrough-narration-panel-and-one-way-review-scroll.md) | Walkthrough narration panel and one-way review scroll | Accepted; supersedes 0047's narration zone and 0113's step bar; extends 0034, 0048, 0111; file in view superseded by 0137 |
 | [0136](0136-installs-stop-the-running-daemon.md) | Installs stop the running daemon | Accepted; extends 0061, 0101, 0134 |
 | [0137](0137-review-selection-is-the-chosen-file.md) | Review selection is the chosen file | Accepted; supersedes 0135's file in view and the scroll-following selection of 0035 and 0040; amends 0051, 0117 |
-| [0138](0138-jetbrains-mono-and-tree-folder-icons.md) | JetBrains Mono, no ligatures, and folder icons in trees | Accepted; supersedes 0130's Plex Mono face; restores 0104's wordmark; amends 0102's tree |
+| [0138](0138-jetbrains-mono-and-tree-folder-icons.md) | JetBrains Mono, no ligatures, and folder icons in trees | Accepted; supersedes 0130's Plex Mono face; restores 0104's wordmark; amends 0102's tree; mono limited to code by 0167 |
 | [0139](0139-inline-blame.md) | Inline blame on the active line | Accepted; extends 0008, 0083, 0112, 0114, 0115 |
 | [0140](0140-overlay-scrollbars.md) | Overlay scrollbars | Accepted; supersedes 0055's gutters, hover-only thumb, and native bars, and 0102's review gutter hairline |
 | [0141](0141-landing-scenes-and-feedback-row.md) | Landing scenes and the feedback row | Accepted; revises 0106's panes and row list |
@@ -166,3 +166,4 @@ rewriting history; update `Status` on the old record.
 | [0163](0163-review-placement-uses-live-geometry.md) | Review placement uses live geometry | Accepted; extends 0034, 0135, 0140 |
 | [0164](0164-readme-cover-recorded-from-a-scene.md) | README cover recorded from a Stageshow scene | Accepted; extends 0141 |
 | [0166](0166-tree-names-truncate-at-the-end.md) | Tree names truncate at the end | Accepted; amends 0035 |
+| [0167](0167-sans-file-names-and-chrome.md) | Sans file names and chrome | Accepted; supersedes parts of 0102, 0130; amends 0138, 0165 |

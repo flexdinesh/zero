@@ -281,6 +281,26 @@ test("tree folders show folder icons and source shows the characters typed", asy
   await expect(line).toHaveCSS("font-variant-ligatures", "none")
 })
 
+// File names and chrome are Inter; file names turn on Inter's disambiguated
+// l and I (decision 0167).
+test("file names, tabs, and headers set in Inter", async ({ page }) => {
+  await page.goto("/view?path=code%2Fmain.go")
+  const family = (element: Element) => getComputedStyle(element).fontFamily.split(",")[0]?.trim().replace(/^"(.*)"$/, "$1")
+  const name = page.getByRole("complementary", { name: "Files" }).getByRole("treeitem", { name: "main.go", exact: true }).locator('[data-item-section="content"]')
+  await expect(name).toBeVisible()
+  expect(await name.evaluate(family)).toBe("Inter Variable")
+  await expect(name).toHaveCSS("font-size", "13px")
+  await expect(name).toHaveCSS("font-feature-settings", '"cv05", "cv08"')
+
+  const tab = page.getByRole("tab", { name: "main.go" })
+  expect(await tab.evaluate(family)).toBe("Inter Variable")
+  await expect(tab).toHaveCSS("font-size", "13px")
+
+  const header = page.locator(".explorer-header").filter({ visible: true })
+  expect(await header.evaluate(family)).toBe("Inter Variable")
+  await expect(header).toHaveCSS("font-size", "12px")
+})
+
 test("highlights Source in the browser with the selected theme", async ({ page }) => {
   await page.addInitScript(() => window.localStorage.setItem("zero-theme", "light"))
   await page.goto("/view?path=code%2Fmain.go")
