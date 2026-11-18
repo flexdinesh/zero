@@ -35,21 +35,21 @@ test("many-file review feedback measurements @extended", async ({ browser, brows
         await page.goto(`${live.origin}/view?project=${encodeURIComponent(live.root)}&review=working#f=${target}`)
         await warmReview(page)
         await settle(page)
-        const warm = await page.evaluate(() => window.readFeedbackProfile())
+        const warm = await page.evaluate(() => window.readZeroReactProfile())
         expect([...new Set(warm.map((entry) => entry.id))].sort()).toEqual(build === "production"
           ? [] : ["ReviewDocument", ...paths.map((file) => `ReviewFile:${file}`)].sort())
         const session = await context.newCDPSession(page)
         await session.send("Performance.enable")
         const sample = async (scenario: string, action: () => Promise<void>) => {
           await settle(page)
-          await page.evaluate(() => window.readFeedbackProfile())
+          await page.evaluate(() => window.readZeroReactProfile())
           const interval = async () => { await action(); await settle(page) }
           if (build === "production") {
             const metrics = await productionSample(session, info.outputPath(`${scenario}-${run}.trace.json`), interval)
             reports.push({ build, run, scenario, metrics })
           } else {
             await interval()
-            const renders = await page.evaluate(() => window.readFeedbackProfile())
+            const renders = await page.evaluate(() => window.readZeroReactProfile())
             reports.push({ build, run, scenario, renders })
           }
           save()

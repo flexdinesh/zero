@@ -179,7 +179,7 @@ export function App({ project }: AppProps) {
   const pendingDocument = usePendingDocument(project)
   const pendingFile = pendingDocument !== null
   const hash = useRouterState({ select: (state) => state.location.hash })
-  const lineRange = parseLineAnchor(hash)
+  const lineRange = useMemo(() => parseLineAnchor(hash), [hash])
   // A review tab routes without a path as /view?review=working,
   // ?review=branch (&base=, &head=), ?commit=<hash>, or
   // ?from=<hash>&to=<hash>; its page carries only the tree, and #f=<path>
@@ -645,6 +645,7 @@ export function App({ project }: AppProps) {
     const search = page.at ? { project, path: page.selected, at: page.at } : { project, path: page.selected }
     void navigate({ to: "/view", search: { ...search, ...stepSearch }, hash: range ? lineAnchor(range) : "", replace: true })
   }, [navigate, page.at, page.selected, project, stepSearch])
+  const lineSelection = useMemo(() => ({ path: page.selected, range: lineRange, onChange: selectLines }), [lineRange, page.selected, selectLines])
   const showSource = view.kind === "source" && !loadError && !page.error
   // Source comments on the working tree's text: never a snapshot, a review,
   // or a walkthrough or Welcome tab (decision 0120).
@@ -726,7 +727,9 @@ export function App({ project }: AppProps) {
   useLayoutEffect(() => {
     lineBlameCommand.current = () => { inlineBlame.showCard() }
   })
-  const selectedLines = showSource && lineRange ? clampLineRange(lineRange, splitSourceLines(page.source).length) : null
+  const hasLineSelection = showSource && lineRange !== null
+  const selectableLineCount = useMemo(() => hasLineSelection ? splitSourceLines(page.source).length : 0, [hasLineSelection, page.source])
+  const selectedLines = hasLineSelection ? clampLineRange(lineRange, selectableLineCount) : null
 
   const switchProject = useCallback((next: string) => {
     prepareDocumentNavigation()
@@ -812,15 +815,15 @@ export function App({ project }: AppProps) {
   const stepWalkthrough = walkthroughs.routed ? walkthroughs.walkthrough : null
   const stepIndex = walkthroughs.position
   const narrationStep = stepWalkthrough && stepIndex !== null ? stepWalkthrough.steps[stepIndex] : undefined
-  const narrationTarget = narrationStep ? stepTarget(narrationStep) : null
+  const narrationTarget = useMemo(() => narrationStep ? stepTarget(narrationStep) : null, [narrationStep])
   const narrationKey = stepWalkthrough && stepIndex !== null ? `${stepWalkthrough.id}#${stepIndex}` : ""
   const [markerCheck, setMarkerCheck] = useState<{ key: string; check: StepCheck } | null>(null)
   const reportCheck = useCallback((check: StepCheck) => setMarkerCheck({ key: narrationKey, check }), [narrationKey])
   const narrationCheck = markerCheck?.key === narrationKey ? markerCheck.check : uncheckedStep
   const narration = useNarrationCollapsed(sidebar.mobile)
-  const mark = (check: StepCheck, lines: boolean) => stepIndex !== null
+  const mark = useCallback((check: StepCheck, lines: boolean) => stepIndex !== null
     ? <StepMarker index={stepIndex} check={check} lines={lines} onCheck={reportCheck} />
-    : null
+    : null, [reportCheck, stepIndex])
   const narrationPanel = stepWalkthrough && narrationStep && stepIndex !== null
     ? <NarrationPanel step={narrationStep} index={stepIndex} count={stepWalkthrough.steps.length} visited={walkthroughs.visited}
       check={narrationCheck} presenting={presenting} collapsed={narration.collapsed} onCollapsedChange={narration.change}
@@ -842,7 +845,7 @@ export function App({ project }: AppProps) {
       })}
       navigate={navigateToHref} />
     : null
-  const sourceAnnotation: SourceAnnotation | undefined = narrationTarget?.kind === "file" && !reviewCompare
+  const sourceAnnotation = useMemo((): SourceAnnotation | undefined => narrationTarget?.kind === "file" && !reviewCompare
     && narrationTarget.path === page.selected && narrationTarget.at === page.at ? {
       line: narrationTarget.lines?.end ?? 0,
       focus: narrationTarget.lines,
@@ -850,7 +853,7 @@ export function App({ project }: AppProps) {
         const lines = narrationTarget.lines
         return lines && lineAt ? mark(stepCheck(narrationTarget.expect, lineAt(lines.start)), true) : mark(uncheckedStep, false)
       },
-    } : undefined
+    } : undefined, [mark, narrationTarget, page.at, page.selected, reviewCompare])
   const reviewAnnotation: ReviewAnnotation | undefined = narrationTarget?.kind === "diff" && reviewCompare
     && sameCompare(narrationTarget.compare, reviewCompare) ? {
       path: narrationTarget.path,
@@ -993,7 +996,7 @@ export function App({ project }: AppProps) {
             image={image}
             isLoading={isLoading}
             documentPending={documentPending}
-            lineSelection={{ path: page.selected, range: lineRange, onChange: selectLines }}
+            lineSelection={lineSelection}
             loadError={loadError}
             main={main}
             navigate={navigateToHref}

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test"
+import { expect, test, type Page } from "@playwright/test"
 import { fixtureRoot, rootParam } from "./fixture-root.ts"
 import { grantClipboard, readClipboard } from "./clipboard.ts"
 
@@ -79,8 +79,10 @@ test("dragging across line numbers previews a range and commits it on release", 
   await expect(source).toBeFocused()
 })
 
-test("a line anchor scrolls its line into view and clamps to the document", async ({ page }) => {
-  const source = Array.from({ length: 300 }, (_, index) => `line ${index + 1}`).join("\n") + "\n"
+const findToken = "uniqueOffscreenSourceToken"
+
+async function mockLongSource(page: Page) {
+  const source = Array.from({ length: 300 }, (_, index) => index === 239 ? findToken : `line ${index + 1}`).join("\n") + "\n"
   const type = {
     id: "text", label: "Plain text", extensions: [".txt"], filenames: [], language: "plaintext",
     previewKind: "", previewLabel: "", defaultMode: "source", formattable: false,
@@ -92,10 +94,32 @@ test("a line anchor scrolls its line into view and clamps to the document", asyn
     navigationSupported: false, binary: false, tooLarge: false, previewDisabled: false, searchExcluded: false, at: "",
     tree: [{ name: "long.txt", path: "long.txt", fileType: "text", isDir: false, open: false, selected: true, children: [] }],
   } }))
+}
+
+test("a line anchor scrolls its line into view and clamps to the document", async ({ page }) => {
+  await mockLongSource(page)
   await page.goto("/view?path=long.txt#L240-L999")
   const text = page.getByRole("textbox", { name: "Plain text source" })
   await expect(text.locator('[data-line="240"]')).toHaveClass(/selected/)
   await expect(text.locator('[data-line="240"]')).toBeInViewport()
   await expect(text.locator(".selected")).toHaveCount(61)
   await expect(page.locator(".status-lines")).toHaveText("Ln 240–300")
+})
+
+test("Chromium Find matches a unique offscreen Source token", async ({ page, browserName }) => {
+  test.skip(browserName !== "chromium", "Uses Chromium's window.find")
+  await mockLongSource(page)
+  await page.goto("/view?path=long.txt")
+  const source = page.getByRole("textbox", { name: "Plain text source" })
+  await expect(source.getByText("line 1", { exact: true })).toBeInViewport()
+  const match = source.getByText(findToken, { exact: true })
+  await expect(match).not.toBeInViewport()
+
+  const found = await match.evaluate((element, token) => {
+    if (!("find" in window) || typeof window.find !== "function") throw new Error("Chromium window.find is unavailable")
+    if (window.find(token) !== true) return false
+    const selection = window.getSelection()
+    return selection?.toString() === token && element.contains(selection.anchorNode)
+  }, findToken)
+  expect(found).toBe(true)
 })

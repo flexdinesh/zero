@@ -8,7 +8,7 @@ import type { ColumnRange, NavigationKind } from "../navigation/code-navigation.
 import { clampLineRange, lineReference, spanLines, splitSourceLines, startLineSelection, type LineRange } from "../../lib/line-selection.ts"
 import { showLink, targetAt, wordRange, type SourceTarget } from "../navigation/source-position.ts"
 import { useHighlightedLines } from "../../highlighting/use-highlighted-lines.ts"
-import { markerLabel, markerRows, type ChangeMarker } from "../source-control/change-markers.ts"
+import { markerLabel, markerRows, type ChangeMarker, type RowMarkers } from "../source-control/change-markers.ts"
 
 // LineSelection connects gutter selection to its owner (the URL fragment).
 export interface LineSelection {
@@ -149,14 +149,112 @@ const SourceLineContent = memo(function SourceLineContent({ line, highlighted }:
     : <span className="source-document-line-content">{line}</span>
 })
 
+interface SourceRowProps {
+  number: number
+  line: string
+  highlighted: string | undefined
+  gutterWidth: string
+  active: boolean
+  selected: boolean
+  unfocused: boolean
+  copyReference?: string
+  onComment?: () => void
+  bar?: RowMarkers["bar"]
+  wedge?: RowMarkers["wedge"]
+  onOpenMarker?: SourceChanges["onOpen"]
+  blame: ReactNode
+}
+
+const SourceRow = memo(function SourceRow({
+  number, line, highlighted, gutterWidth, active, selected, unfocused, copyReference, onComment, bar, wedge, onOpenMarker, blame,
+}: SourceRowProps) {
+  return (
+    <span
+      className={`source-document-line${active ? " active" : ""}${selected ? " selected" : ""}${unfocused ? " unfocused" : ""}${blame ? " blamed" : ""}`}
+      data-line={number}
+    >
+      <span className="source-document-line-number" style={{ width: gutterWidth }}>
+        <span aria-hidden="true">{number}</span>
+        {copyReference && <LineCopyButton reference={copyReference} />}
+        {bar && onOpenMarker && (
+          <ChangeMark kind={bar.marker.kind} label={markerLabel(bar.marker)} named={bar.first}
+            onActivate={() => onOpenMarker(bar.marker)} />
+        )}
+        {wedge && onOpenMarker && (
+          <ChangeMark kind="deleted" edge={wedge.edge} label={markerLabel(wedge.marker)}
+            onActivate={() => onOpenMarker(wedge.marker)} />
+        )}
+        {/* After the change marks: on the selection's first line it covers them. */}
+        {onComment && <LineCommentButton onComment={onComment} />}
+      </span>
+      <SourceLineContent line={line} highlighted={highlighted} />
+      {blame && <LineBlame>{blame}</LineBlame>}
+    </span>
+  )
+})
+
+interface SourceRowsProps {
+  lines: readonly string[]
+  highlightedLines: readonly string[]
+  gutterWidth: string
+  activeLine: number | null
+  shown: LineRange | null
+  focus: LineRange | null
+  controlsLine: number | undefined
+  copyReference: string | undefined
+  onComment: (() => void) | undefined
+  marks: ReadonlyMap<number, RowMarkers>
+  onOpenMarker: SourceChanges["onOpen"] | undefined
+  activeBlame: ReactNode
+  zonesAt: ReadonlyMap<number, ReactNode>
+}
+
+// Hover updates the document's link highlight without visiting the rows.
+// On selection changes, stable row props keep the unaffected gutters and text.
+const SourceRows = memo(function SourceRows({
+  lines, highlightedLines, gutterWidth, activeLine, shown, focus, controlsLine, copyReference, onComment,
+  marks, onOpenMarker, activeBlame, zonesAt,
+}: SourceRowsProps) {
+  return lines.map((line, index) => {
+    const number = index + 1
+    const active = number === activeLine
+    const controls = number === controlsLine
+    const mark = marks.get(number)
+    return (
+      <Fragment key={number}>
+        <SourceRow number={number} line={line} highlighted={highlightedLines[index]} gutterWidth={gutterWidth}
+          active={active} selected={shown !== null && number >= shown.start && number <= shown.end}
+          unfocused={focus !== null && (number < focus.start || number > focus.end)}
+          copyReference={controls ? copyReference : undefined} onComment={controls ? onComment : undefined}
+          bar={mark?.bar} wedge={mark?.wedge} onOpenMarker={mark ? onOpenMarker : undefined}
+          blame={active ? activeBlame : null} />
+        {zonesAt.get(number)}
+      </Fragment>
+    )
+  })
+})
+
+function lineFromRow(row: Element | null | undefined, root: Element): number | null {
+  if (row?.parentElement !== root) return null
+  const line = Number(row.getAttribute("data-line"))
+  return Number.isInteger(line) && line > 0 ? line : null
+}
+
+function gutterLine(event: MouseEvent | PointerEvent): number | null {
+  const gutter = event.target instanceof Element ? event.target.closest(".source-document-line-number") : null
+  return lineFromRow(gutter?.parentElement, event.currentTarget)
+}
+
 export function SourceDocument({ source, language, label, selection, navigation, annotation, changes, comments, blame }: SourceDocumentProps) {
-  const lines = splitSourceLines(source)
+  const lines = useMemo(() => splitSourceLines(source), [source])
   // Rows show plain text until highlighting arrives.
   const highlightedLines = useHighlightedLines(source, language)
   const selectionAnchor = useRef<number | null>(null)
   const container = useRef<HTMLDivElement>(null)
   const gutterWidth = `calc(${String(lines.length).length}ch + 36px)`
-  const range = clampLineRange(selection?.range ?? null, lines.length)
+  const lineCount = lines.length
+  const requestedRange = selection?.range ?? null
+  const range = useMemo(() => clampLineRange(requestedRange, lineCount), [lineCount, requestedRange])
   const [drag, setDrag] = useState<LineDrag | null>(null)
   // The active line is the last row clicked or line number pressed, or a
   // loaded anchor's first line; ownRange is the selection this gutter last
@@ -173,8 +271,9 @@ export function SourceDocument({ source, language, label, selection, navigation,
   const shown = drag?.range ?? range
   const pointer = useRef<{ x: number; y: number } | null>(null)
   const markers = changes?.markers
-  const marks = useMemo(() => markerRows(markers ?? [], lines.length), [lines.length, markers])
+  const marks = useMemo(() => markerRows(markers ?? [], lineCount), [lineCount, markers])
   const [linked, setLinked] = useState<{ line: number; word: ColumnRange } | null>(null)
+  const navigationEnabled = navigation !== undefined
 
   // link marks the name under the pointer while Ctrl/Cmd is held.
   const link = useCallback((active: boolean) => {
@@ -187,15 +286,17 @@ export function SourceDocument({ source, language, label, selection, navigation,
     })
   }, [])
 
-  // Rendering may replace the highlighted text nodes, so the underline's
-  // range is rebuilt from the DOM after every render.
+  // A text reread or highlighting may replace the word's text nodes.
   useLayoutEffect(() => {
     const root = container.current
-    showLink(root && linked ? wordRange(root, linked.line, linked.word) : null)
-  })
+    showLink(root && navigationEnabled && linked ? wordRange(root, linked.line, linked.word) : null)
+  }, [highlightedLines, linked, navigationEnabled, source])
 
   useEffect(() => {
-    if (!navigation) return
+    if (!navigationEnabled) {
+      link(false)
+      return
+    }
     const key = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Meta" || event.key === "Control") link(event.type === "keydown")
     }
@@ -209,7 +310,7 @@ export function SourceDocument({ source, language, label, selection, navigation,
       window.removeEventListener("blur", clear)
       showLink(null)
     }
-  }, [link, navigation])
+  }, [link, navigationEnabled])
 
   useEffect(() => {
     if (!drag?.active || !selection) return
@@ -233,6 +334,9 @@ export function SourceDocument({ source, language, label, selection, navigation,
 
   // C comments on the selection while focus is in the document or nowhere.
   const comment = comments?.onComment
+  const commentOnRange = useCallback(() => {
+    if (comment && range) comment(range)
+  }, [comment, range])
   useEffect(() => {
     if (!comment || !range) return
     const key = (event: globalThis.KeyboardEvent) => {
@@ -240,20 +344,24 @@ export function SourceDocument({ source, language, label, selection, navigation,
       const root = container.current
       if (event.target !== document.body && !(event.target instanceof Node && root?.contains(event.target))) return
       event.preventDefault()
-      comment(range)
+      commentOnRange()
     }
     window.addEventListener("keydown", key)
     return () => window.removeEventListener("keydown", key)
-  }, [comment, range])
+  }, [comment, commentOnRange, range])
 
   // The active line's blame loads once a line is active.
   const reportActive = blame?.onActiveLine
   useEffect(() => {
     if (activeLine !== null) reportActive?.(activeLine)
   }, [activeLine, reportActive])
+  const renderBlame = blame?.render
+  const activeBlame = useMemo(() => activeLine === null ? null : renderBlame?.(activeLine), [activeLine, renderBlame])
 
-  function pressGutter(event: PointerEvent, lineNumber: number) {
+  function pressGutter(event: PointerEvent) {
     if (!selection || event.button !== 0) return
+    const lineNumber = gutterLine(event)
+    if (lineNumber === null) return
     container.current?.focus({ preventScroll: true })
     setActiveLine(lineNumber)
     const next = startLineSelection(range, selectionAnchor.current, lineNumber, event.shiftKey)
@@ -275,6 +383,9 @@ export function SourceDocument({ source, language, label, selection, navigation,
   }
 
   function clickCode(event: MouseEvent) {
+    const row = event.target instanceof Element ? event.target.closest(".source-document-line") : null
+    const line = lineFromRow(row, event.currentTarget)
+    if (line !== null) setActiveLine(line)
     const root = container.current
     if (!navigation || !root || event.button !== 0) return
     const target = targetAt(root, event.clientX, event.clientY)
@@ -289,29 +400,36 @@ export function SourceDocument({ source, language, label, selection, navigation,
   }
 
   // Zones sit after their line, or at the top past the last line.
-  const lineCount = lines.length
   const annotationLine = annotation ? zoneLine(annotation.line, lineCount) : -1
-  const focus = annotation?.focus && annotationLine > 0 ? annotation.focus : null
+  const focus = annotationLine > 0 ? annotation?.focus ?? null : null
+  const renderAnnotation = annotation?.render
+  const narration = useMemo(() => renderAnnotation?.((line) => lines[line - 1]), [lines, renderAnnotation])
   const commentZones = comments?.zones
   const zonesAt = useMemo(() => {
     const byLine = new Map<number, SourceZone[]>()
     for (const zone of commentZones ?? []) {
       const line = zoneLine(zone.line, lineCount)
-      byLine.set(line, [...byLine.get(line) ?? [], zone])
+      const entries = byLine.get(line)
+      if (entries) entries.push(zone)
+      else byLine.set(line, [zone])
     }
-    return byLine
-  }, [commentZones, lineCount])
-  const zone = (line: number) => {
-    const narration = annotationLine === line && annotation ? annotation.render((number) => lines[number - 1]) : null
-    const here = zonesAt.get(line)
-    if (!narration && !here) return null
-    return <span className="source-annotation">{narration}{here?.map((entry) => <Fragment key={entry.key}>{entry.node}</Fragment>)}</span>
-  }
+    if (narration && !byLine.has(annotationLine)) byLine.set(annotationLine, [])
+    const nodes = new Map<number, ReactNode>()
+    for (const [line, entries] of byLine) {
+      nodes.set(line, <span className="source-annotation">
+        {line === annotationLine ? narration : null}
+        {entries.map((entry) => <Fragment key={entry.key}>{entry.node}</Fragment>)}
+      </span>)
+    }
+    return nodes
+  }, [annotationLine, commentZones, lineCount, narration])
+  const controlsLine = drag?.active ? undefined : shown?.start
+  const copyReference = selection && shown && controlsLine !== undefined ? lineReference(selection.path, shown) : undefined
 
   return (
     <div
       ref={container}
-      className={`source-document${drag?.active ? " selecting-lines" : ""}${linked ? " navigation-linking" : ""}`}
+      className={`source-document${drag?.active ? " selecting-lines" : ""}${navigationEnabled && linked ? " navigation-linking" : ""}`}
       role="textbox"
       aria-label={label}
       aria-multiline="true"
@@ -334,6 +452,11 @@ export function SourceDocument({ source, language, label, selection, navigation,
       }}
     >
       <code
+        onMouseDown={(event) => {
+          // Gutter presses select lines; focus moves explicitly.
+          if (selection && gutterLine(event) !== null) event.preventDefault()
+        }}
+        onPointerDown={pressGutter}
         onPointerOver={dragOver}
         onClick={clickCode}
         onPointerMove={navigation ? (event) => {
@@ -345,53 +468,11 @@ export function SourceDocument({ source, language, label, selection, navigation,
           link(false)
         } : undefined}
       >
-        {zone(0)}
-        {lines.map((line, index) => {
-          const lineNumber = index + 1
-          const selected = shown !== null && lineNumber >= shown.start && lineNumber <= shown.end
-          const unfocused = focus ? lineNumber < focus.start || lineNumber > focus.end : false
-          const mark = changes ? marks.get(lineNumber) : undefined
-          const blamed = blame && activeLine === lineNumber ? blame.render(lineNumber) : null
-          return (
-            <Fragment key={lineNumber}>
-            <span
-              className={`source-document-line${activeLine === lineNumber ? " active" : ""}${selected ? " selected" : ""}${unfocused ? " unfocused" : ""}${blamed ? " blamed" : ""}`}
-              data-line={lineNumber}
-              onClick={() => setActiveLine(lineNumber)}
-            >
-              <span
-                className="source-document-line-number"
-                style={{ width: gutterWidth }}
-                onMouseDown={(event) => {
-                  // Gutter presses select lines, not text; focus moves explicitly.
-                  if (selection) event.preventDefault()
-                }}
-                onPointerDown={(event) => pressGutter(event, lineNumber)}
-              >
-                <span aria-hidden="true">{lineNumber}</span>
-                {selection && !drag?.active && shown?.start === lineNumber && (
-                  <LineCopyButton reference={lineReference(selection.path, shown)} />
-                )}
-                {changes && mark?.bar && (
-                  <ChangeMark kind={mark.bar.marker.kind} label={markerLabel(mark.bar.marker)} named={mark.bar.first}
-                    onActivate={() => mark.bar && changes.onOpen(mark.bar.marker)} />
-                )}
-                {changes && mark?.wedge && (
-                  <ChangeMark kind="deleted" edge={mark.wedge.edge} label={markerLabel(mark.wedge.marker)}
-                    onActivate={() => mark.wedge && changes.onOpen(mark.wedge.marker)} />
-                )}
-                {/* After the change marks: on the selection's first line it covers them. */}
-                {comments && range && !drag?.active && shown?.start === lineNumber && (
-                  <LineCommentButton onComment={() => comments.onComment(range)} />
-                )}
-              </span>
-              <SourceLineContent line={line} highlighted={highlightedLines[index]} />
-              {blamed && <LineBlame>{blamed}</LineBlame>}
-            </span>
-            {zone(lineNumber)}
-            </Fragment>
-          )
-        })}
+        {zonesAt.get(0)}
+        <SourceRows lines={lines} highlightedLines={highlightedLines} gutterWidth={gutterWidth} activeLine={activeLine}
+          shown={shown} focus={focus} controlsLine={controlsLine} copyReference={copyReference}
+          onComment={comment && range ? commentOnRange : undefined} marks={marks} onOpenMarker={changes?.onOpen}
+          activeBlame={activeBlame} zonesAt={zonesAt} />
       </code>
     </div>
   )

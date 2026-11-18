@@ -36,6 +36,7 @@ const profile: Plugin = {
   transform(code, id) {
     const names = [...boundaries].find(([suffix]) => id.endsWith(suffix))?.[1]
     if (!names) return
+    if (process.env.ZERO_PROFILE_SOURCE === "1" && !names.includes("SourceDocument")) return
     let instrumented = code
     if (process.env.ZERO_PROFILE_FEEDBACK === "1") {
       if (!names.includes("ReviewDocument")) return
