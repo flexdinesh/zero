@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test"
+import { expect, test, type Page, type Request } from "@playwright/test"
 
 import type { LanguageServerState, NavigationStatus } from "../../packages/contracts/src/navigation.ts"
 import type { Walkthrough, WalkthroughSummary } from "../../packages/contracts/src/walkthroughs.ts"
@@ -68,12 +68,17 @@ for (const stale of ["success", "error"]) {
     let revision = 1
     const pending = gate()
     const handled = gate()
+    let captureObsolete = (_request: Request) => {}
+    const obsolete = new Promise<Request>((resolve) => { captureObsolete = resolve })
     const updatedAt = (value: number) => `2026-11-18T00:0${value}:00Z`
     await page.clock.install()
-    await page.route("**/api/walkthroughs?*", (route) => route.fulfill({ json: [summary("first", `Version ${revision}`, updatedAt(revision))] }))
+    await page.route("**/api/walkthroughs?*", (route) => route.fulfill({ json: [{ ...summary("first", `Version ${revision}`, updatedAt(revision)), stepCount: 1 }] }))
     await page.route("**/api/walkthrough?*", async (route) => {
       const requestedRevision = revision
-      if (requestedRevision === 2) await pending.promise
+      if (requestedRevision === 2) {
+        captureObsolete(route.request())
+        await pending.promise
+      }
       const detail: Walkthrough = { id: "first", project: fixtureRoot, title: `Version ${requestedRevision}`,
         summaryHTML: "<p>A versioned tour</p>", steps: [{ title: "Note", bodyHTML: "<p>A note</p>" }],
         createdAt: updatedAt(1), updatedAt: updatedAt(requestedRevision) }
@@ -86,9 +91,8 @@ for (const stale of ["success", "error"]) {
       await expect(page.getByRole("heading", { level: 1, name: "Version 1", exact: true })).toBeVisible()
       await pause(page)
       revision = 2
-      const requested = page.waitForRequest("**/api/walkthrough?*")
       await poll(page, "/api/walkthroughs", 5_000)
-      const old = await requested
+      const old = await obsolete
       const aborted = page.waitForEvent("requestfailed", { predicate: (request) => request === old })
       revision = 3
       await poll(page, "/api/walkthroughs", 5_000)
