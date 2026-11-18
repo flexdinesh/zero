@@ -1,6 +1,13 @@
 import type { Directory, Project, ProjectKind, ProjectsResponse, Root } from "@zero/contracts"
 
-// Pure list logic for the project picker; ProjectPicker.tsx only renders it.
+// Open options and pure list logic shared by the project picker and lists.
+
+export interface PickerOpenOptions {
+  // worktrees opens on the current project's repository worktrees.
+  worktrees?: boolean
+  // browse opens on Open folder…'s folder browser (decision 0146).
+  browse?: boolean
+}
 
 export interface ProjectRow {
   kind: "project"

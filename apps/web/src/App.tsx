@@ -16,7 +16,8 @@ import {
 import { FolderGit2Icon, PanelLeftIcon } from "lucide-react"
 import { IconButton } from "./components/ui/icon-button.tsx"
 import { OverlayScrollbars } from "./components/ui/overlay-scrollbars.tsx"
-import { ProjectPicker, type PickerOpenOptions } from "./features/projects/ProjectPicker.tsx"
+import { ProjectPicker } from "./features/projects/ProjectPicker.tsx"
+import type { PickerOpenOptions } from "./features/projects/project-picker.ts"
 import { DocumentModeToggle, type DocumentMode } from "./features/documents/DocumentModeToggle.tsx"
 import { DocumentPane } from "./features/documents/DocumentPane.tsx"
 import { documentView, resolveDocumentMode } from "./features/documents/document-view.ts"
@@ -34,7 +35,8 @@ import { SearchSidebarView } from "./features/search/SearchView.tsx"
 import { Sidebar, sidebarViewName } from "./workspace/Sidebar.tsx"
 import { SidebarBody } from "./workspace/SidebarBody.tsx"
 import { SourceControlSidebarView } from "./features/source-control/SourceControlView.tsx"
-import { ReviewDocument, type HunkStep, type ReviewStatus, type RevealRequest } from "./features/source-control/ReviewDocument.tsx"
+import { DeferredReview, releaseLoadedDiffResources } from "./features/source-control/DeferredReview.tsx"
+import type { HunkStep, ReviewAnnotation, ReviewStatus, RevealRequest } from "./features/source-control/ReviewDocument.tsx"
 import { DiffToolbar } from "./features/source-control/DiffToolbar.tsx"
 import { countedLines } from "./features/source-control/diff-stats.ts"
 import type { CollapseRequest } from "./features/source-control/FilesTree.tsx"
@@ -57,7 +59,6 @@ import { useDiffOptions } from "./features/source-control/use-diff-options.ts"
 import { useRefs } from "./features/source-control/use-refs.ts"
 import { useReviewViewed } from "./features/source-control/use-review-viewed.ts"
 import { releaseHighlightResources } from "./highlighting/use-highlighted-lines.ts"
-import { releaseDiffResources } from "./features/source-control/diff-resources.ts"
 import { useSourceControlCommands, useSourceControlQuery } from "./features/source-control/SourceControlProvider.tsx"
 import { filePaths } from "./api/page-data.ts"
 import { isCommitHash } from "./lib/commit-hash.ts"
@@ -119,7 +120,6 @@ import {
 import { stepPrompt } from "./features/walkthrough/agent-instructions.ts"
 import { shareableOrigin } from "./lib/shareable-origin.ts"
 import type { SourceAnnotation } from "./features/documents/SourceDocument.tsx"
-import type { ReviewAnnotation } from "./features/source-control/ReviewDocument.tsx"
 import { FeedbackSidebarView } from "./features/feedback/FeedbackView.tsx"
 import { routeFeedback, type ThreadRoute } from "./features/feedback/feedback-model.ts"
 import { useFeedbackView } from "./features/feedback/use-feedback-view.ts"
@@ -593,7 +593,7 @@ export function App({ project }: AppProps) {
   const hasReviewTabs = workspace.tabs.some((tab) => tab.kind === "review")
   // Closing the last review tab frees its workers and caches until the next one.
   useEffect(() => {
-    if (!hasReviewTabs) releaseDiffResources()
+    if (!hasReviewTabs) releaseLoadedDiffResources()
   }, [hasReviewTabs])
   // Closing the last tab frees the Source highlight worker the same way.
   const hasTabs = workspace.tabs.length > 0
@@ -971,7 +971,7 @@ export function App({ project }: AppProps) {
           {narrationPanel}
           <div className="workspace-body">
           <DocumentPane
-            diff={shownReview ? <ReviewDocument key={`${project}\n${compareKey(shownReview)}`} project={project} compare={shownReview}
+            diff={shownReview ? <DeferredReview key={`${project}\n${compareKey(shownReview)}`} project={project} compare={shownReview}
               name={nameTab(reviewTab(shownReview))} data={reviewData} options={shownDiffOptions} narrow={diffNarrow}
               scrollRoot={main} selection={fragment} expandRequest={expandRequest} treeFiles={treeFiles}
               viewedState={viewed.state} onViewedChange={viewed.mark} onSelectLines={selectReviewLines}

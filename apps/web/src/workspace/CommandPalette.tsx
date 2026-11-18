@@ -10,7 +10,7 @@ import { notificationsAvailable } from "../lib/desktop-bridge.ts"
 import { availableCommands, matchCommands, type CommandAction } from "./commands.ts"
 import type { HighlightRange } from "../features/search/search-engine.ts"
 import { highlightedParts } from "../features/search/search-highlights.ts"
-import { settingsShortcutLabel } from "../settings/SettingsDialog.tsx"
+import { settingsShortcutLabel } from "./shortcut-labels.ts"
 import { useSettingValues } from "../settings/use-setting-values.ts"
 import { useNativePicker, usePickerScroll, type PickerBodyProps } from "./use-native-picker.ts"
 

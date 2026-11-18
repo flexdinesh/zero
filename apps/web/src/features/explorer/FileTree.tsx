@@ -9,7 +9,7 @@ import { countFiles, filterTreeByFilename } from "./filename-filter.ts"
 import type { PageData, TreeNode } from "@zero/contracts"
 
 import { openDirectoryPaths } from "../../api/page-data.ts"
-import { projectShortcutLabel } from "../projects/ProjectPicker.tsx"
+import { projectShortcutLabel } from "../../workspace/shortcut-labels.ts"
 import { Button } from "../../components/ui/button.tsx"
 import { treeCSS } from "../../lib/tree-css.ts"
 import { treeIcons } from "../../lib/tree-icons.ts"

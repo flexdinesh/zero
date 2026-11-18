@@ -12,7 +12,8 @@ import { useDesktopOpenFolder } from "../../workspace/use-desktop-open-folder.ts
 import { readMemory } from "../../workspace/workspace-memory.ts"
 import { usePresence } from "../live-updates/use-presence.ts"
 import { ProjectList } from "./ProjectList.tsx"
-import { ProjectPicker, type PickerOpenOptions } from "./ProjectPicker.tsx"
+import { ProjectPicker } from "./ProjectPicker.tsx"
+import type { PickerOpenOptions } from "./project-picker.ts"
 
 type Load =
   | { kind: "loading"; previous: ProjectsResponse | null }
