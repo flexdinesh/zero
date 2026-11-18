@@ -31,6 +31,15 @@ updates by frame and saved only when the interaction completed.
   functions and effects. A drag commits only its geometry into the latest
   committed preference, retaining other choices made during the interaction.
   Storage remains optional and keeps its existing format.
+- Sidebar width is a registered, non-inherited CSS length written only on
+  the layout and status grids. Changing root styles invalidated the large
+  document even when the property was registered; registration alone did not
+  solve that cost. The two grids remain synchronized by the narrow resize
+  owner, with the existing 288 px default and the same bounds.
+- Source keeps a screen-only paint boundary inside its existing scroll box,
+  so a sash repaint does not traverse the adjacent retained Source display
+  list. Print keeps its existing fragmentation. Native Source DOM, scrolling,
+  selection, annotation zones and portaled menus retain their behavior.
 
 ## Consequences
 
@@ -39,3 +48,10 @@ avoid shared React publications and repeated storage work. Effects manage only
 external synchronization and cleanup. Production browser traces and a separate
 React profiling build establish measured effects; source inspection does not
 establish a speedup. Diff virtualization, workers, and cache policies remain.
+
+The follow-up CSS decisions come from controlled production interventions:
+an inheritance override and registration while retaining root writes did not
+remove broad style work; direct registered owner writes did. Containing the
+Source Control pane owner did not avoid the Source repaint, so that change
+was rejected. Diagnostic timings do not replace the unchanged five-repetition
+acceptance capture; actual Source width changes still require layout.

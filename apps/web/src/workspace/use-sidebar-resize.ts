@@ -27,6 +27,7 @@ function writeWidth(width: number) {
 
 export function useSidebarResize(active: boolean) {
   const element = useRef<HTMLDivElement>(null)
+  const grids = useRef<readonly HTMLElement[]>([])
   const [preferredWidth, setPreferredWidth] = useState(readWidth)
   const [maximumWidth, setMaximumWidth] = useState(() => Math.max(minimumWidth, Math.floor(window.innerWidth / 2)))
   // A smaller window constrains display without replacing the saved preference.
@@ -41,9 +42,21 @@ export function useSidebarResize(active: boolean) {
   useLayoutEffect(() => setPreferredWidth(readWidth()), [])
 
   useLayoutEffect(() => {
+    const layout = element.current?.parentElement
+    if (!layout) return
+    const status = layout?.parentElement?.querySelector(".status-bar")
+    // Resolve the two owners once; do not search through a large document in
+    // every visual frame. Both elements retain this resize owner's lifetime.
+    grids.current = status instanceof HTMLElement ? [layout, status] : [layout]
+    return () => { grids.current = [] }
+  }, [])
+
+  useLayoutEffect(() => {
     currentWidth.current = width
     currentMaximum.current = maximumWidth
-    document.documentElement.style.setProperty("--sidebar-width", `${width}px`)
+    // Only these grids consume the width. A root style mutation invalidates
+    // the adjacent document even when this property does not inherit.
+    for (const grid of grids.current) grid.style.setProperty("--sidebar-width", `${width}px`)
   }, [maximumWidth, width])
 
   const applyWidth = useCallback((next: number) => {

@@ -20,6 +20,14 @@
   line-height: var(--source-line-height);
 }
 
+/* Keep a sibling pane's repaint out of the retained Source display list.
+   Source already clips through its scroll box. Print keeps fragmentation. */
+@media screen {
+  .source-document {
+    contain: paint;
+  }
+}
+
 .source-document-line {
   display: flex;
   height: var(--source-line-height);

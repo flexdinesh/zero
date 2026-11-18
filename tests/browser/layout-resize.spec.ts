@@ -630,3 +630,61 @@ test("resizing retains filter focus, feedback drafts, navigation and live refres
     writeFileSync(changed, original)
   }
 })
+
+test("grid-owned width keeps the footer aligned and Source scrolling and focus intact", async ({ page, live }, info) => {
+  const file = "resize-owner.ts"
+  writeFileSync(path.join(live.root, file), Array.from({ length: 120 }, (_, index) => `export const line${index} = "${"long source text ".repeat(24)}"\n`).join(""))
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(`${live.origin}/view?project=${encodeURIComponent(live.root)}&path=${file}`)
+  const source = page.getByRole("textbox", { name: "TypeScript source", exact: true })
+  await expect(source.locator(".source-document-line")).toHaveCount(120)
+  await expect(source.locator(".source-document-line-content").last().locator("span").first()).toBeAttached()
+  await page.keyboard.press("ControlOrMeta+Shift+g")
+  await expect(sourceControl(page).getByRole("listbox", { name: "Commits", exact: true })).toBeVisible()
+  const sidebar = page.getByRole("separator", { name: "Resize file tree", exact: true })
+  await source.evaluate((element) => {
+    element.scrollLeft = 160
+    element.dataset.resizeIdentity = "retained"
+  })
+  const sourceWidthPreference = await source.evaluate((element) => getComputedStyle(element).getPropertyValue("--sidebar-width"))
+
+  async function retained() {
+    await frames(page)
+    const workspace = await resizeBox(page.locator(".workspace"))
+    const footer = await resizeBox(page.locator(".status-document"))
+    expect(footer.x).toBeCloseTo(workspace.x, 0)
+    // The measured hot width belongs only to the grids, not the document root.
+    expect(await page.evaluate(() => document.documentElement.style.getPropertyValue("--sidebar-width"))).toBe("")
+    expect(await source.evaluate((element) => getComputedStyle(element).getPropertyValue("--sidebar-width"))).toBe(sourceWidthPreference)
+    await expect(source).toHaveAttribute("data-resize-identity", "retained")
+    expect(await source.evaluate((element) => element.scrollLeft)).toBeCloseTo(160, 0)
+    const gutter = await resizeBox(source.locator(".source-document-line-number").first())
+    expect(gutter.x).toBeCloseTo((await resizeBox(source)).x, 0)
+  }
+
+  await retained()
+  const drag = await beginResize(page, sidebar)
+  await page.mouse.move(drag.x + 64, drag.y)
+  await page.mouse.up()
+  await expect(sidebar).toHaveAttribute("aria-valuenow", "352")
+  await retained()
+  const sash = page.getByRole("separator", { name: "Resize Uncommitted and Commits", exact: true })
+  const before = await sash.getAttribute("aria-valuenow")
+  await sash.press("ArrowDown")
+  await expect(sash).not.toHaveAttribute("aria-valuenow", before ?? "")
+  await retained()
+  await sidebar.press("ArrowRight")
+  await expect(sidebar).toHaveAttribute("aria-valuenow", "368")
+  await retained()
+  await sidebar.dblclick()
+  await expect(sidebar).toHaveAttribute("aria-valuenow", "288")
+  await retained()
+  await source.focus()
+  await expect(source).toBeFocused()
+  const screenshot = info.outputPath("resize-source-focus.png")
+  await page.screenshot({ path: screenshot })
+  await info.attach("resize-source-focus.png", { path: screenshot, contentType: "image/png" })
+  await page.emulateMedia({ media: "print" })
+  expect(await source.evaluate((element) => getComputedStyle(element).contain)).toBe("none")
+  await expect(source.locator(".source-document-line")).toHaveCount(120)
+})
