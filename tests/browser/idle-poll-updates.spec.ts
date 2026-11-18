@@ -259,6 +259,31 @@ test("walkthrough polls publish changed summaries and remove deleted badges", as
   await expect(walkthroughView(page)).toContainText("No walkthroughs for this project yet.")
 })
 
+test("a closed phone drawer keeps new walkthroughs unread until revealed", async ({ page }) => {
+  let entries: WalkthroughSummary[] = []
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.clock.install()
+  await page.route("**/api/walkthroughs?*", (route) => route.fulfill({ json: entries }))
+  await page.goto(`/view?project=${rootParam}&path=navigation%2Fgreet.go`)
+  const openFiles = page.getByRole("button", { name: "Open files", exact: true })
+  await openFiles.click()
+  const drawer = page.getByRole("dialog", { name: "Walkthroughs", exact: true })
+  await page.getByRole("button", { name: "Walkthroughs", exact: true }).click()
+  await expect(walkthroughView(page)).toContainText("No walkthroughs for this project yet.")
+  await page.keyboard.press("Escape")
+  await expect(drawer).toBeHidden()
+  await pause(page)
+
+  entries = [summary()]
+  await poll(page, "/api/walkthroughs", 5_000)
+  await openFiles.click()
+  const unread = page.getByRole("button", { name: "Walkthroughs, 1 new walkthrough", exact: true })
+  await expect(unread).toBeVisible()
+  await unread.click()
+  await expect(drawer.getByRole("option", { name: /^First tour, new/ })).toBeVisible()
+  await expect(drawer.getByRole("button", { name: "Walkthroughs", exact: true })).toBeVisible()
+})
+
 for (const cached of ["empty", "populated"]) {
   test(`walkthrough errors remain visible over a cached ${cached} list and refresh recovers`, async ({ page }) => {
     let failing = false

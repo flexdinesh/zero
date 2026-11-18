@@ -5,7 +5,7 @@ import { Button } from "../src/components/ui/button.tsx"
 import { ThemeProvider } from "../src/settings/ThemeProvider.tsx"
 import { DocumentPreview } from "../src/features/documents/DocumentPreview.tsx"
 import type { SearchMatch } from "../src/features/search/search-engine.ts"
-import { SearchView } from "../src/features/search/SearchView.tsx"
+import { SearchSidebarView } from "../src/features/search/SearchView.tsx"
 import { SearchProvider, type SearchCommands } from "../src/features/search/SearchProvider.tsx"
 import { StatusBar } from "../src/workspace/StatusBar.tsx"
 import { emptyPage } from "../src/api/page-data.ts"
@@ -29,7 +29,7 @@ function LifecycleFixture() {
   }, [navigationPrefix])
   const registerCommands = useCallback((commands: SearchCommands | null) => { openSearch.current = commands?.open ?? null }, [])
   return (
-    <SearchProvider documentPane={pane} openMatch={openMatch} project={project} registerCommands={registerCommands} reveal={() => {}}>
+    <SearchProvider documentPane={pane} openMatch={openMatch} project={project} registerCommands={registerCommands} reveal={() => {}} visible>
       <Button variant="outline" onClick={() => setHTML(replacementHTML)}>Update Markdown</Button>
       <Button variant="outline" onClick={() => setVisible((current) => !current)}>Toggle document</Button>
       <Button variant="outline" onClick={() => setNavigationPrefix("updated")}>Update navigation</Button>
@@ -37,7 +37,7 @@ function LifecycleFixture() {
       <output aria-label="Navigation">{navigation}</output>
       {visible && <DocumentPreview html={html} navigate={() => {}} />}
       {visible && <StatusBar isLoading={false} error="" page={emptyPage} onSearch={() => openSearch.current?.()} onSettings={() => {}} />}
-      <SearchView mobile={false} onDismiss={() => {}} onLeave={() => {}} />
+      <SearchSidebarView mobile={false} onDismiss={() => {}} onLeave={() => {}} visible />
     </SearchProvider>
   )
 }

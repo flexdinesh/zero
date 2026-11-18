@@ -36,7 +36,7 @@ export function usePaneResize({ active, mobile, open, weights, onCommit, onReset
 
   useLayoutEffect(() => {
     finish()
-    apply(weights, open, mobile)
+    if (active) apply(weights, open, mobile)
   }, [active, apply, finish, mobile, open, weights])
 
   function start(above: PaneId, below: PaneId, event: PointerEvent<HTMLDivElement>) {

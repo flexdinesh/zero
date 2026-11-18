@@ -60,6 +60,8 @@ export interface FeedbackThreadZoneProps {
   feedbackId: string
   project: string
   actions: Pick<FeedbackActions, "reply" | "removeThread">
+  // A retained sidebar can hide this conversation without unmounting it.
+  visible?: boolean
   navigate(href: string): void
   // before shows above the conversation, e.g. an outdated thread's text.
   before?: ReactNode
@@ -74,7 +76,7 @@ export const FeedbackThreadZone = memo(function FeedbackThreadZone(props: Feedba
   return <ThreadConversation key={draftKey} {...props} draftKey={draftKey} />
 })
 
-function ThreadConversation({ actions, before, draftKey, feedbackId: id, navigate, project, thread }: FeedbackThreadZoneProps & { draftKey: string }) {
+function ThreadConversation({ actions, before, draftKey, feedbackId: id, navigate, project, thread, visible = true }: FeedbackThreadZoneProps & { draftKey: string }) {
   const closed = isClosed(thread.status)
   const [expandedAt, setExpandedAt] = useState<string | null>(null)
   // A closed thread stays expanded only for the version the user opened.
@@ -85,8 +87,8 @@ function ThreadConversation({ actions, before, draftKey, feedbackId: id, navigat
   const field = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
-    if (expanded && thread.awaiting === "user") markFeedbackSeen(id, [thread])
-  }, [expanded, id, thread])
+    if (visible && expanded && thread.awaiting === "user") markFeedbackSeen(id, [thread])
+  }, [expanded, id, thread, visible])
 
   const updateReply = (text: string) => {
     setReply(text)

@@ -14,10 +14,12 @@ import { TextField } from "../../components/ui/text-field.tsx"
 import { ToggleButton, ToggleGlyph } from "../../components/ui/toggle-button.tsx"
 import { ViewHeader } from "../../components/ui/view-header.tsx"
 import { FileIcon } from "../../components/FileIcon.tsx"
+import { SidebarBody } from "../../workspace/SidebarBody.tsx"
 import type { SearchQuery } from "./search-engine.ts"
 import { highlightedParts } from "./search-highlights.ts"
 import { fileRowKey, matchRowKey, resultRows, resultSummary, type ResultRow } from "./search-results.ts"
 import { useSearchSessionState } from "./SearchProvider.tsx"
+import type { SearchSession } from "./use-search-session.ts"
 
 type Toggle = "matchCase" | "wholeWord" | "regex"
 
@@ -47,8 +49,12 @@ interface SearchViewProps {
   onLeave(): void
 }
 
-export function SearchView({ mobile, onDismiss, onLeave }: SearchViewProps) {
+export function SearchSidebarView({ visible, ...props }: SearchViewProps & { visible: boolean }) {
   const session = useSearchSessionState()
+  return <SidebarBody visible={visible}><SearchView {...props} session={session} /></SidebarBody>
+}
+
+export function SearchView({ mobile, onDismiss, onLeave, session }: SearchViewProps & { session: SearchSession }) {
   const { active, collapsed, details, query, results, status } = session
   const tree = useRef<HTMLDivElement>(null)
   const [focusedKey, setFocusedKey] = useState("")

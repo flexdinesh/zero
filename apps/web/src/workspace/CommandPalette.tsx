@@ -1,5 +1,5 @@
 import { ChevronRightIcon } from "lucide-react"
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react"
+import { useEffect, useState, type KeyboardEvent } from "react"
 
 import { DialogShell } from "../components/ui/dialog-shell.tsx"
 import { Kbd } from "../components/ui/kbd.tsx"
@@ -12,6 +12,7 @@ import type { HighlightRange } from "../features/search/search-engine.ts"
 import { highlightedParts } from "../features/search/search-highlights.ts"
 import { settingsShortcutLabel } from "../settings/SettingsDialog.tsx"
 import { useSettingValues } from "../settings/use-setting-values.ts"
+import { useNativePicker, usePickerScroll, type PickerBodyProps } from "./use-native-picker.ts"
 
 function Highlighted({ text, ranges }: { text: string; ranges: readonly HighlightRange[] }) {
   return highlightedParts(text, ranges).map((part, index) => (
@@ -37,31 +38,7 @@ interface CommandPaletteProps {
 // it, typing filters, arrows move, Enter runs, Escape closes, and Backspace
 // in an empty field returns to Quick Open.
 export function CommandPalette({ registerOpen, onRun, onExitToFiles }: CommandPaletteProps) {
-  const { values } = useSettingValues()
-  const dialog = useRef<HTMLDialogElement>(null)
-  const input = useRef<HTMLInputElement>(null)
-  const list = useRef<HTMLDivElement>(null)
-  const returnFocus = useRef<HTMLElement | null>(null)
-  const [query, setQuery] = useState("")
-  const [activeIndex, setActiveIndex] = useState(0)
-  const matches = matchCommands(availableCommands(notificationsAvailable()), query)
-  const active = matches[Math.min(activeIndex, matches.length - 1)]
-
-  const show = useCallback((options?: CommandPaletteOptions) => {
-    if (!dialog.current || dialog.current.open) return
-    returnFocus.current = options?.returnFocus !== undefined
-      ? options.returnFocus
-      : document.activeElement instanceof HTMLElement ? document.activeElement : null
-    setQuery(options?.query ?? "")
-    setActiveIndex(0)
-    dialog.current.showModal()
-    input.current?.focus()
-  }, [])
-
-  const close = useCallback((restoreFocus: boolean) => {
-    if (dialog.current?.open) dialog.current.close()
-    if (restoreFocus) returnFocus.current?.focus({ preventScroll: true })
-  }, [])
+  const { dialog, body, show, close } = useNativePicker()
 
   useEffect(() => {
     registerOpen(show)
@@ -80,10 +57,30 @@ export function CommandPalette({ registerOpen, onRun, onExitToFiles }: CommandPa
     }
   }, [registerOpen, show])
 
-  useEffect(() => {
-    if (!active) return
-    list.current?.querySelector(`[data-command="${CSS.escape(active.command.id)}"]`)?.scrollIntoView({ block: "nearest" })
-  }, [active])
+  return (
+    <DialogShell
+      ref={dialog}
+      variant="palette"
+      backdrop="transparent"
+      className="search-dialog command-palette"
+      aria-labelledby="command-palette-title"
+      onCancel={(event) => { event.preventDefault(); close(true) }}
+      onClick={(event) => { if (event.target === dialog.current) close(true) }}
+    >
+      {body && <CommandPaletteBody {...body} onRun={onRun} onExitToFiles={onExitToFiles} />}
+    </DialogShell>
+  )
+}
+
+type CommandPaletteBodyProps = PickerBodyProps & Pick<CommandPaletteProps, "onRun" | "onExitToFiles">
+
+function CommandPaletteBody({ initialQuery, dialog, input, close, onRun, onExitToFiles }: CommandPaletteBodyProps) {
+  const { values } = useSettingValues()
+  const [query, setQuery] = useState(initialQuery)
+  const [activeIndex, setActiveIndex] = useState(0)
+  const matches = matchCommands(availableCommands(notificationsAvailable()), query)
+  const active = matches[Math.min(activeIndex, matches.length - 1)]
+  const list = usePickerScroll(dialog, "data-command", active?.command.id, query)
 
   function run(action: CommandAction | undefined) {
     if (!action) return
@@ -103,9 +100,7 @@ export function CommandPalette({ registerOpen, onRun, onExitToFiles }: CommandPa
       run(active?.command.action)
     } else if (event.key === "Backspace" && query === "") {
       event.preventDefault()
-      const target = returnFocus.current
-      close(false)
-      onExitToFiles(target)
+      onExitToFiles(close(false))
     } else if (event.key === "Escape") {
       event.preventDefault()
       close(true)
@@ -115,77 +110,67 @@ export function CommandPalette({ registerOpen, onRun, onExitToFiles }: CommandPa
   const activeID = active ? `command-option-${active.command.id}` : undefined
 
   return (
-    <DialogShell
-      ref={dialog}
-      variant="palette"
-      backdrop="transparent"
-      className="search-dialog command-palette"
-      aria-labelledby="command-palette-title"
-      onCancel={(event) => { event.preventDefault(); close(true) }}
-      onClick={(event) => { if (event.target === dialog.current) close(true) }}
-    >
-      <div className="search-shell">
-        <h2 id="command-palette-title" className="visually-hidden">Command palette</h2>
-        <TextField
-          variant="palette"
-          className="command-field"
-          icon={<span className="command-prompt">&gt;</span>}
-          trailing={<Kbd>Esc</Kbd>}
-          inputRef={input}
-          type="text"
-          autoComplete="off"
-          spellCheck={false}
-          placeholder="Type a command"
-          aria-label="Command"
-          role="combobox"
-          aria-controls="command-results"
-          aria-expanded="true"
-          aria-autocomplete="list"
-          aria-activedescendant={activeID}
-          value={query}
-          onChange={(event) => {
-            setQuery(event.target.value)
-            setActiveIndex(0)
-          }}
-          onKeyDown={onKeyDown}
-        />
-        {matches.length === 0 && (
-          <div className="search-status" role="status">No matching commands</div>
-        )}
-        <div ref={list} id="command-results" className="search-results command-results" role="listbox" aria-label="Commands">
-          {matches.map((match, index) => {
-            const { command } = match
-            // Settings and Color Theme show their current value; other
-            // commands their shortcut, if any.
-            const value = command.action.kind === "open-setting"
-              ? values[command.action.setting].label
-              : command.action.kind === "select-color-theme" ? values.theme.label : null
-            const detail = value ?? command.shortcut ?? (command.action.kind === "open-settings" ? settingsShortcutLabel : "")
-            return (
-              <ListRow
-                key={command.id}
-                id={`command-option-${command.id}`}
-                data-command={command.id}
-                density="pick"
-                active={match === active}
-                className="command-option"
-                role="option"
-                aria-selected={match === active}
-                aria-label={`${command.category}: ${command.title}${detail ? `, ${detail}` : ""}`}
-                onClick={() => run(command.action)}
-                onMouseMove={match === active ? undefined : () => setActiveIndex(index)}
-              >
-                <span className="command-category"><Highlighted text={command.category} ranges={match.category} /></span>
-                <ChevronRightIcon className="command-separator" aria-hidden="true" />
-                <span className="command-title"><Highlighted text={command.title} ranges={match.title} /></span>
-                {value !== null
-                  ? <span className="command-value">{detail}</span>
-                  : detail && <kbd className="command-value">{detail}</kbd>}
-              </ListRow>
-            )
-          })}
-        </div>
+    <div className="search-shell">
+      <h2 id="command-palette-title" className="visually-hidden">Command palette</h2>
+      <TextField
+        variant="palette"
+        className="command-field"
+        icon={<span className="command-prompt">&gt;</span>}
+        trailing={<Kbd>Esc</Kbd>}
+        inputRef={input}
+        type="text"
+        autoComplete="off"
+        spellCheck={false}
+        placeholder="Type a command"
+        aria-label="Command"
+        role="combobox"
+        aria-controls="command-results"
+        aria-expanded="true"
+        aria-autocomplete="list"
+        aria-activedescendant={activeID}
+        value={query}
+        onChange={(event) => {
+          setQuery(event.target.value)
+          setActiveIndex(0)
+        }}
+        onKeyDown={onKeyDown}
+      />
+      {matches.length === 0 && (
+        <div className="search-status" role="status">No matching commands</div>
+      )}
+      <div ref={list} id="command-results" className="search-results command-results" role="listbox" aria-label="Commands">
+        {matches.map((match, index) => {
+          const { command } = match
+          // Settings and Color Theme show their current value; other
+          // commands their shortcut, if any.
+          const value = command.action.kind === "open-setting"
+            ? values[command.action.setting].label
+            : command.action.kind === "select-color-theme" ? values.theme.label : null
+          const detail = value ?? command.shortcut ?? (command.action.kind === "open-settings" ? settingsShortcutLabel : "")
+          return (
+            <ListRow
+              key={command.id}
+              id={`command-option-${command.id}`}
+              data-command={command.id}
+              density="pick"
+              active={match === active}
+              className="command-option"
+              role="option"
+              aria-selected={match === active}
+              aria-label={`${command.category}: ${command.title}${detail ? `, ${detail}` : ""}`}
+              onClick={() => run(command.action)}
+              onMouseMove={match === active ? undefined : () => setActiveIndex(index)}
+            >
+              <span className="command-category"><Highlighted text={command.category} ranges={match.category} /></span>
+              <ChevronRightIcon className="command-separator" aria-hidden="true" />
+              <span className="command-title"><Highlighted text={command.title} ranges={match.title} /></span>
+              {value !== null
+                ? <span className="command-value">{detail}</span>
+                : detail && <kbd className="command-value">{detail}</kbd>}
+            </ListRow>
+          )
+        })}
       </div>
-    </DialogShell>
+    </div>
   )
 }
