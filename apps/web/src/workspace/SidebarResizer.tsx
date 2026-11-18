@@ -1,7 +1,7 @@
 import { useSidebarResize } from "./use-sidebar-resize.ts"
 
-export function SidebarResizer() {
-  const sidebar = useSidebarResize()
+export function SidebarResizer({ active }: { active: boolean }) {
+  const sidebar = useSidebarResize(active)
   return (
     <div
       ref={sidebar.element}

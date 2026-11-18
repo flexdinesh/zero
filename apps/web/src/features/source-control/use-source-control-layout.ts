@@ -1,42 +1,68 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useLayoutEffect, useRef, useState } from "react"
 
 import type { CommitRange } from "@zero/contracts"
 import {
-  clampRailWidth, defaultLayout, readLayout, resizePair, withBase, writeLayout,
+  clampRailWidth, defaultLayout, paneIds, readLayout, resizePair, withBase, writeLayout,
   type ChangesView, type PaneId, type SourceControlLayout,
 } from "./source-control-layout.ts"
 
-// useSourceControlLayout owns Source Control's panes, commit range, change
-// list view, review Files rail, and the project's chosen base branch,
-// remembered in this browser.
+function withWeights(current: SourceControlLayout, weights: SourceControlLayout["weights"]): SourceControlLayout {
+  return paneIds.every((id) => current.weights[id] === weights[id]) ? current : { ...current, weights }
+}
+
+// Committed preferences only. Layout owners preview pointer geometry locally;
+// their completion actions merge it into the latest preference snapshot.
 export function useSourceControlLayout(project: string) {
   const [layout, setLayout] = useState<SourceControlLayout>(readLayout)
-  useEffect(() => writeLayout(layout), [layout])
+  const committed = useRef(layout)
+  const commit = useCallback((update: (current: SourceControlLayout) => SourceControlLayout) => {
+    const next = update(committed.current)
+    if (next === committed.current) return
+    committed.current = next
+    setLayout(next)
+    // Event-owned persistence also survives an owner's unmount. It does not
+    // run in render, an effect, or a React updater replayed by Strict Mode.
+    writeLayout(next)
+  }, [])
 
-  const setRange = useCallback((range: CommitRange) => setLayout((current) => current.range === range ? current : { ...current, range }), [])
-  // setPaneCollapsed records the user's choice for a pane.
-  const setPaneCollapsed = useCallback((pane: PaneId, collapsed: boolean) => setLayout((current) => (
-    { ...current, collapsed: { ...current.collapsed, [pane]: collapsed } }
-  )), [])
-  const resizePanes = useCallback((open: readonly PaneId[], above: PaneId, below: PaneId, delta: number) => setLayout((current) => (
-    { ...current, weights: resizePair(current.weights, open, above, below, delta) }
-  )), [])
-  const resetPanes = useCallback(() => setLayout((current) => ({ ...current, weights: defaultLayout.weights })), [])
-  const setChangesView = useCallback((changesView: ChangesView) => setLayout((current) => ({ ...current, changesView })), [])
-  const setRailWidth = useCallback((width: number) => setLayout((current) => {
+  useLayoutEffect(() => {
+    // A new project renders before the previous project's layout cleanup can
+    // finish its drag. Reconcile that final persisted value before paint.
+    const latest = readLayout()
+    if (JSON.stringify(latest) === JSON.stringify(committed.current)) return
+    committed.current = latest
+    setLayout(latest)
+  }, [])
+
+  const setRange = useCallback((range: CommitRange) => commit((current) => current.range === range ? current : { ...current, range }), [commit])
+  const setPaneCollapsed = useCallback((pane: PaneId, collapsed: boolean) => commit((current) => (
+    current.collapsed[pane] === collapsed ? current : { ...current, collapsed: { ...current.collapsed, [pane]: collapsed } }
+  )), [commit])
+  const setPaneWeights = useCallback((weights: SourceControlLayout["weights"]) => commit((current) => withWeights(current, weights)), [commit])
+  const resizePanes = useCallback((open: readonly PaneId[], above: PaneId, below: PaneId, delta: number) => commit((current) => (
+    withWeights(current, resizePair(current.weights, open, above, below, delta))
+  )), [commit])
+  const resetPanes = useCallback(() => commit((current) => withWeights(current, defaultLayout.weights)), [commit])
+  const setChangesView = useCallback((changesView: ChangesView) => commit((current) => (
+    current.changesView === changesView ? current : { ...current, changesView }
+  )), [commit])
+  const setRailWidth = useCallback((width: number) => commit((current) => {
     const railWidth = clampRailWidth(width)
     return current.railWidth === railWidth ? current : { ...current, railWidth }
-  }), [])
-  const setRailHidden = useCallback((railHidden: boolean) => setLayout((current) => ({ ...current, railHidden })), [])
-  const setRailHideViewed = useCallback((railHideViewed: boolean) => setLayout((current) => ({ ...current, railHideViewed })), [])
+  }), [commit])
+  const setRailHidden = useCallback((railHidden: boolean) => commit((current) => (
+    current.railHidden === railHidden ? current : { ...current, railHidden }
+  )), [commit])
+  const setRailHideViewed = useCallback((railHideViewed: boolean) => commit((current) => (
+    current.railHideViewed === railHideViewed ? current : { ...current, railHideViewed }
+  )), [commit])
   const base = Object.hasOwn(layout.bases, project) ? layout.bases[project] ?? "" : ""
-  // setBase chooses project's base; "" returns to the default.
-  const setBase = useCallback((next: string) => setLayout((current) => withBase(current, project, next)), [project])
+  const setBase = useCallback((next: string) => commit((current) => withBase(current, project, next)), [commit, project])
 
   return {
     range: layout.range, weights: layout.weights, collapsed: layout.collapsed, changesView: layout.changesView,
     railWidth: layout.railWidth, railHidden: layout.railHidden, railHideViewed: layout.railHideViewed, base,
-    setRange, setPaneCollapsed, resizePanes, resetPanes, setChangesView, setRailWidth, setRailHidden, setRailHideViewed, setBase,
+    setRange, setPaneCollapsed, setPaneWeights, resizePanes, resetPanes, setChangesView, setRailWidth, setRailHidden, setRailHideViewed, setBase,
   }
 }
 

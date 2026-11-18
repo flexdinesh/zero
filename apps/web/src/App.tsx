@@ -944,12 +944,12 @@ export function App({ project }: AppProps) {
             onDismiss={sidebar.dismiss} onOpenThread={openThread} navigate={navigateToHref} />}
           walkthroughs={<WalkthroughsView project={project} session={walkthroughs} context={compareContext} mobile={sidebar.mobile} onPresent={present}
             onDismiss={sidebar.dismiss} />}
-          sourceControl={<SourceControlView changes={changes} commits={commits} stack={stack} refs={refs}
+          sourceControl={<SourceControlView active={sourceControlActive && !presenting} changes={changes} commits={commits} stack={stack} refs={refs}
             working={workingData} workingPath={reviewCompare?.kind === "working" ? currentFile : ""}
             review={reviewCompare} allOnly={allOnly} mobile={sidebar.mobile}
             onDismiss={sidebar.dismiss} onOpenReview={openReview} />}
         />
-        <SidebarResizer />
+        <SidebarResizer active={!sidebar.hidden && !sidebar.mobile && !presenting} />
         <section className="workspace" aria-label="Document workspace">
           <div className="workspace-toolbar">
             <IconButton className="workspace-toggle" size="bar" label="Open files"

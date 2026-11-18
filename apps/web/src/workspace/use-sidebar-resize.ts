@@ -1,4 +1,4 @@
-import { type KeyboardEvent, type PointerEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
+import { type KeyboardEvent, type PointerEvent, useCallback, useLayoutEffect, useRef, useState } from "react"
 
 const defaultWidth = 288
 const minimumWidth = 208
@@ -25,7 +25,7 @@ function writeWidth(width: number) {
   }
 }
 
-export function useSidebarResize() {
+export function useSidebarResize(active: boolean) {
   const element = useRef<HTMLDivElement>(null)
   const [preferredWidth, setPreferredWidth] = useState(readWidth)
   const [maximumWidth, setMaximumWidth] = useState(() => Math.max(minimumWidth, Math.floor(window.innerWidth / 2)))
@@ -34,21 +34,11 @@ export function useSidebarResize() {
   const currentWidth = useRef(width)
   const currentMaximum = useRef(maximumWidth)
   const frame = useRef<number | null>(null)
-  const resizeStart = useRef<{ pointerID: number; element: HTMLDivElement; width: number; x: number; nextWidth: number } | null>(null)
+  const resizeStart = useRef<{ pointerID: number; element: HTMLDivElement; width: number; preference: number; maximum: number; x: number; nextWidth: number } | null>(null)
 
-  useLayoutEffect(() => {
-    const layout = element.current?.parentElement
-    const activityBar = layout?.querySelector(".activity-bar")
-    if (!layout || !activityBar) return
-    const measure = () => setMaximumWidth(Math.max(minimumWidth,
-      Math.floor(layout.getBoundingClientRect().width / 2 - activityBar.getBoundingClientRect().width)))
-    measure()
-    const observer = new ResizeObserver(measure)
-    observer.observe(layout)
-    // Font settings change the rail's rem width independently of the window.
-    observer.observe(activityBar)
-    return () => observer.disconnect()
-  }, [])
+  // A preceding project may finish its drag in layout-effect cleanup, after
+  // this owner's initial render read. Restore its final preference pre-paint.
+  useLayoutEffect(() => setPreferredWidth(readWidth()), [])
 
   useLayoutEffect(() => {
     currentWidth.current = width
@@ -72,30 +62,58 @@ export function useSidebarResize() {
       frame.current = null
     }
     // Flush the last pointer position even when release beats the next frame.
-    writeWidth(applyWidth(start.nextWidth))
+    if (start.nextWidth !== start.width) writeWidth(applyWidth(start.nextWidth))
+    else setPreferredWidth(start.preference)
     if (start.element.hasPointerCapture(start.pointerID)) start.element.releasePointerCapture(start.pointerID)
   }, [applyWidth])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (!active) finishResize()
+  }, [active, finishResize])
+
+  useLayoutEffect(() => {
+    const layout = element.current?.parentElement
+    const activityBar = layout?.querySelector(".activity-bar")
+    if (!layout || !activityBar) return
+    let previous: { width: number; height: number; activity: number } | null = null
+    const measure = () => {
+      const box = layout.getBoundingClientRect()
+      const activity = activityBar.getBoundingClientRect().width
+      if (previous && (previous.width !== box.width || previous.height !== box.height || previous.activity !== activity)) finishResize()
+      previous = { width: box.width, height: box.height, activity }
+      setMaximumWidth(Math.max(minimumWidth, Math.floor(box.width / 2 - activity)))
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(layout)
+    // Font settings change the activity rail's rem width independently.
+    observer.observe(activityBar)
+    return () => observer.disconnect()
+  }, [finishResize])
+
+  useLayoutEffect(() => {
     window.addEventListener("blur", finishResize)
+    window.addEventListener("resize", finishResize)
     return () => {
       window.removeEventListener("blur", finishResize)
+      window.removeEventListener("resize", finishResize)
       finishResize()
     }
   }, [finishResize])
 
   function startResize(event: PointerEvent<HTMLDivElement>) {
-    if (event.button !== 0 || !event.isPrimary || resizeStart.current) return
+    if (!active || event.button !== 0 || !event.isPrimary || resizeStart.current) return
     event.preventDefault()
     event.currentTarget.focus({ preventScroll: true })
-    resizeStart.current = { pointerID: event.pointerId, element: event.currentTarget, width: currentWidth.current, x: event.clientX, nextWidth: currentWidth.current }
+    resizeStart.current = { pointerID: event.pointerId, element: event.currentTarget, width: currentWidth.current, preference: preferredWidth,
+      maximum: currentMaximum.current, x: event.clientX, nextWidth: currentWidth.current }
     event.currentTarget.setPointerCapture(event.pointerId)
   }
 
   function moveResize(event: PointerEvent<HTMLDivElement>) {
     const start = resizeStart.current
     if (!start || start.pointerID !== event.pointerId) return
-    start.nextWidth = clampWidth(start.width + event.clientX - start.x, currentMaximum.current)
+    start.nextWidth = clampWidth(start.width + event.clientX - start.x, start.maximum)
     // Coalesce high-frequency input into one React/layout update per frame.
     if (frame.current === null) frame.current = window.requestAnimationFrame(() => {
       frame.current = null
@@ -116,5 +134,5 @@ export function useSidebarResize() {
   }
 
   return { element, width, minimumWidth, maximumWidth, startResize, moveResize, stopResize,
-    resizeWithKeyboard, resetWidth: () => { writeWidth(applyWidth(defaultWidth)) } }
+    resizeWithKeyboard, resetWidth: () => { finishResize(); writeWidth(applyWidth(defaultWidth)) } }
 }
