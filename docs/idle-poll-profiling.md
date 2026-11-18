@@ -22,10 +22,13 @@ ships in the product.
 Captured 2026-11-18 with Chromium 153.0.8010.12, Linux amd64/Debian 12, a
 1440×900 viewport, and the repository's 2 CPU/4 GiB container limits. Baseline
 snapshot matches 291 production files under `apps/web/src` at `174c647f`; the
-final candidate matches 293 at `bdfb30e4`. Nine critical build inputs, including
+final candidate matches 295 at `2b128eb4`. Nine critical build inputs, including
 the lockfile, dependency patches and Vite configuration, also match both captures.
 The candidate includes the local relative-age clock and all review corrections
-described below. Full input manifests remain in the raw artifacts.
+described below, plus main's merged resize and Source paint changes from PR #246
+at `7eadc13e`. Timing differences therefore include those upstream changes;
+this capture does not isolate this PR's effect on paint or latency. Full input
+manifests remain in the raw artifacts.
 
 ## Results
 
@@ -34,18 +37,18 @@ The JSON artifact retains every sample and min/median/p95/max distributions.
 
 | Production interval | Scripting | Layout | Style recalculation | Paint |
 | --- | ---: | ---: | ---: | ---: |
-| Idle, 15 seconds | 920.69 / 12.95 | 0.00 / 0.00 | 6.49 / 7.04 | 0.00 / 0.00 |
-| Native keys, about 16 seconds | 965.67 / 53.51 | 0.07 / 0.08 | 46.30 / 56.62 | 405.04 / 297.93 |
+| Idle, 15 seconds | 920.69 / 12.63 | 0.00 / 0.00 | 6.49 / 6.46 | 0.00 / 0.00 |
+| Native keys, about 16 seconds | 965.67 / 51.14 | 0.07 / 0.08 | 46.30 / 41.78 | 405.04 / 20.34 |
 
 Scripting/layout/style are main-thread CDP metric deltas. Paint sums the union
-of Paint intervals per thread. Style and key-interval layout increased.
-Scripting and paint were lower in this capture;
-earlier captures varied substantially. No overall interaction speedup is claimed.
+of Paint intervals per thread. Key-interval layout increased. Scripting, style
+and paint were lower in this capture; earlier captures varied substantially.
+No overall interaction speedup attributable to this PR is claimed.
 
-Median per-run native input-to-frame p95 was **117.98 / 37.04 ms**. Analysis
+Median per-run native input-to-frame p95 was **117.98 / 42.50 ms**. Analysis
 uses `InputLatency::RawKeyDown` ORIGINAL and FRAME_SWAP components. Of 16 inputs,
 baseline samples contained 15, 16, 15, 13, 15 frame-bearing records; candidate
-samples contained 14, 15, 15, 15, 15. Inputs without a recorded frame swap are
+samples contained 15, 15, 15, 15, 15. Inputs without a recorded frame swap are
 excluded. This is headless frame-swap latency, not physical display latency or
 field INP.
 
@@ -76,8 +79,9 @@ durations or treat these observations as exact-render-count tests.
   throttling or macOS web-view timings.
 - Host load was uncontrolled. Baseline host typecheck/dependency preparation
   overlapped part of its capture; candidate capture ran without another
-  validation workload from this task. Another worktree's full validation
-  overlapped final capture. Timing differences cannot all be assigned
+  validation workload from this task. Start and midpoint process snapshots
+  found no other validation workload during the final capture; other host load
+  remained uncontrolled. Timing differences cannot all be assigned
   to the code change. React profiles independently establish the observed
   document-work isolation for these unchanged responses.
 - The protocol and executed interactions match. A type-only contract import in
@@ -100,9 +104,14 @@ durations or treat these observations as exact-render-count tests.
   scripting, 47.91 ms key scripting, 273.74 ms key paint and 32.21 ms native p95.
   Every candidate capture observed zero SourceDocument/
   FileTree commits in its React intervals.
+- Before integrating PR #246, capture `2d2b2ed1` at `bdfb30e4` verified 293
+  application source inputs and the same nine build inputs. It recorded
+  12.95 ms idle scripting, 53.51 ms key scripting, 297.93 ms key paint and
+  37.04 ms native p95. Another worktree's full validation overlapped that capture.
+  Raw traces and distributions remain under `pre-main-integration-after`.
 
 Capture IDs: baseline `985199e42dac38359d077b48f9d414a4`, candidate
-`2d2b2ed1d03db8689591c83ddadb0b33`. Each completed 20 interval records and ten
+`b273f7f1eacb317883e72442d7b0b595`. Each completed 20 interval records and ten
 production traces. Raw outputs, environment records, source hashes, analysis
 script, complete distributions and command inventory are archived outside the
 task worktree at `/home/dee/.t3/task-artifacts/228/`.
@@ -177,6 +186,13 @@ virtual-window calculations remain. Independent review supported this change;
 test does not alone establish the cause of every earlier blank-row failure.
 See [decision 0163](decisions/0163-review-placement-uses-live-geometry.md).
 
-The complete committed WebKit group passed all 230 cases at the final runtime
-(`82c04654`, 14.9 minutes). The subsequent final capture above used that same
-runtime and dependency patch, with no other validation from this task running.
+The complete committed WebKit group passed all 230 cases before integrating
+PR #246 (`82c04654`, 14.9 minutes). The subsequent full aggregate passed all
+13 groups at report head `7444a657` (`67512684`), including 230 Chromium and
+22 extended cases. A required prepublication fetch then found main had advanced
+through PR #246. Rebase preserved both resize activation guards, all incoming
+profiling support and main's decision 0161; this task's decisions became
+0162 and 0163. Independent static integration review found no actionable issues.
+The complete combined WebKit group passed all 276 cases (`3975984f`, 18.7 minutes).
+The final capture above then used that same combined runtime and dependency
+patch, with no other validation from this task running.
