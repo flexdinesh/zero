@@ -325,6 +325,44 @@ test("Source lines take a comment that the Feedback view opens there", async ({ 
   await expect(page.getByRole("textbox", { name: "TypeScript source" }).locator('[data-line="3"]')).toHaveClass(/selected/)
 })
 
+test("a live Source feedback refresh preserves the open composer's draft and editing", async ({ page, request, live }) => {
+  const file = "src/app.ts"
+  const created = await request.post(`${live.origin}/api/feedback-threads`, {
+    data: { project: live.root, path: file, lines: [1, 1], body: "Name it after what it counts." },
+  })
+  expect(created.ok()).toBe(true)
+  const id = await feedbackId(request, live.origin, live.root)
+  await page.goto(`${live.origin}/view?project=${encodeURIComponent(live.root)}&path=${file}`)
+  const source = page.getByRole("textbox", { name: "TypeScript source" })
+  const first = thread(page, 1)
+  await expect(first).toBeVisible()
+  await expect(page.locator(".status-live")).toHaveAttribute("data-mode", "watching")
+  await source.locator('[data-line="3"] .source-document-line-number').click()
+  await page.keyboard.press("c")
+  const composer = page.getByRole("textbox", { name: `Comment on ${file}:3` })
+  await expect(composer).toBeFocused()
+  // Leave the caret inside the draft to detect a composer remount.
+  const draft = "Explain the interfae."
+  await page.keyboard.type(draft)
+  await page.keyboard.press("ArrowLeft")
+  await page.keyboard.press("ArrowLeft")
+
+  const reply = "Renamed it to count."
+  const answered = await request.post(`${live.origin}/api/feedback-messages`, {
+    data: { project: live.root, id, thread: 1, body: reply, author: "agent" },
+  })
+  expect(answered.ok()).toBe(true)
+  await expect(first.getByText(reply, { exact: true })).toBeVisible()
+  await expect(composer).toHaveValue(draft)
+  await expect(composer).toBeFocused()
+
+  await page.keyboard.press("c")
+  await expect(composer).toHaveValue("Explain the interface.")
+  await page.keyboard.press("Escape")
+  await expect(composer).toHaveCount(0)
+  await expect(page).toHaveURL(/#L3$/)
+})
+
 test("the Feedback view lists, filters, opens, and copies threads", async ({ page, request, live }) => {
   // This multi-navigation flow can exceed 30 s on WebKit in the full suite.
   test.setTimeout(60_000)

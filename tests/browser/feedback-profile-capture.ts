@@ -4,13 +4,13 @@ import path from "node:path"
 
 import type { CDPSession, Page } from "@playwright/test"
 
-export function buildProfilingAssets(directory: string) {
+export function buildProfilingAssets(directory: string, mode: "feedback" | "source" = "feedback") {
   execFileSync(process.execPath, ["apps/web/node_modules/vite/bin/vite.js", "build", "--configLoader", "native",
     "--config", "apps/web/test-fixtures/profile.config.ts", "--outDir", directory, "--logLevel", "warn"],
-  { env: { ...process.env, ZERO_PROFILE_FEEDBACK: "1" }, stdio: "inherit" })
+  { env: { ...process.env, ZERO_PROFILE_FEEDBACK: mode === "feedback" ? "1" : "0", ZERO_PROFILE_SOURCE: mode === "source" ? "1" : "0" }, stdio: "inherit" })
   const html = readFileSync(path.join(directory, "index.html"), "utf8")
   const script = html.match(/<script[^>]+src="([^"]+)"/u)?.[1]
-  if (!script) throw new Error("Missing feedback profiling entry")
+  if (!script) throw new Error("Missing profiling entry")
   const styles = [...html.matchAll(/<link[^>]+href="([^"]+\.css)"/gu)].map(([tag]) => tag + ">")
   return async (page: Page) => {
     await page.route("**/assets/*", (route) => {
@@ -36,7 +36,7 @@ interface Render {
 }
 
 declare global {
-  interface Window { readFeedbackProfile(): Render[] }
+  interface Window { readZeroReactProfile(): Render[] }
 }
 
 export async function collectProfiles(page: Page) {
@@ -51,7 +51,7 @@ export async function collectProfiles(page: Page) {
         renders.push({ id: entry.id, phase: entry.phase, actualDuration: entry.actualDuration, commitTime: entry.commitTime })
       }
     })
-    window.readFeedbackProfile = () => renders.splice(0)
+    window.readZeroReactProfile = () => renders.splice(0)
   })
 }
 
