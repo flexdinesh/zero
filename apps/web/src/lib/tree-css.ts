@@ -5,9 +5,12 @@
 // the square, inset thumb (decision 0055), and the folder icon beside
 // the chevron, muted in every state so row fills carry state, and pulled in
 // to sit over its children's icons, one indent level in (decision 0138).
-// Tokens inherit into the tree's shadow root.
+// Names, compact folder chains included, read whole and truncate once at the
+// end (decision 0166). Tokens inherit into the tree's shadow root.
 export const treeCSS = `*, ::before, ::after, ::-webkit-scrollbar-thumb { border-radius: 0 !important; }
 [data-icon-name="file-tree-icon-chevron"] { width: 12px; height: 12px; }
+[data-item-section="content"] { white-space: nowrap; }
+[data-item-flattened-subitems] { display: inline; }
 [data-item-section="folder-icon"] { display: flex; flex: none; align-items: center; justify-content: center; width: var(--trees-icon-width); margin-inline-start: calc(var(--trees-level-gap) - var(--trees-icon-width) / 2 - 0.5px); color: var(--color-text-muted); }
 [data-item-selected="true"] { box-shadow: inset 0 0 0 1px var(--color-selected-border); }
 [data-file-tree-virtualized-scroll="true"]::-webkit-scrollbar-thumb { border: 2px solid transparent; }

@@ -415,7 +415,7 @@ A 2.5rem column on `workspace-chrome` with a 1px right border and 40px-square ro
 
 ### Explorer
 
-Pierre compact tree: complete built-in colored file icons, native folder expansion chevrons each followed by a two-tone folder icon (open or closed with the row, `text-muted` in every state, over its children's icons; `lib/tree-icons.ts`, decision 0138; Source Control's trees share it), square rows, semantic token overrides, 13px mono `text-primary` names, 24px desktop / 32px narrow, both scaled by the Font Size setting. The header holds the project name (a trigger for the project picker), the branch, Search files (opens Quick Open; tooltip “Search files (⌘P)” / “Search files (Ctrl+P)”, `aria-haspopup` dialog), Filter files by name (funnel toggle), Collapse/Expand all, and Close (phones). Hover, selection, and focus use the shared state roles. Preserve editor keyboard selection, expansion, and Ctrl/Cmd-click semantics. The tree has no search of its own: file/path search is Quick Open (decision 0145). On phones Search files closes the drawer before the popup opens. Preserve expansion and the filter across the breakpoint.
+Pierre compact tree: complete built-in colored file icons, native folder expansion chevrons each followed by a two-tone folder icon (open or closed with the row, `text-muted` in every state, over its children's icons; `lib/tree-icons.ts`, decision 0138; Source Control's trees share it), square rows, semantic token overrides, 13px mono `text-primary` names, 24px desktop / 32px narrow, both scaled by the Font Size setting. A name reads whole when it fits, else truncates once at the end with “…”; a compact folder chain reads as one `a/b/c` string and truncates the same way, with no tooltip (decision 0166; Source Control's trees share it). The header holds the project name (a trigger for the project picker), the branch, Search files (opens Quick Open; tooltip “Search files (⌘P)” / “Search files (Ctrl+P)”, `aria-haspopup` dialog), Filter files by name (funnel toggle), Collapse/Expand all, and Close (phones). Hover, selection, and focus use the shared state roles. Preserve editor keyboard selection, expansion, and Ctrl/Cmd-click semantics. The tree has no search of its own: file/path search is Quick Open (decision 0145). On phones Search files closes the drawer before the popup opens. Preserve expansion and the filter across the breakpoint.
 
 Below the header, a shelf on the same `workspace-chrome` band holds the explorer's
 filename filter (4px top, 8px bottom, 12px sides, 4px between fields) and ends in a
@@ -746,7 +746,7 @@ letter: M (modified) `warning`, A (added) and U (untracked) `success`, D
 titles, never color alone. Deleted names strike through. Line stats (`+12
 −3` in the status hues, a zero keeping the row's ink; “binary”, “large”)
 decorate files in tabular figures and keep their width, so long names truncate
-in the middle instead; renamed files without stats show a
+at the end instead; renamed files without stats show a
 muted “from <old path>”, renames without line changes a muted “renamed”, and
 the title says “Renamed from <old path>”. Click
 or Space opens the file in the review and keeps focus; Enter and double-click
