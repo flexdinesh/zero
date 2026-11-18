@@ -21,11 +21,11 @@ ships in the product.
 
 Captured 2026-11-18 with Chromium 153.0.8010.12, Linux amd64/Debian 12, a
 1440×900 viewport, and the repository's 2 CPU/4 GiB container limits. Baseline
-runtime matches all 291 production frontend source inputs in its snapshot at
-`174c647f`; the recorded candidate runtime is `400ef212`. It includes a clock local to
-the visible populated walkthrough list, preserving relative-age updates without
-making unchanged results update App, and the review-settlement correction below.
-The later fold-input and coordinate fixes require a fresh final capture.
+snapshot matches 291 production files under `apps/web/src` at `174c647f`; the
+final candidate matches 293 at `bdfb30e4`. Nine critical build inputs, including
+the lockfile, dependency patches and Vite configuration, also match both captures.
+The candidate includes the local relative-age clock and all review corrections
+described below. Full input manifests remain in the raw artifacts.
 
 ## Results
 
@@ -34,18 +34,18 @@ The JSON artifact retains every sample and min/median/p95/max distributions.
 
 | Production interval | Scripting | Layout | Style recalculation | Paint |
 | --- | ---: | ---: | ---: | ---: |
-| Idle, 15 seconds | 920.69 / 13.71 | 0.00 / 0.00 | 6.49 / 6.78 | 0.00 / 0.00 |
-| Native keys, about 16 seconds | 965.67 / 47.91 | 0.07 / 0.08 | 46.30 / 40.92 | 405.04 / 273.74 |
+| Idle, 15 seconds | 920.69 / 12.95 | 0.00 / 0.00 | 6.49 / 7.04 | 0.00 / 0.00 |
+| Native keys, about 16 seconds | 965.67 / 53.51 | 0.07 / 0.08 | 46.30 / 56.62 | 405.04 / 297.93 |
 
 Scripting/layout/style are main-thread CDP metric deltas. Paint sums the union
-of Paint intervals per thread. Idle style and key-interval layout increased
-slightly. Scripting, key-interval style and paint were lower in this capture;
+of Paint intervals per thread. Style and key-interval layout increased.
+Scripting and paint were lower in this capture;
 earlier captures varied substantially. No overall interaction speedup is claimed.
 
-Median per-run native input-to-frame p95 was **117.98 / 32.21 ms**. Analysis
+Median per-run native input-to-frame p95 was **117.98 / 37.04 ms**. Analysis
 uses `InputLatency::RawKeyDown` ORIGINAL and FRAME_SWAP components. Of 16 inputs,
 baseline samples contained 15, 16, 15, 13, 15 frame-bearing records; candidate
-samples contained 15, 15, 15, 15, 15. Inputs without a recorded frame swap are
+samples contained 14, 15, 15, 15, 15. Inputs without a recorded frame swap are
 excluded. This is headless frame-swap latency, not physical display latency or
 field INP.
 
@@ -57,9 +57,8 @@ field INP.
 | FileTree, keys | 9.90 / 0.00 | 18–20 / 0 |
 
 The candidate recorded zero SourceDocument/FileTree commits in all ten measured
-profiling intervals. Baseline idle intervals completed three walkthrough and
-five navigation reads. Final idle intervals completed three or four walkthrough
-and five or six navigation reads. Other intervals retained their real
+profiling intervals. Every baseline and final idle interval completed three
+walkthrough and five navigation reads. Other intervals retained their real
 polls, with counts in the JSON. Local process metrics still update StatusBar;
 ancestor App/provider profiler callbacks include that descendant work and do
 not establish that App's function rendered. Do not sum ancestor and descendant
@@ -77,8 +76,8 @@ durations or treat these observations as exact-render-count tests.
   throttling or macOS web-view timings.
 - Host load was uncontrolled. Baseline host typecheck/dependency preparation
   overlapped part of its capture; candidate capture ran without another
-  validation workload from this task. Another worktree's browser and host checks
-  were observed during final capture. Timing differences cannot all be assigned
+  validation workload from this task. Another worktree's full validation
+  overlapped final capture. Timing differences cannot all be assigned
   to the code change. React profiles independently establish the observed
   document-work isolation for these unchanged responses.
 - The protocol and executed interactions match. A type-only contract import in
@@ -97,11 +96,13 @@ durations or treat these observations as exact-render-count tests.
   (`c7088518`) recorded 11.76 ms idle scripting, 50.14 ms key scripting,
   725.69 ms key paint and 154.91 ms native p95. That capture overlapped another
   worktree's full validation. These differences demonstrate variation; their
-  cause was not isolated. Every candidate capture observed zero SourceDocument/
+  cause was not isolated. A pre-fold capture (`8f491278`) recorded 13.71 ms idle
+  scripting, 47.91 ms key scripting, 273.74 ms key paint and 32.21 ms native p95.
+  Every candidate capture observed zero SourceDocument/
   FileTree commits in its React intervals.
 
 Capture IDs: baseline `985199e42dac38359d077b48f9d414a4`, candidate
-`8f49127881cd62a8ade4f95eacde92dd`. Each completed 20 interval records and ten
+`2d2b2ed1d03db8689591c83ddadb0b33`. Each completed 20 interval records and ten
 production traces. Raw outputs, environment records, source hashes, analysis
 script, complete distributions and command inventory are archived outside the
 task worktree at `/home/dee/.t3/task-artifacts/228/`.
@@ -175,3 +176,7 @@ virtual-window calculations remain. Independent review supported this change;
 22 focused cases passed in each engine (`55c50a89`, `1c5bbdda`). The contract
 test does not alone establish the cause of every earlier blank-row failure.
 See [decision 0162](decisions/0162-review-placement-uses-live-geometry.md).
+
+The complete committed WebKit group passed all 230 cases at the final runtime
+(`82c04654`, 14.9 minutes). The subsequent final capture above used that same
+runtime and dependency patch, with no other validation from this task running.
