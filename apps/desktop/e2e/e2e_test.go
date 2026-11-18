@@ -1031,11 +1031,21 @@ func TestWebViewApp(t *testing.T) {
 
 		// The last UI closes: the server stops by itself, and the local window
 		// is unaffected.
-		app.eval(`window.zeroDesktop.closeWindow(); return true`)
+		// Closing destroys this eval's source page. WebKit may lose its async
+		// result even though CloseWindow succeeded; the native window list and
+		// server shutdown below acknowledge the close, not the page's return.
+		_, closeErr := app.evalErr(`window.zeroDesktop.closeWindow(); return true`)
+		w.report["remoteCloseEvaluationError"] = fmt.Sprint(closeErr)
 		app.target = local
-		for app.windowCount() != 1 {
-			if time.Now().After(deadline.Add(pageTimeout)) {
-				t.Fatal("the remote window did not close")
+		closeBy := time.Now().Add(pageTimeout)
+		for {
+			windows := app.listWindows()
+			if len(windows.Windows) == 1 && windows.Windows[0].ID == local {
+				w.report["remoteCloseRemainingWindows"] = windows
+				break
+			}
+			if time.Now().After(closeBy) {
+				t.Fatalf("remote window %d did not close leaving local window %d: %+v; eval: %v", remote, local, windows, closeErr)
 			}
 			time.Sleep(100 * time.Millisecond)
 		}
