@@ -960,6 +960,7 @@ for (const activation of ["Files rail", "mobile Files sheet", "Uncommitted list"
     }
 
     await fileToggle(page, "notes/removed.md").click()
+    await expect(fileToggle(page, "notes/removed.md")).toHaveAttribute("aria-expanded", "false")
     const viewed = reviewFile(page, "src/app.ts").getByRole("button", { name: "Viewed" })
     await expect(viewed).toBeEnabled()
     await viewed.click()
