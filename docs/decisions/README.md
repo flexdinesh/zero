@@ -164,3 +164,4 @@ rewriting history; update `Status` on the old record.
 | [0161](0161-resize-preview-ownership.md) | Resize previews belong to their layout | Accepted; extends 0040, 0156, 0160 |
 | [0162](0162-coherent-background-polls.md) | Coherent background polls and navigation ownership | Accepted; extends 0018, 0047, 0160 |
 | [0163](0163-review-placement-uses-live-geometry.md) | Review placement uses live geometry | Accepted; extends 0034, 0135, 0140 |
+| [0164](0164-readme-cover-recorded-from-a-scene.md) | README cover recorded from a Stageshow scene | Accepted; extends 0141 |
