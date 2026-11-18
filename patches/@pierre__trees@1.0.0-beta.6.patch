@@ -27,10 +27,29 @@ index 305714319d9d988bfc025ecaaca662562a3a0ff7..ddec640d81b695b09d136ad0cfd95415
  		const host = this.#prepareHost(fileTreeContainer);
  		const wrapper = this.#getOrCreateWrapper(host);
 diff --git a/dist/render/FileTreeView.js b/dist/render/FileTreeView.js
-index 7d3b818c43a7621ab9170da32b180232ed3c9472..caf041321e48b0ce81a169f0ed6e4a5ae9facc08 100644
+index 7d3b818c43a7621ab9170da32b180232ed3c9472..75a93292139090e8f2369f83b5491ba8a5f5b4e1 100644
 --- a/dist/render/FileTreeView.js
 +++ b/dist/render/FileTreeView.js
-@@ -360,6 +360,15 @@ function focusFirstMenuElement(menuElement) {
+@@ -3,7 +3,6 @@ import { createFileTreeIconResolver } from "./iconResolver.js";
+ import { FILE_TREE_DEFAULT_ITEM_HEIGHT } from "../model/virtualization.js";
+ import { FILE_TREE_RENAME_VIEW } from "../model/FileTreeController.js";
+ import { Icon } from "../components/Icon.js";
+-import { MiddleTruncate, Truncate } from "../components/OverflowText.js";
+ import { computeFileTreeLayout, computeStickyRows } from "../model/layout.js";
+ import { GIT_STATUS_DESCENDANT_TITLE, GIT_STATUS_LABEL, GIT_STATUS_TITLE } from "../utils/gitStatusPresentation.js";
+ import { shouldBumpControllerRevision } from "./controllerSnapshotSubscription.js";
+@@ -28,8 +27,8 @@ function formatFlattenedSegments(row, renameInput = null, dragTargetFlattenedSeg
+ 			return /* @__PURE__ */ jsxs(Fragment, { children: [/* @__PURE__ */ jsx("span", {
+ 				"data-item-flattened-subitem": segment.path,
+ 				"data-item-flattened-subitem-drag-target": dragTargetFlattenedSegmentPath === segment.path ? "true" : void 0,
+-				children: isLast && renameInput != null ? renameInput : /* @__PURE__ */ jsx(Truncate, { children: segment.name })
+-			}), index < segments.length - 1 ? " / " : ""] }, segment.path);
++				children: isLast && renameInput != null ? renameInput : segment.name
++			}), index < segments.length - 1 ? "/" : ""] }, segment.path);
+ 		})
+ 	});
+ }
+@@ -360,6 +359,15 @@ function focusFirstMenuElement(menuElement) {
  		"[tabindex]:not([tabindex=\"-1\"])"
  	].join(", ")) ?? menuElement);
  }
@@ -46,14 +65,22 @@ index 7d3b818c43a7621ab9170da32b180232ed3c9472..caf041321e48b0ce81a169f0ed6e4a5a
  function renderFileTreeRowContent(row, resolveIcon, { actionLaneEnabled = false, customDecoration = null, decorationLaneEnabled = false, dragTargetFlattenedSegmentPath = null, gitDecoration = null, gitLaneActive = false, renameInput = null, showDecorativeActionAffordance = false } = {}) {
  	const targetPath = getFileTreeRowPath(row);
  	return /* @__PURE__ */ jsxs(Fragment, { children: [
-@@ -374,6 +383,7 @@ function renderFileTreeRowContent(row, resolveIcon, { actionLaneEnabled = false,
+@@ -374,13 +382,10 @@ function renderFileTreeRowContent(row, resolveIcon, { actionLaneEnabled = false,
  			"data-item-section": "icon",
  			children: row.kind === "directory" ? /* @__PURE__ */ jsx(Icon, { ...resolveIcon("file-tree-icon-chevron") }) : /* @__PURE__ */ jsx(Icon, { ...resolveIcon("file-tree-icon-file", targetPath) })
  		}),
 +		renderFolderIcon(row, resolveIcon),
  		/* @__PURE__ */ jsx("div", {
  			"data-item-section": "content",
- 			children: row.isFlattened ? formatFlattenedSegments(row, renameInput, dragTargetFlattenedSegmentPath) : renameInput ?? /* @__PURE__ */ jsx(MiddleTruncate, {
+-			children: row.isFlattened ? formatFlattenedSegments(row, renameInput, dragTargetFlattenedSegmentPath) : renameInput ?? /* @__PURE__ */ jsx(MiddleTruncate, {
+-				minimumLength: 5,
+-				split: "extension",
+-				children: row.name
+-			})
++			children: row.isFlattened ? formatFlattenedSegments(row, renameInput, dragTargetFlattenedSegmentPath) : renameInput ?? row.name
+ 		}),
+ 		decorationLaneEnabled ? /* @__PURE__ */ jsx("div", {
+ 			"data-item-section": "decoration",
 diff --git a/dist/sprite.d.ts b/dist/sprite.d.ts
 index f6b3e35e37c01d5447af34937e0f4a765e60db54..d0d516c9b44c4d2d350a463f9354b3963df29af4 100644
 --- a/dist/sprite.d.ts
