@@ -125,6 +125,7 @@ function WalkthroughList({ session, project, onOpened }: ListProps) {
   if (entries.length === 0) {
     return (
       <div className="walkthroughs-message">
+        {error && <StatusMessage tone="error" role="alert">{error}</StatusMessage>}
         <StatusMessage>No walkthroughs for this project yet.</StatusMessage>
         <StatusMessage>Ask an agent to explain a change or feature as a walkthrough. Paste these instructions into it first.</StatusMessage>
         <CopyInstructions project={project} labeled />

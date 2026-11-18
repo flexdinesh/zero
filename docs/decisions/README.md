@@ -162,3 +162,4 @@ rewriting history; update `Status` on the old record.
 | [0159](0159-feedback-directory-mutations.md) | Serialize feedback directory mutations | Accepted; amends 0120 |
 | [0160](0160-feature-ui-state-ownership.md) | Feature UI state ownership | Accepted; extends 0020, 0040, 0129 |
 | [0161](0161-resize-preview-ownership.md) | Resize previews belong to their layout | Accepted; extends 0040, 0156, 0160 |
+| [0161](0161-coherent-background-polls.md) | Coherent background polls and navigation ownership | Accepted; extends 0018, 0047, 0160 |

@@ -10,8 +10,9 @@ import type { DocumentView } from "./document-view.ts"
 import { FormattedDocument } from "./FormattedDocument.tsx"
 import { handleImageKey, ImageDocument } from "./ImageDocument.tsx"
 import {
-  SourceDocument, type LineSelection, type SourceAnnotation, type SourceBlame, type SourceChanges, type SourceComments, type SourceNavigation,
+  SourceDocument, type LineSelection, type SourceAnnotation, type SourceBlame, type SourceChanges, type SourceComments,
 } from "./SourceDocument.tsx"
+import { useSourceNavigation } from "../navigation/NavigationProvider.tsx"
 import type { PageData } from "@zero/contracts"
 import { projectUrl } from "../../api/project-url.ts"
 import { FolderProblem } from "../projects/FolderProblem.tsx"
@@ -52,8 +53,6 @@ interface DocumentPaneProps {
   onLeaveProject(): void
   page: PageData
   retry(): void
-  // sourceNavigation is set when Source supports code navigation.
-  sourceNavigation?: SourceNavigation
   view: DocumentView
 }
 
@@ -63,7 +62,7 @@ function fileName(path: string): string {
 
 export function DocumentPane({
   diff, diffShown = true, empty, hasData, image, isLoading, lineSelection, loadError, main, navigate, onChooseProject, onLeaveProject, page, retry, sourceAnnotation,
-  sourceBlame, sourceChanges, sourceComments, sourceNavigation, view, walkthrough, welcome, documentPending,
+  sourceBlame, sourceChanges, sourceComments, view, walkthrough, welcome, documentPending,
 }: DocumentPaneProps) {
   const showLoading = useDelayedFlag(documentPending, 150)
   const showDiff = !documentPending && Boolean(diff) && diffShown && !loadError && !page.projectUnavailable && !page.error
@@ -112,12 +111,12 @@ export function DocumentPane({
         <div className="annotated-document">
           <div className="document-annotation">{sourceAnnotation.render(null)}</div>
           <PageView image={image} lineSelection={lineSelection} navigate={navigate} page={page}
-            sourceNavigation={sourceNavigation} view={view} />
+            view={view} />
         </div>
       ) : (
         <PageView image={image} lineSelection={lineSelection} navigate={navigate} page={page}
           sourceAnnotation={sourceAnnotation} sourceBlame={sourceBlame} sourceChanges={sourceChanges} sourceComments={sourceComments}
-          sourceNavigation={sourceNavigation} view={view} />
+          view={view} />
       )}
     </main>
   )
@@ -132,14 +131,14 @@ interface PageViewProps {
   sourceBlame?: SourceBlame
   sourceChanges?: SourceChanges
   sourceComments?: SourceComments
-  sourceNavigation?: SourceNavigation
   view: DocumentView
 }
 
 // PageView is the page's file in its chosen view.
 function PageView({
-  image, lineSelection, navigate, page, sourceAnnotation, sourceBlame, sourceChanges, sourceComments, sourceNavigation, view,
+  image, lineSelection, navigate, page, sourceAnnotation, sourceBlame, sourceChanges, sourceComments, view,
 }: PageViewProps) {
+  const sourceNavigation = useSourceNavigation()
   const label = page.documentType?.label ?? "File"
   // The server declares the highlight language and the size limit.
   const language = page.highlightDisabled ? null : page.documentType?.language ?? null
