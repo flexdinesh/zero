@@ -107,7 +107,15 @@ for (const stale of ["success", "error"]) {
 }
 
 async function pause(page: Page) {
-  await page.clock.pauseAt(new Date(await page.evaluate(() => Date.now()) + 100))
+  // Freeze wall time across the RPC before pausing timers. A live Date.now()
+  // plus a small offset can already be in the past on a loaded browser.
+  const time = await page.evaluate(() => Date.now())
+  await page.clock.setFixedTime(time)
+  try {
+    await page.clock.pauseAt(time)
+  } finally {
+    await page.clock.setSystemTime(time)
+  }
 }
 
 async function poll(page: Page, endpoint: string, milliseconds: number) {
