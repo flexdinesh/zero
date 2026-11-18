@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 
 import type { Feedback, FeedbackCompare, FeedbackStatus, FeedbackSummary, FeedbackThread } from "@zero/contracts"
 import {
-  createFeedbackThread, deleteFeedback, deleteFeedbackThread, fetchFeedback, fetchFeedbackList, isFeedbackMissing, postFeedbackMessage,
+  createFeedbackThread, deleteFeedback, deleteFeedbackThread, feedbackUrl, fetchFeedback, fetchFeedbackList, isFeedbackMissing,
+  postFeedbackMessage, type FeedbackQuery,
 } from "../../api/feedback-data.ts"
 import { isAbort } from "../../api/http.ts"
+import { indexFeedback, type FeedbackIndex } from "./feedback-index.ts"
 import type { FeedbackAnchorInput } from "./feedback-model.ts"
 
 export type FeedbackLoad =
@@ -28,19 +30,39 @@ export interface FeedbackOptions {
   onChanged(): void
 }
 
-// FeedbackSession is one branch's feedback and the writes on it, shared by
-// review and Source thread zones and the Feedback view.
-export interface FeedbackSession {
-  load: FeedbackLoad
-  // feedback is the last read, kept while it rereads; null before one.
-  feedback: Feedback | null
-  retry(): void
+export interface FeedbackActions {
   // start opens a thread with its first message at anchor.
   start(anchor: FeedbackAnchorInput, body: string): Promise<FeedbackThread>
   // reply adds a message, a status change, or both.
   reply(thread: number, body: string, status?: FeedbackStatus): Promise<FeedbackThread>
   removeThread(thread: number): Promise<void>
   removeFeedback(): Promise<void>
+}
+
+// FeedbackSession keeps the last read and its index while it rereads.
+export interface FeedbackSession {
+  load: FeedbackLoad
+  feedback: Feedback | null
+  index: FeedbackIndex | null
+  actions: FeedbackActions
+  retry(): void
+}
+
+interface FeedbackRead {
+  key: string
+  query: FeedbackQuery
+  load: FeedbackLoad
+  feedback: Feedback | null
+  index: FeedbackIndex | null
+}
+
+function pending(key: string, query: FeedbackQuery): FeedbackRead {
+  return { key, query, load: { kind: "loading" }, feedback: null, index: null }
+}
+
+function withFeedback(previous: FeedbackRead, feedback: Feedback): FeedbackRead {
+  const index = indexFeedback(feedback, previous.index ?? undefined)
+  return index === previous.index ? previous : { ...previous, feedback: index.feedback, index }
 }
 
 function message(error: unknown, fallback: string): string {
@@ -60,80 +82,84 @@ function withThread(feedback: Feedback, thread: FeedbackThread): Feedback {
 // useFeedback reads one branch's feedback (decision 0120) and writes to it.
 // Writes update the threads in place, then ask the page to reread.
 export function useFeedback({ compare, enabled, id, onChanged, project, version }: FeedbackOptions): FeedbackSession {
-  const key = useMemo(() => JSON.stringify([project, id, compare]), [compare, id, project])
-  const [state, setState] = useState<{ key: string; load: FeedbackLoad; last: Feedback | null }>({ key: "", load: { kind: "idle" }, last: null })
+  const key = useMemo(() => feedbackUrl({ project, id, compare }), [compare, id, project])
+  const [state, setState] = useState(() => pending(key, { project, id, compare }))
+  // Each visit owns a query, even when returning to the same URL.
+  if (state.key !== key) setState(pending(key, { project, id, compare }))
+  const { query } = state
   const [attempt, setAttempt] = useState(0)
-  const query = useRef({ project, id, compare })
-  useEffect(() => { query.current = { project, id, compare } })
 
   useEffect(() => {
-    if (!enabled || !project) return
+    if (!enabled || !query.project) return
     const controller = new AbortController()
-    setState((previous) => previous.key === key && previous.last ? previous : { key, load: { kind: "loading" }, last: null })
-    fetchFeedback(query.current, controller.signal).then((feedback) => {
-      setState({ key, load: { kind: "ready" }, last: feedback })
+    setState((previous) => previous.query === query && !previous.feedback && previous.load.kind !== "loading"
+      ? { ...previous, load: { kind: "loading" } } : previous)
+    fetchFeedback(query, controller.signal).then((feedback) => {
+      if (controller.signal.aborted) return
+      setState((previous) => {
+        if (previous.query !== query) return previous
+        const next = withFeedback(previous, feedback)
+        return next.load.kind === "ready" ? next : { ...next, load: { kind: "ready" } }
+      })
     }, (error: unknown) => {
-      if (isAbort(error)) return
+      if (controller.signal.aborted || isAbort(error)) return
       const load: FeedbackLoad = isFeedbackMissing(error) ? { kind: "missing" } : { kind: "error", message: message(error, "Couldn't read feedback.") }
-      setState((previous) => ({ key, load, last: previous.key === key && load.kind === "error" ? previous.last : null }))
+      setState((previous) => previous.query !== query ? previous
+        : load.kind === "missing" ? { ...previous, load, feedback: null, index: null } : { ...previous, load })
     })
     return () => controller.abort()
-  }, [attempt, enabled, key, project, version])
+  }, [attempt, enabled, query, version])
 
-  const current = state.key === key ? state : null
-  const feedback = enabled ? current?.last ?? null : null
-  const latest = useRef(feedback)
-  useEffect(() => { latest.current = feedback })
+  const feedback = enabled ? state.feedback : null
+  const known = feedback?.id || query.id
+  // Before the first thread, only the branch distinguishes empty responses.
+  const emptyBranch = known ? undefined : feedback?.branch
   const changed = useRef(onChanged)
-  useEffect(() => { changed.current = onChanged })
+  useLayoutEffect(() => { changed.current = onChanged }, [onChanged])
 
-  const apply = useCallback((thread: FeedbackThread) => {
-    setState((previous) => previous.key === key && previous.last ? { ...previous, last: withThread(previous.last, thread) } : previous)
-    changed.current()
-    return thread
-  }, [key])
-
-  const start = useCallback(async (anchor: FeedbackAnchorInput, body: string) => {
-    const known = latest.current?.id || query.current.id
-    const thread = await createFeedbackThread({
-      project: query.current.project,
-      ...(known ? { id: known } : {}),
-      ...(anchor.compare ? { compare: anchor.compare } : {}),
-      path: anchor.path,
-      side: anchor.side,
-      ...(anchor.lines ? { lines: [anchor.lines[0], anchor.lines[1]] } : {}),
-      body,
-    })
-    return apply(thread)
-  }, [apply])
-
-  const reply = useCallback(async (thread: number, body: string, status?: FeedbackStatus) => {
-    const known = latest.current?.id || query.current.id
-    const updated = await postFeedbackMessage({
-      project: query.current.project, id: known, thread, ...(body ? { body } : {}), ...(status ? { status } : {}),
-    })
-    return apply(updated)
-  }, [apply])
-
-  const removeThread = useCallback(async (thread: number) => {
-    const known = latest.current?.id || query.current.id
-    await deleteFeedbackThread(query.current.project, known, thread)
-    setState((previous) => previous.key === key && previous.last
-      ? { ...previous, last: { ...previous.last, threads: previous.last.threads.filter((entry) => entry.number !== thread) } }
-      : previous)
-    changed.current()
-  }, [key])
-
-  const removeFeedback = useCallback(async () => {
-    const known = latest.current?.id || query.current.id
-    if (!known) return
-    await deleteFeedback(query.current.project, known)
-    changed.current()
-  }, [])
+  const actions = useMemo<FeedbackActions>(() => {
+    const apply = (update: (current: Feedback) => Feedback) => {
+      setState((previous) => previous.query === query && previous.feedback?.id === known && (known || previous.feedback.branch === emptyBranch)
+        ? withFeedback(previous, update(previous.feedback)) : previous)
+      changed.current()
+    }
+    return {
+      async start(anchor, body) {
+        const thread = await createFeedbackThread({
+          project: query.project,
+          ...(known ? { id: known } : {}),
+          ...(anchor.compare ? { compare: anchor.compare } : {}),
+          path: anchor.path,
+          side: anchor.side,
+          ...(anchor.lines ? { lines: [anchor.lines[0], anchor.lines[1]] } : {}),
+          body,
+        })
+        apply((current) => withThread(current, thread))
+        return thread
+      },
+      async reply(thread, body, status) {
+        const updated = await postFeedbackMessage({
+          project: query.project, id: known, thread, ...(body ? { body } : {}), ...(status ? { status } : {}),
+        })
+        apply((current) => withThread(current, updated))
+        return updated
+      },
+      async removeThread(thread) {
+        await deleteFeedbackThread(query.project, known, thread)
+        apply((current) => ({ ...current, threads: current.threads.filter((entry) => entry.number !== thread) }))
+      },
+      async removeFeedback() {
+        if (!known) return
+        await deleteFeedback(query.project, known)
+        changed.current()
+      },
+    }
+  }, [emptyBranch, known, query])
 
   const retry = useCallback(() => setAttempt((value) => value + 1), [])
-  const load: FeedbackLoad = !enabled ? { kind: "idle" } : current?.load ?? { kind: "loading" }
-  return { load, feedback, retry, start, reply, removeThread, removeFeedback }
+  return useMemo((): FeedbackSession => ({
+    load: enabled ? state.load : { kind: "idle" }, feedback, index: enabled ? state.index : null, actions, retry,
+  }), [actions, enabled, feedback, retry, state.index, state.load])
 }
 
 export interface FeedbackList {
@@ -148,9 +174,11 @@ export function useFeedbackList(project: string, wanted: boolean, version: numbe
   useEffect(() => {
     if (!wanted || !project) return
     const controller = new AbortController()
-    fetchFeedbackList(project, controller.signal).then((result) => setState({ project, result, error: "" }), (error: unknown) => {
-      if (isAbort(error)) return
-      setState((previous) => ({ ...previous, project, error: message(error, "Couldn't list feedback.") }))
+    fetchFeedbackList(project, controller.signal).then((result) => {
+      if (!controller.signal.aborted) setState({ project, result, error: "" })
+    }, (error: unknown) => {
+      if (controller.signal.aborted || isAbort(error)) return
+      setState((previous) => ({ project, result: previous.project === project ? previous.result : null, error: message(error, "Couldn't list feedback.") }))
     })
     return () => controller.abort()
   }, [project, version, wanted])

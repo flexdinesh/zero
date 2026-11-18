@@ -523,7 +523,7 @@ export function App({ project }: AppProps) {
   // the review keeps the fragment it last resolved until then.
   const keptShown = kept !== null && shownReview !== null && sameCompare(kept.compare, shownReview)
   const reviewHash = keptShown && (!reviewCompare || isLoading) ? kept.hash : hash
-  const fragment = shownReview ? parseReviewFragment(reviewHash) : null
+  const fragment = useMemo(() => shownReview ? parseReviewFragment(reviewHash) : null, [reviewHash, shownReview])
   // The fragment's file is the review's current file: the last one asked for
   // by a click, key, step, or link. Scrolling never changes it (decision 0137).
   const currentFile = fragment?.path ?? ""

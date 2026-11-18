@@ -86,11 +86,17 @@ test("lines in a review take a comment, replies, an agent's answer, and resolve"
   await expect(page.getByRole("textbox", { name: "Comment on src/app.ts:3" })).toHaveValue("Draft")
   await page.getByRole("button", { name: "Cancel" }).click()
 
-  // A reply sends with Cmd/Ctrl+Enter.
+  // A failed reply keeps its text for another Cmd/Ctrl+Enter.
   const reply = page.getByRole("textbox", { name: "Reply to thread 1" })
   await reply.fill("Maybe `count`?")
+  await page.route("**/api/feedback-messages", (route) =>
+    route.fulfill({ status: 503, json: { error: "store busy" } }), { times: 1 })
   await page.keyboard.press("ControlOrMeta+Enter")
-  await expect(first.locator(".feedback-message")).toHaveCount(2)
+  await expect(first.getByRole("alert")).toHaveText("Couldn't send the reply: store busy.")
+  await expect(reply).toHaveValue("Maybe `count`?")
+  await reply.press("ControlOrMeta+Enter")
+  await expect(first.getByText("Maybe count?", { exact: true })).toBeVisible()
+  await expect(first.getByRole("alert")).toBeHidden()
   await expect(reply).toHaveValue("")
   await expectFeedbackBadge(page, 2)
 
@@ -144,16 +150,121 @@ test("lines in a review take a comment, replies, an agent's answer, and resolve"
   await expect(railFile.getByTitle("1 open thread")).toBeAttached()
 })
 
-test("a whole file takes a comment from its band", async ({ page, live }) => {
+test("a whole-file comment keeps its draft when a failed write is retried", async ({ page, live }) => {
   await page.goto(`${live.origin}/view?project=${encodeURIComponent(live.root)}&review=working#f=README.md`)
   const band = reviewFile(page, "README.md")
   await band.getByRole("button", { name: "Comment on File" }).click()
   const composer = page.getByRole("textbox", { name: "Comment on README.md" })
   await expect(composer).toBeFocused()
   await composer.fill("Split the install section.")
+  await page.route("**/api/feedback-threads", (route) =>
+    route.fulfill({ status: 503, json: { error: "store busy" } }), { times: 1 })
   await page.keyboard.press("ControlOrMeta+Enter")
+  await expect(band.getByRole("alert")).toHaveText("Couldn't add the comment: store busy.")
+  await expect(composer).toHaveValue("Split the install section.")
+  await band.getByRole("button", { name: "Comment", exact: true }).click()
   await expect(thread(page, 1)).toHaveAccessibleName("Thread 1: Open, README.md")
+  await expect(thread(page, 1)).toContainText("Split the install section.")
 })
+
+test("a live reply in another file preserves editing and scroll in an expanded diff gap", async ({ page, request, live }) => {
+  const compare = { kind: "working" }
+  for (const anchor of [
+    { path: "README.md", body: "Explain installation." },
+    { path: "large.txt", lines: [310, 311], body: "Keep these examples together." },
+  ]) {
+    const result = await request.post(`${live.origin}/api/feedback-threads`, {
+      data: { project: live.root, compare, ...anchor },
+    })
+    expect(result.ok()).toBe(true)
+  }
+  const id = await feedbackId(request, live.origin, live.root)
+  // Visit README so its file-level thread stays rendered when large.txt takes focus.
+  await page.goto(`${live.origin}/view?project=${encodeURIComponent(live.root)}&review=working#f=README.md`)
+  const readme = reviewFile(page, "README.md")
+  await expect(gutter(page, "README.md", "additions", 4)).toBeVisible()
+  await expect(readme.getByText("Explain installation.", { exact: true })).toBeVisible()
+  await page.getByRole("button", { name: /^Feedback/ }).click()
+  await page.getByRole("option", { name: /^Thread 2, Open: Keep these examples together/ }).click()
+
+  const gap = gutter(page, "large.txt", "additions", 310)
+  await expect(gap).toBeInViewport({ timeout: 20_000 })
+  const reply = thread(page, 2).getByRole("textbox", { name: "Reply to thread 2" })
+  await reply.fill("The second example still needs context.")
+  await expect(reply).toBeFocused()
+  await expect(page.locator(".status-lines")).toHaveText("Ln 310–311")
+  await expect(page.locator(".status-live")).toHaveAttribute("data-mode", "watching")
+  const pane = page.getByRole("main")
+  const top = await pane.evaluate((element) => element.scrollTop)
+  expect(top).toBeGreaterThan(0)
+
+  const answered = await request.post(`${live.origin}/api/feedback-messages`, {
+    data: { project: live.root, id, thread: 1, body: "Added the installation steps.", author: "agent" },
+  })
+  expect(answered.ok()).toBe(true)
+  await expect(readme.getByText("Added the installation steps.", { exact: true })).toBeVisible()
+  await expect(reply).toBeFocused()
+  await expect(reply).toHaveValue("The second example still needs context.")
+  await expect(page.locator(".status-lines")).toHaveText("Ln 310–311")
+  await expect(gap).toBeInViewport()
+  const selected = reviewFile(page, "large.txt").locator(".diff-view [data-line][data-selected-line]")
+  await expect(selected.filter({ hasText: "Line 309:" }).first()).toBeInViewport()
+  await expect(selected.filter({ hasText: "Line 310:" }).first()).toBeInViewport()
+  expect(await pane.evaluate((element) => element.scrollTop)).toBeCloseTo(top, 0)
+})
+
+for (const origin of ["Source", "committed changes"]) {
+  test(`a comment submitted in ${origin} can finish while editing a different compare`, async ({ page, live }) => {
+    const fromSource = origin === "Source"
+    const file = fromSource ? "src/app.ts" : "docs/history.md"
+    const review = fromSource ? "working" : "branch"
+    await page.setViewportSize({ width: 1440, height: 1000 })
+    await page.goto(`${live.origin}/view?project=${encodeURIComponent(live.root)}&review=${review}#f=${file}`)
+    if (fromSource) {
+      await reviewFile(page, file).getByRole("button", { name: "Open File" }).click()
+      await page.getByRole("textbox", { name: "TypeScript source" }).locator('[data-line="1"] .source-document-line-number').click()
+    } else {
+      await gutter(page, file, "additions", 1).click()
+    }
+    await page.keyboard.press("c")
+    const first = page.getByRole("textbox", { name: `Comment on ${file}:1`, exact: true })
+    await first.fill("Clarify the first line.")
+
+    const pending = Promise.withResolvers<void>()
+    await page.route("**/api/feedback-threads", async (route) => {
+      await pending.promise
+      await route.continue()
+    }, { times: 1 })
+    try {
+      const sent = page.waitForRequest((request) => new URL(request.url()).pathname === "/api/feedback-threads" && request.method() === "POST")
+      await first.press("ControlOrMeta+Enter")
+      const submitted = await sent
+      if (fromSource) {
+        await page.getByRole("tab", { name: "Uncommitted", exact: true }).click()
+      } else {
+        await page.getByRole("button", { name: /^Include uncommitted changes/ }).click()
+      }
+      const tab = page.getByRole("tab", { name: fromSource ? "Uncommitted" : "vs main + uncommitted", exact: true })
+      await expect(tab).toHaveAttribute("aria-selected", "true")
+      await gutter(page, file, "additions", 3).click()
+      await page.keyboard.press("c")
+      const next = page.getByRole("textbox", { name: `Comment on ${file}:3`, exact: true })
+      await next.fill("Keep this draft on line three.")
+      await expect(page).toHaveURL((url) => url.hash === `#f=${file}&R3`)
+
+      const saved = page.waitForResponse((response) => response.request() === submitted)
+      pending.resolve()
+      await (await saved).finished()
+      await expect(reviewFile(page, file).getByText("Clarify the first line.", { exact: true })).toBeVisible()
+      await expect(tab).toHaveAttribute("aria-selected", "true")
+      await expect(page.locator(".status-lines")).toHaveText("Ln 3")
+      await expect(next).toBeFocused()
+      await expect(next).toHaveValue("Keep this draft on line three.")
+    } finally {
+      pending.resolve()
+    }
+  })
+}
 
 test("Source lines take a comment that the Feedback view opens there", async ({ page, request, live }) => {
   const project = encodeURIComponent(live.root)

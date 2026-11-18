@@ -10,7 +10,7 @@ import {
 import workerUrl from "@pierre/diffs/worker/worker.js?worker&url"
 import { CheckIcon, FileInputIcon, MessageSquarePlusIcon } from "lucide-react"
 import {
-  createContext, Fragment, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject,
+  createContext, Fragment, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject,
 } from "react"
 
 import { Button } from "@/components/ui/button"
@@ -22,7 +22,7 @@ import { Chevron } from "../../components/ui/section-toggle.tsx"
 import { IconButton } from "../../components/ui/icon-button.tsx"
 import { SegmentedControl, SegmentedItem } from "../../components/ui/segmented-control.tsx"
 import { ToggleButton } from "../../components/ui/toggle-button.tsx"
-import type { FileStats, LineDiff } from "@zero/contracts"
+import type { FeedbackThread, FileStats, LineDiff } from "@zero/contracts"
 import { formatBytes } from "../../lib/format-bytes.ts"
 import { shortHash } from "../../lib/commit-hash.ts"
 import { lineReference } from "../../lib/line-selection.ts"
@@ -31,6 +31,7 @@ import { useSettings } from "../../settings/SettingsProvider.tsx"
 import { useTheme } from "../../settings/ThemeProvider.tsx"
 import { uiScale } from "../../settings/settings.ts"
 import { LineCopyButton } from "../documents/SourceDocument.tsx"
+import { emptyFeedbackFile, type FeedbackFileThreads } from "../feedback/feedback-index.ts"
 import { commitDate, type Compare, type CompareName } from "./compare.ts"
 import { displayOrder, statusLetters, statusNames, type CompareFile } from "./compare-files.ts"
 import { binaryChangeLabel } from "./diff-content.ts"
@@ -113,16 +114,17 @@ export interface ReviewZone {
 // ReviewComments places feedback threads in a review and starts new ones
 // (decision 0120).
 export interface ReviewComments {
-  // zones are a file's threads and composer, in order.
-  zones(path: string): readonly ReviewZone[]
-  // outdated counts a file's threads whose code is gone.
-  outdated(path: string): number
+  files: ReadonlyMap<string, FeedbackFileThreads> | undefined
+  showResolved: boolean
+  renderThread(thread: FeedbackThread): ReviewZone
+  composer: (ReviewZone & { path: string }) | undefined
   onShowOutdated(path: string): void
   // onComment opens the composer at lines of a side, or for the whole file.
   onComment(path: string, side: "old" | "new", lines: readonly [number, number] | null): void
 }
 
 const noZones: readonly ReviewZone[] = []
+type RenderOptions = Omit<DiffOptions, "showResolved">
 
 // sideLines reads a diff side's lines by number.
 function sideLines(fileDiff: FileDiffMetadata | null, side: SelectionSide): (line: number) => string | undefined {
@@ -675,6 +677,14 @@ function ReviewBody({
 
   const sum = totals(stats)
   const viewedCount = files.filter((file) => viewed(file.path)).length
+  const selectFileLines = useCallback((path: string, lines: SelectedLineRange | null) => {
+    pointer.current = `${path}#${lines ? diffLineAnchor(lines) : ""}`
+    onSelectLines(path, lines)
+  }, [onSelectLines])
+  const { style: preferredStyle, inline: inlineChanges, wrap, expandUnchanged, ignoreWhitespace } = options
+  const renderOptions = useMemo(() => ({
+    style: preferredStyle, inline: inlineChanges, wrap, expandUnchanged, ignoreWhitespace,
+  }), [preferredStyle, inlineChanges, wrap, expandUnchanged, ignoreWhitespace])
 
   return (
     <ObserveContext.Provider value={observe}>
@@ -709,24 +719,21 @@ function ReviewBody({
           )}
           {files.length > 0 && <div className="review-files">{files.map((file) => {
             const fileStats = stats?.byPath.get(file.path)
+            const feedback = comments?.files?.get(file.path) ?? emptyFeedbackFile
             return (
               <ReviewFile key={file.path} diffs={diffs} project={project} compare={compare} file={file} stats={fileStats}
                 version={data?.version ?? ""} uncommitted={marked?.has(file.path) ?? false}
-                open={isOpen(file)} viewed={viewedState(file.path, fileStats?.blob ?? "")} options={options} narrow={narrow} scrollRoot={scrollRoot}
+                open={isOpen(file)} viewed={viewedState(file.path, fileStats?.blob ?? "")} options={renderOptions} narrow={narrow} scrollRoot={scrollRoot}
                 lines={selection?.path === file.path ? selection.lines : null}
                 annotation={annotation?.path === file.path ? annotation : undefined}
-                zones={comments?.zones(file.path) ?? noZones} outdated={comments?.outdated(file.path) ?? 0}
-                onShowOutdated={() => comments?.onShowOutdated(file.path)}
-                onComment={comments ? (side, lines) => comments.onComment(file.path, side, lines) : undefined}
+                threads={comments?.showResolved ? feedback.all : feedback.open} renderThread={comments?.renderThread}
+                composer={comments?.composer?.path === file.path ? comments.composer : undefined}
+                outdated={comments?.showResolved ? feedback.outdatedAll : feedback.outdatedOpen}
+                onShowOutdated={comments?.onShowOutdated} onComment={comments?.onComment}
                 openFileReason={file.status === "deleted" ? "This file was deleted; there's no working copy to open"
                   : treeFiles.has(file.path) ? "" : "This file isn't in the working tree"}
-                onOpenChange={(next) => setFileOpen(file.path, next)}
-                onViewedChange={(next) => markViewed(file.path, next)}
-                onSelectLines={(lines) => {
-                  pointer.current = `${file.path}#${lines ? diffLineAnchor(lines) : ""}`
-                  onSelectLines(file.path, lines)
-                }}
-                onStatus={reportStatus} onOpenFile={() => onOpenFile(file.path)} />
+                onOpenChange={setFileOpen} onViewedChange={markViewed} onSelectLines={selectFileLines}
+                onStatus={reportStatus} onOpenFile={onOpenFile} />
             )
           })}</div>}
         </div>
@@ -821,29 +828,35 @@ interface ReviewFileProps {
   uncommitted: boolean
   open: boolean
   viewed: ViewedState
-  options: DiffOptions
+  options: RenderOptions
   narrow: boolean
   scrollRoot: RefObject<HTMLElement | null>
   lines: SelectedLineRange | null
   annotation: ReviewAnnotation | undefined
-  zones: readonly ReviewZone[]
+  threads: readonly FeedbackThread[]
+  renderThread: ReviewComments["renderThread"] | undefined
+  composer: ReviewZone | undefined
   outdated: number
-  onShowOutdated(): void
+  onShowOutdated?: ReviewComments["onShowOutdated"]
   // onComment opens the composer; absent without feedback.
-  onComment?: (side: "old" | "new", lines: readonly [number, number] | null) => void
+  onComment?: ReviewComments["onComment"]
   openFileReason: string
-  onOpenChange(open: boolean): void
-  onViewedChange(viewed: boolean): void
-  onSelectLines(lines: SelectedLineRange | null): void
+  onOpenChange(path: string, open: boolean): void
+  onViewedChange(path: string, viewed: boolean): void
+  onSelectLines(path: string, lines: SelectedLineRange | null): void
   onStatus(status: ReviewStatus | null): void
-  onOpenFile(): void
+  onOpenFile(path: string): void
 }
 
 // ReviewFile is one file's sticky header and collapsible diff.
-function ReviewFile({
-  annotation, compare, diffs, file, lines, narrow, open, openFileReason, options, outdated, project, scrollRoot, stats, uncommitted, version, viewed, zones,
+const ReviewFile = memo(function ReviewFile({
+  annotation, compare, composer, diffs, file, lines, narrow, open, openFileReason, options, outdated, project, renderThread, scrollRoot, stats,
+  threads, uncommitted, version, viewed,
   onComment, onOpenChange, onOpenFile, onSelectLines, onShowOutdated, onStatus, onViewedChange,
 }: ReviewFileProps) {
+  const threadZones = useMemo(() => threads.length && renderThread ? threads.map(renderThread) : noZones, [renderThread, threads])
+  const zones = useMemo(() => composer ? [...threadZones, composer] : threadZones, [composer, threadZones])
+  const selectLines = useCallback((lines: SelectedLineRange | null) => onSelectLines(file.path, lines), [file.path, onSelectLines])
   const observe = useContext(ObserveContext)
   const section = useRef<HTMLElement>(null)
   const [near, setNear] = useState(false)
@@ -879,10 +892,10 @@ function ReviewFile({
     return () => onStatus(null)
   }, [changeCount, changeIndex, file.path, onStatus, selected, targetEnd, targetSide, targetStart, typeLabel])
 
-  const commentLines = onComment && target ? () => onComment(target.side, [target.range.start, target.range.end]) : null
+  const commentLines = onComment && target ? () => onComment(file.path, target.side, [target.range.start, target.range.end]) : null
   const commentFile = onComment ? () => {
-    if (!open) onOpenChange(true)
-    onComment(file.status === "deleted" ? "old" : "new", null)
+    if (!open) onOpenChange(file.path, true)
+    onComment(file.path, file.status === "deleted" ? "old" : "new", null)
   } : null
 
   const label = statsLabel(stats)
@@ -891,7 +904,7 @@ function ReviewFile({
     <section ref={section} className="review-file" data-review-path={file.path} aria-label={file.path}>
       <div className="review-file-header">
         <Button variant="plain" size="inline" className="review-file-toggle" aria-expanded={open} aria-controls={bodyId}
-          onClick={() => onOpenChange(!open)}>
+          onClick={() => onOpenChange(file.path, !open)}>
           <Chevron />
           <FileIcon path={file.path} />
           <span className="review-file-path" data-status={file.status}>{file.path}</span>
@@ -907,35 +920,35 @@ function ReviewFile({
         )}
         {outdated > 0 && (
           <Button variant="link" size="inline" className="review-file-outdated"
-            title={`${outdated.toLocaleString()} ${outdated === 1 ? "thread's" : "threads'"} code is gone: show in Feedback`} onClick={onShowOutdated}>
+            title={`${outdated.toLocaleString()} ${outdated === 1 ? "thread's" : "threads'"} code is gone: show in Feedback`} onClick={() => onShowOutdated?.(file.path)}>
             {outdated.toLocaleString()} outdated
           </Button>
         )}
         <ToggleButton size="text" className="review-viewed" pressed={viewed === "viewed"} disabled={!stats?.blob}
           aria-keyshortcuts={reviewKeyShortcuts.toggleViewed}
           title={stats?.blob ? "Mark as viewed (V)" : "Waiting for the file's content hash"}
-          onPressedChange={onViewedChange}>
+          onPressedChange={(next) => onViewedChange(file.path, next)}>
           {viewed === "viewed" && <CheckIcon aria-hidden="true" />}Viewed
         </ToggleButton>
         {commentFile && <IconButton size="xs" label="Comment on File" icon={<MessageSquarePlusIcon aria-hidden="true" />} onClick={commentFile} />}
         <IconButton size="xs" label="Open File" icon={<FileInputIcon aria-hidden="true" />}
-          disabledReason={openFileReason || undefined} onClick={onOpenFile} />
+          disabledReason={openFileReason || undefined} onClick={() => onOpenFile(file.path)} />
       </div>
       <div id={bodyId} className="review-file-body" hidden={!open}>
         {open && (resident || near) && <FileBody diff={diff} file={file} compare={compare} rendered={rendered} options={options} narrow={narrow}
           scrollRoot={scrollRoot} lines={lines} reference={reference} annotation={annotation} zones={zones} onComment={commentLines}
-          onRetry={retry} onSelectLines={onSelectLines} />}
+          onRetry={retry} onSelectLines={selectLines} />}
       </div>
     </section>
   )
-}
+})
 
 interface FileBodyProps {
   diff: ReturnType<typeof useReviewDiff>["diff"]
   file: CompareFile
   compare: Compare
   rendered: RenderedDiff | null
-  options: DiffOptions
+  options: RenderOptions
   narrow: boolean
   scrollRoot: RefObject<HTMLElement | null>
   lines: SelectedLineRange | null
@@ -954,13 +967,14 @@ function FileBody(props: FileBodyProps) {
   // or a shown diff they lead the file.
   const shown = rendered !== null && rendered.lineDiff.hunks.length > 0
   const inDiff = annotation !== undefined && annotation.line > 0 && shown
-  const leading = zones.filter((zone) => zone.line === 0 || !shown)
+  const leading = useMemo(() => shown ? zones.filter((zone) => zone.line === 0) : zones, [shown, zones])
+  const inline = useMemo(() => shown ? zones.filter((zone) => zone.line > 0) : noZones, [shown, zones])
   return <>
     {annotation && !inDiff && (
       <div className="review-annotation">{annotation.render(sideLines(rendered?.fileDiff ?? null, annotation.side))}</div>
     )}
     {leading.length > 0 && <div className="review-zones">{leading.map((zone) => <Fragment key={zone.key}>{zone.node}</Fragment>)}</div>}
-    <FileContent {...props} annotation={inDiff ? annotation : undefined} zones={shown ? zones.filter((zone) => zone.line > 0) : noZones} />
+    <FileContent {...props} annotation={inDiff ? annotation : undefined} zones={inline} />
   </>
 }
 
@@ -999,7 +1013,7 @@ interface DiffViewProps {
   path: string
   rendered: RenderedDiff
   narrow: boolean
-  options: DiffOptions
+  options: RenderOptions
   scrollRoot: RefObject<HTMLElement | null>
   lines: SelectedLineRange | null
   reference: string
@@ -1106,9 +1120,19 @@ function DiffView({ annotation, rendered, lines, narrow, options, path, referenc
   // One annotation per side and line holds the walkthrough's narration and
   // every zone there, so several threads can share a line. Slots change
   // only when lines do; their content follows each render.
+  const zonesByLine = useMemo(() => {
+    const byLine = new Map<string, ReviewZone[]>()
+    for (const zone of zones) {
+      const key = lineKey(zone.side, zone.line)
+      const here = byLine.get(key)
+      if (here) here.push(zone)
+      else byLine.set(key, [zone])
+    }
+    return byLine
+  }, [zones])
   const slots = [
     ...(annotation && annotation.line > 0 ? [lineKey(annotation.side, annotation.line)] : []),
-    ...zones.map((zone) => lineKey(zone.side, zone.line)),
+    ...zonesByLine.keys(),
   ]
   const slotKey = [...new Set(slots)].join(" ")
   const lineAnnotations = useMemo((): DiffLineAnnotation<undefined>[] => slotKey.split(" ").filter(Boolean).map((key) => {
@@ -1131,10 +1155,10 @@ function DiffView({ annotation, rendered, lines, narrow, options, path, referenc
         renderAnnotation={(slot) => {
           const key = lineKey(slot.side, slot.lineNumber)
           const narration = annotation && annotation.line > 0 && lineKey(annotation.side, annotation.line) === key
-          const here = zones.filter((zone) => lineKey(zone.side, zone.line) === key)
+          const here = zonesByLine.get(key)
           return <>
             {narration && <div className="review-annotation">{annotation.render(sideLines(rendered.fileDiff, annotation.side))}</div>}
-            {here.length > 0 && <div className="review-zones">{here.map((zone) => <Fragment key={zone.key}>{zone.node}</Fragment>)}</div>}
+            {here && <div className="review-zones">{here.map((zone) => <Fragment key={zone.key}>{zone.node}</Fragment>)}</div>}
           </>
         }}
         renderGutterUtility={() => lines && reference

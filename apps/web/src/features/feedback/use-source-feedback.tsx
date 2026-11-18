@@ -1,11 +1,12 @@
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useMemo } from "react"
 
 import type { SourceComments, SourceZone } from "../documents/SourceDocument.tsx"
 import type { LineRange } from "../../lib/line-selection.ts"
-import { anchorKey, inlineThreads, lineRange, type FeedbackAnchorInput } from "./feedback-model.ts"
+import { anchorKey, lineRange } from "./feedback-model.ts"
 import { FeedbackComposer } from "./FeedbackComposer.tsx"
 import { FeedbackThreadZone } from "./FeedbackThreadZone.tsx"
 import { useFeedback } from "./use-feedback.ts"
+import { useFeedbackComposer } from "./use-feedback-composer.ts"
 
 export interface SourceFeedbackOptions {
   project: string
@@ -30,47 +31,37 @@ export interface SourceFeedbackOptions {
 export function useSourceFeedback({
   enabled, navigate, onChanged, onSubmitted, path, project, showResolved, version,
 }: SourceFeedbackOptions): SourceComments | undefined {
-  const session = useFeedback({ project, id: "", compare: null, version, enabled: enabled && path !== "", onChanged })
-  const [composing, setComposing] = useState<FeedbackAnchorInput | null>(null)
-  // A composer belongs to the file it was opened in.
-  const [composingFor, setComposingFor] = useState(path)
-  if (composingFor !== path) {
-    setComposingFor(path)
-    setComposing(null)
-  }
-  const { feedback, start } = session
-
-  const submit = useCallback(async (anchor: FeedbackAnchorInput, body: string) => {
-    await start(anchor, body)
-    setComposing(null)
-    onSubmitted()
-  }, [onSubmitted, start])
+  const { feedback, actions, index } = useFeedback({ project, id: "", compare: null, version, enabled: enabled && path !== "", onChanged })
+  const { anchor, cancel, open, submit } = useFeedbackComposer(JSON.stringify([project, path]), actions.start, onSubmitted)
   const comment = useCallback((range: LineRange) => {
-    setComposing({ path, side: "new", lines: [range.start, range.end], compare: null })
-  }, [path])
+    open({ path, side: "new", lines: [range.start, range.end], compare: null })
+  }, [open, path])
+  const file = index?.files.get(path)
+  const threads = showResolved ? file?.all : file?.open
+  const feedbackId = feedback?.id ?? ""
+  const feedbackProject = feedback?.project ?? project
 
   return useMemo((): SourceComments | undefined => {
     if (!enabled || !path) return undefined
     const zones: SourceZone[] = []
-    if (feedback) {
-      for (const thread of inlineThreads(feedback.threads, path, showResolved)) {
+    if (threads) {
+      for (const thread of threads) {
         if (thread.location.side !== "new") continue
         const lines = lineRange(thread.location.lines)
         zones.push({
           key: `thread-${thread.number}`,
           line: lines ? lines[1] : 0,
-          node: <FeedbackThreadZone thread={thread} feedback={feedback} session={session} navigate={navigate} />,
+          node: <FeedbackThreadZone thread={thread} feedbackId={feedbackId} project={feedbackProject} actions={actions} navigate={navigate} />,
         })
       }
     }
-    if (composing?.path === path) {
+    if (anchor) {
       zones.push({
         key: "composer",
-        line: composing.lines ? composing.lines[1] : 0,
-        node: <FeedbackComposer key={anchorKey(composing)} anchor={composing} onSubmit={(body) => submit(composing, body)}
-          onCancel={() => setComposing(null)} />,
+        line: anchor.lines ? anchor.lines[1] : 0,
+        node: <FeedbackComposer key={anchorKey(anchor)} anchor={anchor} onSubmit={(body) => submit(anchor, body)} onCancel={cancel} />,
       })
     }
     return { zones, onComment: comment }
-  }, [comment, composing, enabled, feedback, navigate, path, session, showResolved, submit])
+  }, [actions, anchor, cancel, comment, enabled, feedbackId, feedbackProject, navigate, path, submit, threads])
 }

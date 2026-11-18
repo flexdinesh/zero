@@ -1,14 +1,13 @@
-import { isFeedbackCompare } from "@zero/contracts"
-import { useCallback, useMemo, useState } from "react"
+import { isFeedbackCompare, type FeedbackThread } from "@zero/contracts"
+import { useCallback, useMemo } from "react"
 
 import { compareKey, type Compare } from "../source-control/compare.ts"
 import type { ReviewComments, ReviewZone } from "../source-control/ReviewDocument.tsx"
-import {
-  anchorKey, diffSide, feedbackCompare, inlineThreads, lineRange, openCounts, outdatedCount, type FeedbackAnchorInput,
-} from "./feedback-model.ts"
+import { anchorKey, diffSide, feedbackCompare, lineRange } from "./feedback-model.ts"
 import { FeedbackComposer } from "./FeedbackComposer.tsx"
 import { FeedbackThreadZone } from "./FeedbackThreadZone.tsx"
-import { useFeedback, type FeedbackSession } from "./use-feedback.ts"
+import { useFeedback } from "./use-feedback.ts"
+import { useFeedbackComposer } from "./use-feedback-composer.ts"
 
 export interface ReviewFeedbackOptions {
   project: string
@@ -29,7 +28,6 @@ export interface ReviewFeedback {
   comments: ReviewComments | undefined
   // counts are each file's open threads, for the Files rail.
   counts: ReadonlyMap<string, number>
-  session: FeedbackSession
 }
 
 const noCounts: ReadonlyMap<string, number> = new Map()
@@ -47,58 +45,26 @@ export function useReviewFeedback({
     const value: unknown = contractText ? JSON.parse(contractText) : null
     return isFeedbackCompare(value) ? value : null
   }, [contractText])
-  const session = useFeedback({ project, id: "", compare: contract, version, enabled: contract !== null, onChanged })
-  const [composing, setComposing] = useState<FeedbackAnchorInput | null>(null)
-  // A composer belongs to the review it was opened in.
-  const [composingFor, setComposingFor] = useState(key)
-  if (composingFor !== key) {
-    setComposingFor(key)
-    setComposing(null)
-  }
-  const { feedback, start } = session
-
-  const submit = useCallback(async (anchor: FeedbackAnchorInput, body: string) => {
-    await start(anchor, body)
-    setComposing(null)
-    onSubmitted(anchor.path)
-  }, [onSubmitted, start])
-
-  const comments = useMemo((): ReviewComments | undefined => {
-    if (!contract) return undefined
-    const threads = feedback?.threads ?? []
-    return {
-      zones(path) {
-        const zones: ReviewZone[] = []
-        if (feedback) {
-          for (const thread of inlineThreads(threads, path, showResolved)) {
-            const lines = lineRange(thread.location.lines)
-            zones.push({
-              key: `thread-${thread.number}`,
-              side: diffSide(thread.location.side),
-              line: lines ? lines[1] : 0,
-              node: <FeedbackThreadZone thread={thread} feedback={feedback} session={session} navigate={navigate} />,
-            })
-          }
-        }
-        if (composing?.path === path) {
-          zones.push({
-            key: "composer",
-            side: diffSide(composing.side),
-            line: composing.lines ? composing.lines[1] : 0,
-            node: <FeedbackComposer key={anchorKey(composing)} anchor={composing} onSubmit={(body) => submit(composing, body)}
-              onCancel={() => setComposing(null)} />,
-          })
-        }
-        return zones
-      },
-      outdated: (path) => outdatedCount(threads, path, showResolved),
-      onShowOutdated: (path) => onShowOutdated(feedback?.id ?? "", path),
-      onComment(path, side, lines) {
-        setComposing({ path, side, lines, compare: contract })
-      },
-    }
-  }, [composing, contract, feedback, navigate, onShowOutdated, session, showResolved, submit])
-
-  const counts = useMemo(() => feedback ? openCounts(feedback.threads) : noCounts, [feedback])
-  return { comments, counts, session }
+  const { feedback, actions, index } = useFeedback({ project, id: "", compare: contract, version, enabled: contract !== null, onChanged })
+  const { anchor, cancel, open, submit } = useFeedbackComposer(JSON.stringify([project, key]), actions.start, onSubmitted)
+  const feedbackId = feedback?.id ?? ""
+  const feedbackProject = feedback?.project ?? project
+  const renderThread = useCallback((thread: FeedbackThread): ReviewZone => ({
+    key: `thread-${thread.number}`,
+    side: diffSide(thread.location.side),
+    line: lineRange(thread.location.lines)?.[1] ?? 0,
+    node: <FeedbackThreadZone thread={thread} feedbackId={feedbackId} project={feedbackProject} actions={actions} navigate={navigate} />,
+  }), [actions, feedbackId, feedbackProject, navigate])
+  const composer = useMemo(() => anchor ? {
+    path: anchor.path, key: "composer", side: diffSide(anchor.side), line: anchor.lines?.[1] ?? 0,
+    node: <FeedbackComposer key={anchorKey(anchor)} anchor={anchor} onSubmit={(body) => submit(anchor, body)} onCancel={cancel} />,
+  } : undefined, [anchor, cancel, submit])
+  const showOutdated = useCallback((path: string) => onShowOutdated(feedbackId, path), [feedbackId, onShowOutdated])
+  const onComment = useCallback<ReviewComments["onComment"]>((path, side, lines) => {
+    open({ path, side, lines, compare: contract })
+  }, [contract, open])
+  const comments = useMemo((): ReviewComments | undefined => contract ? {
+    files: index?.files, showResolved, renderThread, composer, onComment, onShowOutdated: showOutdated,
+  } : undefined, [composer, contract, index, onComment, renderThread, showOutdated, showResolved])
+  return { comments, counts: index?.counts ?? noCounts }
 }

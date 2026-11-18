@@ -223,28 +223,6 @@ export function groupByFile(threads: readonly FeedbackThread[]): FileGroup[] {
   return [...groups].sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0).map(([path, grouped]) => ({ path, threads: grouped }))
 }
 
-// openCounts counts each file's open threads, for the Files rail.
-export function openCounts(threads: readonly FeedbackThread[]): ReadonlyMap<string, number> {
-  const counts = new Map<string, number>()
-  for (const thread of threads) {
-    if (thread.status === "open") counts.set(thread.location.path, (counts.get(thread.location.path) ?? 0) + 1)
-  }
-  return counts
-}
-
-// outdatedCount counts a file's outdated threads, shown or not.
-export function outdatedCount(threads: readonly FeedbackThread[], path: string, showResolved: boolean): number {
-  return threads.filter((thread) => thread.location.path === path && thread.location.state === "outdated"
-    && (showResolved || !isClosed(thread.status))).length
-}
-
-// inlineThreads are the threads a review or Source shows in path: anchored
-// or moved there, closed ones only while shown.
-export function inlineThreads(threads: readonly FeedbackThread[], path: string, showResolved: boolean): FeedbackThread[] {
-  return threads.filter((thread) => thread.location.path === path && thread.location.state !== "outdated"
-    && (showResolved || !isClosed(thread.status)))
-}
-
 // FeedbackSeen is what this browser has seen, as zero-feedback-seen stores
 // it: feedback id, then thread number, to the thread's updatedAt.
 export type FeedbackSeen = Readonly<Record<string, Readonly<Record<string, string>>>>
@@ -437,7 +415,7 @@ export function feedbackMarkdown(feedback: Feedback, threads: readonly FeedbackT
 }
 
 // threadPrompt is what a thread's Copy Thread for Agent copies.
-export function threadPrompt(feedback: Feedback, thread: FeedbackThread): string {
+export function threadPrompt(feedback: Pick<Feedback, "id" | "project">, thread: FeedbackThread): string {
   return `Feedback ${feedback.id} thread ${thread.number} in ${feedback.project}. Reply with: zero feedback reply ${feedback.id} ${thread.number} -m "…" [--resolve | --wontfix]
 
 ${threadMarkdown(thread)}

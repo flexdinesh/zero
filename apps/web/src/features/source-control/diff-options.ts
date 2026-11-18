@@ -62,7 +62,7 @@ export function diffOptionsModified(options: DiffOptions): boolean {
 export const splitMinimumWidth = 48
 
 // effectiveDiffStyle forces Unified where Split has no room.
-export function effectiveDiffStyle(options: DiffOptions, narrow: boolean): DiffStyle {
+export function effectiveDiffStyle(options: Pick<DiffOptions, "style">, narrow: boolean): DiffStyle {
   return narrow ? "unified" : options.style
 }
 
