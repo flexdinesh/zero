@@ -57,6 +57,10 @@
   background: var(--color-overlay);
 }
 
+.ui-dialog-load {
+  padding: var(--space-3) var(--space-4);
+}
+
 .ui-popover {
   padding: var(--space-1);
 }

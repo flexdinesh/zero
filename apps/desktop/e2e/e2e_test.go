@@ -355,8 +355,11 @@ func TestWebViewApp(t *testing.T) {
 				t.Error("could not remove the review fixture root")
 			}
 		}()
+		// This is the first review in the profile. Its direct URL must load
+		// the renderer over zero-app:// from the document session.
 		app.eval(`location.href = "/view?project=" + encodeURIComponent(` + strconv.Quote(project) + `) + "&review=working#f=a.txt"; return true`)
-		app.waitEval("A's rendered review", `return (document.querySelector('[data-review-path="a.txt"] .diff-view')?.shadowRoot?.querySelectorAll('[data-line]').length ?? 0) > 0
+		app.waitEval("A's rendered review", `return location.origin === "zero-app://local"
+			&& (document.querySelector('[data-review-path="a.txt"] .diff-view')?.shadowRoot?.querySelectorAll('[data-line]').length ?? 0) > 0
 			&& document.querySelectorAll('[data-review-path]').length === 3`)
 		app.eval(`const state = window.__focusReview = {
 			fetch: window.fetch, calls: [], completed: [], pending: [], hold: false,
@@ -709,6 +712,7 @@ func TestWebViewApp(t *testing.T) {
 		app.capture("cli-open.png")
 	})
 
+	const browsing = `const input = document.querySelector('dialog[open] input[aria-label="Folder path"]'); return input !== null && input.value.startsWith("/") && input.value.endsWith("/")`
 	t.Run("a first launch with no folder offers to open one", func(t *testing.T) {
 		w.t = t
 		isolate("empty")
@@ -721,25 +725,21 @@ func TestWebViewApp(t *testing.T) {
 		app.waitEval("the picker's Open Folder", `return document.body.innerText.includes("No projects yet.")`)
 		app.capture("no-folder-picker.png")
 		// The picker browses the daemon's disk from home (decision 0146).
-		browsing := `const input = document.querySelector("dialog[open] input"); return input !== null && input.value.startsWith("/") && input.value.endsWith("/")`
 		app.eval(`[...document.querySelectorAll("button")].find((button) => button.textContent === "Open folder…").click(); return true`)
 		app.waitEval("Browse at home", browsing)
 		app.capture("no-folder-browse.png")
-		// File › Open Folder… asks the page for the same Browse.
-		app.eval(`document.querySelector("dialog[open]").close(); return true`)
-		app.waitEval("the picker closed", `return document.querySelector("dialog[open]") === null`)
-		if output, err := exec.Command("xdotool", "key", "--clearmodifiers", "ctrl+o").CombinedOutput(); err != nil {
-			t.Fatalf("xdotool: %v\n%s", err, output)
-		}
-		app.waitEval("Browse from the menu", browsing)
 	})
 
 	t.Run("keyboard shortcuts with the sidebar hidden", func(t *testing.T) {
 		w.t = t
+		// A fresh WebKit profile keeps earlier scenarios' dialog assets out
+		// of this document's first opens.
 		isolate("hidden-sidebar")
 		app := w.launch(w.project)
 		defer app.stop()
 		app.waitEval("the project's tree", treeShows("README.md"))
+		app.eval(`location.href = "/view?project=" + encodeURIComponent(` + strconv.Quote(w.project) + `) + "&path=main.go"; return true`)
+		app.waitEval("the source document", `return location.origin === "zero-app://local" && document.querySelector("main")?.innerText.includes("func main()") === true`)
 		app.eval(`document.querySelector("main").focus(); return true`)
 		app.waitEval("the focused document pane", `return document.hasFocus() && document.activeElement.matches("main")`)
 
@@ -757,6 +757,18 @@ func TestWebViewApp(t *testing.T) {
 		const focusReturned = `return !document.querySelector("dialog[open]") && document.activeElement.matches("main")`
 		press("ctrl+b")
 		app.waitEval("the hidden sidebar", sidebarHidden)
+
+		// File › Open Folder… must enter Browse on the first open.
+		press("ctrl+o")
+		app.waitEval("Browse from the menu", browsing)
+		press("Escape")
+		app.waitEval("focus returned from Open Folder", focusReturned)
+
+		press("ctrl+comma")
+		app.waitEval("the focused Settings search", `return document.activeElement.matches('dialog[open] input[aria-label="Search settings"]')`)
+		press("Escape")
+		app.waitEval("focus returned from Settings", focusReturned)
+		app.exerciseProblemReport("local")
 
 		press("F1")
 		app.waitEval("the focused Command field", `return document.activeElement.matches('dialog[open] [role="combobox"][aria-label="Command"]')`)
@@ -1010,6 +1022,7 @@ func TestWebViewApp(t *testing.T) {
 		if strings.Contains(fmt.Sprint(app.eval(`return document.documentElement.outerHTML`)), secret) {
 			t.Error("the credential is in the page")
 		}
+		app.exerciseProblemReport("remote")
 
 		// The server counts this window as a UI, though the page holds it open
 		// through the app.
@@ -1227,6 +1240,21 @@ func (w *world) exerciseDocuments(app *session) {
 	app.eval(`location.href = "/view?project=" + encodeURIComponent(` + strconv.Quote(w.project) + `) + "&path=pic.png"; return true`)
 	app.waitEval("the image viewer", `const image = document.querySelector("main img"); return image !== null && image.complete && image.naturalWidth === 4`)
 	w.report["wasm"] = app.eval(`return performance.getEntriesByType("resource").map((entry) => entry.name).filter((name) => /wasm|worker/.test(name))`)
+}
+
+func (s *session) exerciseProblemReport(connectionKind string) {
+	s.t.Helper()
+	// Help › Report a Problem… dispatches this event to the target page.
+	s.eval(`window.dispatchEvent(new Event("zero:report-problem", { cancelable: true })); return true`)
+	const preview = `document.querySelector('dialog[open] [aria-label="Problem report"]')`
+	s.waitEval("the "+connectionKind+" problem report", fmt.Sprintf(`const report = %s?.textContent ?? "";
+		return report.includes("## zero problem report") && report.includes(%q) && report.includes("### Server log")`,
+		preview, "Client: desktop app, "+connectionKind+" connection"))
+	if got := s.eval(`return ` + preview + `.textContent.includes("### Desktop app log")`); got != (connectionKind == "local") {
+		s.t.Errorf("desktop app log in the %s problem report = %v", connectionKind, got)
+	}
+	s.eval(`document.querySelector('dialog[open] button[aria-label="Close problem report"]').click(); return true`)
+	s.waitEval("the problem report closed", `return document.querySelector("dialog[open]") === null`)
 }
 
 // killWebProcess crashes the page's web process, as a page that breaks it does.

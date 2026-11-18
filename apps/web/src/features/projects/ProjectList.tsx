@@ -7,7 +7,7 @@ import { ListButton } from "../../components/ui/list-row.tsx"
 import { Chevron } from "../../components/ui/section-toggle.tsx"
 import { TextField } from "../../components/ui/text-field.tsx"
 import { readMemory, rememberedProjects } from "../../workspace/workspace-memory.ts"
-import { OptionIcon, OptionText } from "./ProjectPicker.tsx"
+import { OptionIcon, OptionText } from "./ProjectOption.tsx"
 import type { ProjectRow } from "./project-picker.ts"
 import { enterTarget, holdsLast, projectListSections, type ProjectListEntry } from "./project-list.ts"
 

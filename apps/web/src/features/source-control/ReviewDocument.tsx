@@ -52,6 +52,8 @@ import type { ViewedState } from "./review-viewed.ts"
 import type { CompareData } from "./use-compare-data.ts"
 import { statsLabel, totals } from "./use-compare-stats.ts"
 
+export { releaseDiffResources } from "./diff-resources.ts"
+
 // One zero theme serves both polarities; themeType picks the scheme.
 const theme = { light: DIFF_THEME, dark: DIFF_THEME }
 

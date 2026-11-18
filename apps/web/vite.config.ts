@@ -142,6 +142,15 @@ export default defineConfig(({ command, mode }) => ({
   base: command === "build" ? "/assets/" : "/",
   build: {
     assetsDir: "",
+    modulePreload: {
+      resolveDependencies(filename, dependencies, { hostType }) {
+        // WebKit can keep failed modulepreloads across reload (bug 270357).
+        // Let the module loader fetch these feature graphs on demand.
+        return hostType === "js" && /^(ReviewDocument|ProjectPickerBody|SettingsDialogBody|ReportProblemDialogBody)-/.test(filename)
+          ? []
+          : dependencies
+      },
+    },
     // Fonts stay files: the CSP's font-src 'self' refuses data: URLs, and
     // JetBrains Mono's cyrillic-ext subset is under the 4 KB inline limit.
     assetsInlineLimit: (file: string) => (/\.woff2?$/.test(file) ? false : undefined),
