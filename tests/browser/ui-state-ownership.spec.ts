@@ -50,6 +50,26 @@ test("search retains its active match and focus behavior through navigation and 
   await expect(page).toHaveURL(/path=z\.md#L3$/)
 })
 
+test("revealing Search from the activity bar refreshes edits made while it was hidden", async ({ page, live }) => {
+  const file = path.join(live.root, "search-refresh.md")
+  writeFileSync(file, "# Search fixture\n\nsidebar-refresh before\n")
+  await page.goto(`${live.origin}/?project=${encodeURIComponent(live.root)}`)
+  await page.keyboard.press("ControlOrMeta+Shift+f")
+  const input = page.getByRole("textbox", { name: "Search", exact: true })
+  await input.fill("sidebar-refresh")
+  const results = page.getByRole("tree", { name: "Search results" })
+  await expect(results.getByRole("treeitem", { name: "Line 3: sidebar-refresh before", exact: true })).toBeVisible()
+  await page.getByRole("button", { name: "Explorer", exact: true }).click()
+  await expect(input).toBeHidden()
+
+  const changed = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/changes" && response.ok())
+  writeFileSync(file, "# Search fixture\n\nsidebar-refresh after\n")
+  await changed
+  await page.getByRole("navigation", { name: "Views" }).getByRole("button", { name: "Search", exact: true }).click()
+  await expect(input).toHaveValue("sidebar-refresh")
+  await expect(results.getByRole("treeitem", { name: "Line 3: sidebar-refresh after", exact: true })).toBeVisible()
+})
+
 test("switching projects clears transient search and ignores a late previous-project response", async ({ page }) => {
   const guides = path.join(fixtureRoot, "guides")
   await page.route("**/api/projects", async (route) => {

@@ -1,5 +1,5 @@
 import { isSearchDocumentsResponse, type SearchDocumentsResponse } from "@zero/contracts"
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react"
 
 import { createSearchController, emptyQuery, type SearchHandlers, type SearchResults, type SearchStatus, type SearchView } from "./search-controller.ts"
 import { failureReason, fetchJSON } from "../../api/http.ts"
@@ -27,11 +27,12 @@ export interface SearchSessionOptions {
   documentPane: RefObject<HTMLElement | null>
   openMatch: OpenSearchMatch
   project: string
+  visible: boolean
   reveal(): void
 }
 
 // useSearchSession indexes one project's documents; mount one per project.
-export function useSearchSession({ documentPane, openMatch, project, reveal }: SearchSessionOptions) {
+export function useSearchSession({ documentPane, openMatch, project, reveal, visible }: SearchSessionOptions) {
   const input = useRef<HTMLInputElement>(null)
   const handlers = useRef<SearchHandlers | null>(null)
   const controllerRef = useRef<ReturnType<typeof createSearchController> | null>(null)
@@ -46,6 +47,7 @@ export function useSearchSession({ documentPane, openMatch, project, reveal }: S
   const [active, setActive] = useState<MatchPosition | null>(null)
   const activeRef = useRef(active)
   const [focusRequest, setFocusRequest] = useState(0)
+  const handledFocus = useRef(0)
 
   useLayoutEffect(() => { latest.current = { documentPane, openMatch, project, reveal } }, [documentPane, openMatch, project, reveal])
   useLayoutEffect(() => { resultsRef.current = results }, [results])
@@ -60,10 +62,12 @@ export function useSearchSession({ documentPane, openMatch, project, reveal }: S
 
   // Focus waits for the view to render visible, since revealing is a state change.
   useLayoutEffect(() => {
-    if (!focusRequest) return
-    input.current?.focus({ preventScroll: true })
-    input.current?.select()
-  }, [focusRequest])
+    const field = input.current
+    if (!visible || focusRequest === handledFocus.current || !field) return
+    handledFocus.current = focusRequest
+    field.focus({ preventScroll: true })
+    field.select()
+  }, [focusRequest, visible])
 
   useEffect(() => {
     const view: SearchView = {
@@ -97,6 +101,10 @@ export function useSearchSession({ documentPane, openMatch, project, reveal }: S
       controllerRef.current = null
     }
   }, [changeQuery])
+
+  useEffect(() => {
+    if (visible) controllerRef.current?.refreshIfStale()
+  }, [visible])
 
   const show = useCallback(() => controllerRef.current?.open(), [])
 
@@ -152,14 +160,14 @@ export function useSearchSession({ documentPane, openMatch, project, reveal }: S
 
   // markStale reports changed files: shown rereads now, else on next open.
   const markStale = useCallback((shown: boolean) => handlers.current?.onStale(shown), [])
+  const refresh = useCallback(() => handlers.current?.onRefresh(), [])
+  const retry = useCallback(() => handlers.current?.onRetry(), [])
 
-  return {
+  return useMemo(() => ({
     active, changeQuery, clear, collapsed, details, focusInput, input, open, query, results, setActive, show,
-    setAllCollapsed, setDetails, status, toggleFile,
-    refresh: () => handlers.current?.onRefresh(),
-    retry: () => handlers.current?.onRetry(),
-    markStale,
-  }
+    setAllCollapsed, setDetails, status, toggleFile, refresh, retry, markStale,
+  }), [active, changeQuery, clear, collapsed, details, focusInput, markStale, open, query, refresh, results, retry,
+    setAllCollapsed, show, status, toggleFile])
 }
 
 export type SearchSession = ReturnType<typeof useSearchSession>

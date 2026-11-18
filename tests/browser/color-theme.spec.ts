@@ -56,3 +56,23 @@ test("the Color Theme pick previews on arrows, reverts on Escape, and keeps on E
   await expect(page.getByRole("option", { name: "Preferences: Color Theme, Tokyo Night" })).toBeVisible()
   await page.keyboard.press("Escape")
 })
+
+test("the reopened command palette scrolls the active option and returns focus", async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 480 })
+  await page.goto("/")
+  const opener = page.getByRole("button", { name: "Settings", exact: true })
+  const palette = page.getByRole("dialog", { name: "Command palette" })
+  const input = palette.getByRole("combobox", { name: "Command" })
+  for (let run = 0; run < 2; run++) {
+    await opener.focus()
+    await page.keyboard.press("F1")
+    await expect(input).toBeFocused()
+    const initiallyActive = await input.getAttribute("aria-activedescendant")
+    for (let index = 0; index < 12; index++) await input.press("ArrowDown")
+    await expect(input).not.toHaveAttribute("aria-activedescendant", initiallyActive ?? "")
+    await expect(palette.getByRole("option", { selected: true })).toBeInViewport()
+    await input.press("Escape")
+    await expect(palette).toBeHidden()
+    await expect(opener).toBeFocused()
+  }
+})

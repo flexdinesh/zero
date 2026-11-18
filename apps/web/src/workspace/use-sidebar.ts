@@ -47,8 +47,15 @@ export function useSidebar() {
   const [view, setView] = useState(stored.view)
   const [hidden, setHidden] = useState(stored.hidden)
   const [mobile, setMobile] = useState(() => window.matchMedia(mobileQuery).matches)
+  const [drawerOpen, setDrawerOpen] = useState(false)
   const mobileRef = useRef(mobile)
   useLayoutEffect(() => { mobileRef.current = mobile }, [mobile])
+
+  const syncDrawer = useCallback(() => setDrawerOpen(drawer.current?.open === true), [])
+  const dismiss = useCallback(() => {
+    if (drawer.current?.open) drawer.current.close()
+    syncDrawer()
+  }, [syncDrawer])
 
   useEffect(() => {
     try {
@@ -61,30 +68,28 @@ export function useSidebar() {
   useEffect(() => {
     const query = window.matchMedia(mobileQuery)
     const update = () => {
-      if (!query.matches && drawer.current?.open) drawer.current.close()
+      if (!query.matches) dismiss()
       setMobile(query.matches)
     }
     query.addEventListener("change", update)
     return () => query.removeEventListener("change", update)
-  }, [])
+  }, [dismiss])
 
   const reveal = useCallback((next: SidebarView) => {
     setView(next)
     setHidden(false)
-    if (mobileRef.current && !drawer.current?.open) {
-      drawer.current?.showModal()
+    const element = drawer.current
+    if (mobileRef.current && element && !element.open) {
+      element.showModal()
+      syncDrawer()
       // showModal focuses the first activity item; move that focus to the
       // revealed view's item unless the view already took it, as Search does.
       requestAnimationFrame(() => {
-        if (!document.activeElement?.closest(".activity-bar")) return
-        drawer.current?.querySelector<HTMLElement>(`.activity-item[data-view="${next}"]`)?.focus()
+        if (!element.open || !document.activeElement?.closest(".activity-bar")) return
+        element.querySelector<HTMLElement>(`.activity-item[data-view="${next}"]`)?.focus()
       })
     }
-  }, [])
-
-  const dismiss = useCallback(() => {
-    if (drawer.current?.open) drawer.current.close()
-  }, [])
+  }, [syncDrawer])
 
   const select = useCallback((next: SidebarView) => {
     if (!mobileRef.current && next === view && !hidden) setHidden(true)
@@ -93,9 +98,9 @@ export function useSidebar() {
 
   const toggle = useCallback(() => {
     if (!mobileRef.current) setHidden((current) => !current)
-    else if (drawer.current?.open) drawer.current.close()
+    else if (drawer.current?.open) dismiss()
     else reveal(view)
-  }, [reveal, view])
+  }, [dismiss, reveal, view])
 
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
@@ -109,7 +114,8 @@ export function useSidebar() {
     return () => document.removeEventListener("keydown", shortcut)
   }, [reveal, toggle])
 
-  return { drawer, mobile, view, hidden: hidden && !mobile, reveal, select, dismiss }
+  const visibleView = (mobile ? drawerOpen : !hidden) ? view : null
+  return { drawer, mobile, view, hidden: hidden && !mobile, visibleView, reveal, select, dismiss, syncDrawer }
 }
 
 export type SidebarState = ReturnType<typeof useSidebar>

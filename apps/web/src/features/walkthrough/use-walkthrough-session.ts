@@ -13,8 +13,6 @@ interface SessionOptions {
   // routeId and routeStep are the route's wt and step parameters.
   routeId: string
   routeStep: number | undefined
-  // viewShown is set while the Walkthroughs view is visible.
-  viewShown: boolean
   // go opens a route; focusDocument moves focus to the document.
   go(route: StepRoute, focusDocument: boolean): void
   // leave opens the route's own target without the walkthrough.
@@ -29,7 +27,7 @@ function isTextField(target: EventTarget | null): boolean {
 // (decision 0047). The route's wt and step place the narration; leaving the
 // route keeps the walkthrough selected, so Next resumes from the last step.
 // Ctrl/Cmd+Right and Ctrl/Cmd+Left step while one is selected.
-export function useWalkthroughSession({ project, routeId, routeStep, viewShown, go, leave }: SessionOptions) {
+export function useWalkthroughSession({ project, routeId, routeStep, go, leave }: SessionOptions) {
   const list = useWalkthroughs(project)
   const [memory, setMemory] = useState<WalkthroughMemory>(readWalkthroughMemory)
   const update = useCallback((change: (current: WalkthroughMemory) => WalkthroughMemory) => {
@@ -73,11 +71,11 @@ export function useWalkthroughSession({ project, routeId, routeStep, viewShown, 
   // resume is where an unfinished walkthrough was left, past its first step.
   const resume: StepPosition = !progress.finished && remembered !== undefined && remembered > 0 && remembered < count ? remembered : null
 
-  // The view marks every listed walkthrough seen while it shows.
+  // The workspace calls markListSeen while the Walkthroughs body shows.
   const newest = list.result?.[0]?.updatedAt
-  useEffect(() => {
-    if (viewShown && newest) update((current) => rememberSeen(current, project, newest))
-  }, [newest, project, update, viewShown])
+  const markListSeen = useCallback(() => {
+    if (newest) update((current) => rememberSeen(current, project, newest))
+  }, [newest, project, update])
   const unseen = useMemo(() => unseenCount((list.result ?? []).map((entry) => entry.updatedAt), memory.seen[project]), [list.result, memory.seen, project])
 
   const goTo = useCallback((target: StepPosition, focusDocument = true) => {
@@ -144,6 +142,7 @@ export function useWalkthroughSession({ project, routeId, routeStep, viewShown, 
   return {
     list,
     unseen,
+    markListSeen,
     isNewEntry,
     progressFor,
     nextUnread,

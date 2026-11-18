@@ -734,6 +734,58 @@ func TestWebViewApp(t *testing.T) {
 		app.waitEval("Browse from the menu", browsing)
 	})
 
+	t.Run("keyboard shortcuts with the sidebar hidden", func(t *testing.T) {
+		w.t = t
+		isolate("hidden-sidebar")
+		app := w.launch(w.project)
+		defer app.stop()
+		app.waitEval("the project's tree", treeShows("README.md"))
+		app.eval(`document.querySelector("main").focus(); return true`)
+		app.waitEval("the focused document pane", `return document.hasFocus() && document.activeElement.matches("main")`)
+
+		xdotool := func(args ...string) {
+			t.Helper()
+			if output, err := exec.Command("xdotool", args...).CombinedOutput(); err != nil {
+				t.Fatalf("xdotool %v: %v\n%s", args, err, output)
+			}
+		}
+		press := func(key string) {
+			t.Helper()
+			xdotool("key", "--clearmodifiers", key)
+		}
+		const sidebarHidden = `return document.querySelector('[data-sidebar="hidden"]') !== null`
+		const focusReturned = `return !document.querySelector("dialog[open]") && document.activeElement.matches("main")`
+		press("ctrl+b")
+		app.waitEval("the hidden sidebar", sidebarHidden)
+
+		press("F1")
+		app.waitEval("the focused Command field", `return document.activeElement.matches('dialog[open] [role="combobox"][aria-label="Command"]')`)
+		press("Escape")
+		app.waitEval("focus returned from the Command palette", focusReturned)
+
+		press("ctrl+p")
+		app.waitEval("the focused Go to file field", `return document.activeElement.matches('dialog[open] [role="combobox"][aria-label="Go to file"]')`)
+		press("Escape")
+		app.waitEval("focus returned from Quick Open", focusReturned)
+		app.waitEval("the sidebar still hidden after both dialogs", sidebarHidden)
+
+		const searchFocused = `document.activeElement.matches('input[aria-label="Search"]')`
+		const match = `document.querySelector('[role="tree"][aria-label="Search results"] [role="treeitem"][title="README.md:3"]')`
+		press("ctrl+shift+f")
+		app.waitEval("the focused Search field", `return `+searchFocused)
+		xdotool("type", "--clearmodifiers", "A paragraph.")
+		app.waitEval("the README search match", `return `+match+` !== null`)
+		press("Escape")
+		app.waitEval("focus returned from Search", focusReturned)
+		press("ctrl+b")
+		app.waitEval("Search hidden", sidebarHidden)
+		press("F4")
+		app.waitEval("the match opened by F4", `return new URLSearchParams(location.search).get("path") === "README.md" && location.hash === "#L3"`)
+		app.waitEval("the sidebar still hidden after F4", sidebarHidden)
+		press("ctrl+shift+f")
+		app.waitEval("Search focused with the query and match retained", `return `+searchFocused+` && document.activeElement.value === "A paragraph." && `+match+`?.getAttribute("aria-selected") === "true"`)
+	})
+
 	t.Run("close shortcut closes the active tab, then the empty window", func(t *testing.T) {
 		w.t = t
 		isolate("close-tabs")

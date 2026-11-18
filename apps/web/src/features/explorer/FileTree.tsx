@@ -21,6 +21,7 @@ import { IconButton } from "../../components/ui/icon-button.tsx"
 import { treeRowHeight } from "../../components/ui/tree-rows.ts"
 import { useSettings } from "../../settings/SettingsProvider.tsx"
 import { uiScale } from "../../settings/settings.ts"
+import { SidebarBody } from "../../workspace/SidebarBody.tsx"
 import { projectMemory, readMemory, rememberExpanded, restoreExpanded, updateMemory } from "../../workspace/workspace-memory.ts"
 
 const mac = typeof navigator !== "undefined" && navigator.platform.includes("Mac")
@@ -35,6 +36,8 @@ interface FileTreeProps {
   // gitStatus decorates changed files; entries outside the tree are ignored.
   gitStatus: readonly GitStatusEntry[]
   hasData: boolean
+  mobile: boolean
+  visible: boolean
   onNavigate(path: string): void
   onOpenProjects(): void
   // onOpenWorktrees lists the current repository's worktrees.
@@ -57,18 +60,18 @@ interface ExplorerState {
   expanded: string[] | null
 }
 
-export function FileTree(props: FileTreeProps) {
+export function FileTree({ onReveal, registerOpen, mobile, ...props }: FileTreeProps) {
   const filter = useFilenameFilter()
   const page = useRef(props.page)
-  const [rememberedExpanded] = useState(() => restoreExpanded(
-    projectMemory(readMemory(), props.page.project),
-    new Set(treePaths(props.page.tree).filter((path) => path.endsWith("/"))),
-  ))
-  const state = useRef<ExplorerState>({ model: null, expanded: rememberedExpanded ?? null })
-  const [mobile, setMobile] = useState(() => window.matchMedia("(max-width: 48rem)").matches)
+  const state = useRef<ExplorerState>({ model: null, expanded: null })
   const scale = uiScale(useSettings().settings)
-  const [rowScale, setRowScale] = useState(scale)
+  const [rows, setRows] = useState(() => ({ mobile, scale }))
   useLayoutEffect(() => { page.current = props.page }, [props.page])
+  useEffect(() => {
+    registerOpen(onReveal)
+    return () => registerOpen(null)
+  }, [onReveal, registerOpen])
+
   // saveState keeps expansion across an Explorer remount.
   const saveState = useCallback(() => {
     const model = state.current.model
@@ -83,29 +86,21 @@ export function FileTree(props: FileTreeProps) {
     }
     state.current.expanded = [...expanded]
   }, [])
-  // Pierre fixes row height at creation, so a font size change remounts it.
+  // Pierre fixes row height at creation. Snapshot expansion before remounting.
   useEffect(() => {
-    if (scale === rowScale) return
+    if (mobile === rows.mobile && scale === rows.scale) return
     saveState()
-    setRowScale(scale)
-  }, [rowScale, saveState, scale])
-  useEffect(() => {
-    const query = window.matchMedia("(max-width: 48rem)")
-    const update = () => {
-      saveState()
-      setMobile(query.matches)
-    }
-    query.addEventListener("change", update)
-    return () => query.removeEventListener("change", update)
-  }, [saveState])
+    setRows({ mobile, scale })
+  }, [mobile, rows, saveState, scale])
 
-  const itemHeight = treeRowHeight(mobile, rowScale)
-  return <Explorer {...props} key={`${mobile ? "mobile" : "desktop"}-${itemHeight}`} mobile={mobile}
-    itemHeight={itemHeight} filter={filter} state={state} />
+  const itemHeight = treeRowHeight(rows.mobile, rows.scale)
+  return <SidebarBody visible={props.visible}>
+    <Explorer {...props} key={`${rows.mobile ? "mobile" : "desktop"}-${itemHeight}`} mobile={rows.mobile}
+      itemHeight={itemHeight} filter={filter} state={state} />
+  </SidebarBody>
 }
 
-function Explorer({ gitStatus, hasData, onFindFile, onNavigate, onOpenProjects, onOpenWorktrees, onReveal, onDismiss, onShowHistory, page, registerOpen, mobile, itemHeight, state, filter }: FileTreeProps & {
-  mobile: boolean
+function Explorer({ gitStatus, hasData, onFindFile, onNavigate, onOpenProjects, onOpenWorktrees, onDismiss, onShowHistory, page, mobile, visible, itemHeight, state, filter }: Omit<FileTreeProps, "onReveal" | "registerOpen"> & {
   itemHeight: number
   filter: FilenameFilterState
   state: RefObject<ExplorerState>
@@ -116,7 +111,10 @@ function Explorer({ gitStatus, hasData, onFindFile, onNavigate, onOpenProjects, 
   const paths = useMemo(() => treePaths(visibleTree), [visibleTree])
   const directoryPaths = useMemo(() => treePaths(page.tree).filter((path) => path.endsWith("/")), [page.tree])
   const directories = useMemo(() => new Set(directoryPaths), [directoryPaths])
-  const expandedPaths = useRef(new Set(state.current.expanded ?? openDirectoryPaths(page.tree).map((path) => `${path}/`)))
+  const [initialExpanded] = useState(() => state.current.expanded
+    ?? restoreExpanded(projectMemory(readMemory(), page.project), directories)
+    ?? openDirectoryPaths(page.tree).map((path) => `${path}/`))
+  const expandedPaths = useRef(new Set(initialExpanded))
   const rememberedExpanded = useRef<readonly string[] | null>(null)
   const [hasExpanded, setHasExpanded] = useState(expandedPaths.current.size > 0)
   const previousPaths = useRef(paths)
@@ -161,7 +159,7 @@ function Explorer({ gitStatus, hasData, onFindFile, onNavigate, onOpenProjects, 
       },
     } : {}),
     paths,
-    initialExpandedPaths: state.current.expanded ?? openDirectoryPaths(page.tree),
+    initialExpandedPaths: initialExpanded,
     itemHeight,
     initialSelectedPaths: paths.includes(selectedFile) ? [selectedFile] : [],
     density: "compact",
@@ -203,10 +201,11 @@ function Explorer({ gitStatus, hasData, onFindFile, onNavigate, onOpenProjects, 
   // Only paths the tree shows carry a decoration; Source Control lists the rest.
   const shownPaths = useMemo(() => new Set(paths), [paths])
   useLayoutEffect(() => {
-    model.setGitStatus(gitStatus.filter((entry) => shownPaths.has(entry.path)))
-  }, [gitStatus, model, shownPaths])
+    if (visible) model.setGitStatus(gitStatus.filter((entry) => shownPaths.has(entry.path)))
+  }, [gitStatus, model, shownPaths, visible])
 
   useLayoutEffect(() => {
+    if (!visible) return
     syncing.current = true
     const changed = paths.length !== previousPaths.current.length
       || paths.some((path, index) => path !== previousPaths.current[index])
@@ -239,7 +238,7 @@ function Explorer({ gitStatus, hasData, onFindFile, onNavigate, onOpenProjects, 
     previousSelected.current = selectedFile
     syncing.current = false
     syncExpandedPaths()
-  }, [model, selectedFile, paths, state, syncExpandedPaths])
+  }, [model, selectedFile, paths, state, syncExpandedPaths, visible])
 
   useLayoutEffect(() => model.subscribe(() => {
     if (syncing.current) return
@@ -272,11 +271,6 @@ function Explorer({ gitStatus, hasData, onFindFile, onNavigate, onOpenProjects, 
       if (row instanceof HTMLElement) row.focus()
     })
   }
-
-  useEffect(() => {
-    registerOpen(onReveal)
-    return () => registerOpen(null)
-  }, [onReveal, registerOpen])
 
   // The filename filter row shows on demand; hiding it keeps the filter
   // applied, and the funnel's dot says so (decision 0145).

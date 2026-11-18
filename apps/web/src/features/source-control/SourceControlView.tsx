@@ -10,6 +10,7 @@ import { treeRowHeight } from "../../components/ui/tree-rows.ts"
 import { ViewHeader } from "../../components/ui/view-header.tsx"
 import { useSettings } from "../../settings/SettingsProvider.tsx"
 import { uiScale } from "../../settings/settings.ts"
+import { SidebarBody } from "../../workspace/SidebarBody.tsx"
 import { BranchesPane } from "./BranchesPane.tsx"
 import { isFiltered } from "./commit-filter.ts"
 import { CommitsPane } from "./CommitsPane.tsx"
@@ -51,25 +52,40 @@ interface SourceControlViewProps {
 
 const paneLabels: Record<PaneId, string> = { working: "Uncommitted", commits: "Commits", branches: "Branches" }
 
-// SourceControlView stacks three panes in a fixed order (decision 0040):
-// Uncommitted, Commits, then Branches. Empty panes start closed; the user's
-// choice wins. On desktop open panes split the height with sashes between
-// them; phones stack them and the view scrolls.
-export function SourceControlView({
-  active, allOnly, changes, commits, mobile, refs, review: routedReview, stack, working, workingPath,
-  onDismiss, onOpenReview,
-}: SourceControlViewProps) {
-  const layout = { ...useSourceControlPanes(), ...useSourceControlQuery() }
+export function SourceControlSidebarView({ review, ...props }: SourceControlViewProps) {
+  const panes = useSourceControlPanes()
+  const query = useSourceControlQuery()
   const commitFilter = useSourceControlFilter()
+  const scale = uiScale(useSettings().settings)
   const [commitSelection, setCommitSelection] = useState<Compare | null>(null)
   const [followed, setFollowed] = useState("")
-  const reviewKey = routedReview ? compareKey(routedReview) : ""
+  // Follow review routes even if another sidebar view is showing.
+  const reviewKey = review ? compareKey(review) : ""
   if (reviewKey !== followed) {
     setFollowed(reviewKey)
-    if (routedReview?.kind === "commit" || routedReview?.kind === "range") setCommitSelection(routedReview)
+    if (review?.kind === "commit" || review?.kind === "range") setCommitSelection(review)
   }
-  const scale = uiScale(useSettings().settings)
-  const itemHeight = treeRowHeight(mobile, scale)
+  return <SidebarBody visible={props.active}>
+    <SourceControlView {...props} panes={panes} query={query} commitFilter={commitFilter} commitSelection={commitSelection}
+      setCommitSelection={setCommitSelection} itemHeight={treeRowHeight(props.mobile, scale)} />
+  </SidebarBody>
+}
+
+interface SourceControlBodyProps extends Omit<SourceControlViewProps, "review"> {
+  panes: ReturnType<typeof useSourceControlPanes>
+  query: ReturnType<typeof useSourceControlQuery>
+  commitFilter: ReturnType<typeof useSourceControlFilter>
+  commitSelection: Compare | null
+  setCommitSelection(selection: Compare | null): void
+  itemHeight: number
+}
+
+// SourceControlView stacks Uncommitted, Commits, and Branches (decision 0040).
+export function SourceControlView({
+  active, allOnly, changes, commits, mobile, refs, stack, working, workingPath, onDismiss, onOpenReview,
+  panes: paneLayout, query, commitFilter, commitSelection, setCommitSelection, itemHeight,
+}: SourceControlBodyProps) {
+  const layout = { ...paneLayout, ...query }
   const [anyExpanded, setAnyExpanded] = useState(true)
   const [collapseRequest, setCollapseRequest] = useState<CollapseRequest | null>(null)
   const repository = (!changes.result || changes.result.repository) && (!stack.result || stack.result.repository)
@@ -142,7 +158,7 @@ export function SourceControlView({
         </span>
       ),
       // The filter field and Branch/All head the pane's body (decision 0129).
-      body: <CommitsPane commits={commits} filter={commitFilter} lanes={lanes} range={
+      body: <CommitsPane visible={active} commits={commits} filter={commitFilter} lanes={lanes} range={
         <SegmentedControl size="sm" className="source-control-range" aria-label="Commit range">
           <SegmentedItem pressed={!allOnly && layout.range === "branch"} disabled={allOnly}
             title={allOnly ? "HEAD is the base branch, so all history shows" : "Commits on this branch only"}

@@ -327,5 +327,9 @@ export function createSearchController({
     view.setHandlers(null)
   }
 
-  return { start, destroy, open }
+  const refreshIfStale = (): void => {
+    if (stale) reload()
+  }
+
+  return { start, destroy, open, refreshIfStale }
 }

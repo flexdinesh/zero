@@ -1,6 +1,6 @@
 import { Menu } from "@base-ui/react/menu"
 import { CheckIcon, ChevronDownIcon, ClipboardCopyIcon, EllipsisIcon, GitBranchIcon, XIcon } from "lucide-react"
-import { useLayoutEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react"
 
 import { FileIcon } from "../../components/FileIcon.tsx"
 import { Button } from "../../components/ui/button.tsx"
@@ -15,6 +15,7 @@ import type { Feedback, FeedbackThread } from "@zero/contracts"
 import { useClipboardCopy } from "../../lib/clipboard.ts"
 import { shareableOrigin } from "../../lib/shareable-origin.ts"
 import { useRovingRows } from "../../lib/use-roving-rows.ts"
+import { SidebarBody } from "../../workspace/SidebarBody.tsx"
 import { commitAge, commitDate } from "../source-control/compare.ts"
 import {
   activity, branchLabel, feedbackMarkdown, feedbackMeta, feedbackPrompt, filterChoices, groupByFile, isUnseen, matchesFilter,
@@ -31,6 +32,7 @@ interface FeedbackViewProps {
   branch: string
   view: FeedbackViewState
   mobile: boolean
+  visible: boolean
   onDismiss(): void
   onOpenThread(route: ThreadRoute): void
   navigate(href: string): void
@@ -108,18 +110,26 @@ function BranchPicker({ branch: checkout, view }: { branch: string; view: Feedba
   )
 }
 
-// FeedbackView is the Feedback activity (decision 0120): one branch's
-// threads grouped by file, filtered by status, with the prompt that sends
-// an agent to them. A thread opens where it was written; an outdated one
-// opens in place with the text it was about.
-export function FeedbackView({ branch, mobile, navigate, onDismiss, onOpenThread, project, view }: FeedbackViewProps) {
-  const { actions, feedback } = view.session
-  const [confirmation, setConfirmation] = useState<{ actions: FeedbackActions; busy: boolean; error: string } | null>(null)
+export function FeedbackSidebarView(props: FeedbackViewProps) {
+  const { actions } = props.view.session
+  // A completion belongs to the session that started it, even if the body
+  // is hidden and is still displaying that session's previous snapshot.
   const current = useRef<FeedbackActions | null>(null)
   useLayoutEffect(() => {
     current.current = actions
     return () => { current.current = null }
   }, [actions])
+  const isCurrent = useCallback((request: FeedbackActions) => current.current === request, [])
+  return <SidebarBody visible={props.visible}><FeedbackView {...props} isCurrent={isCurrent} /></SidebarBody>
+}
+
+// A thread opens where it was written. An outdated thread opens in place
+// with the text it was about (decision 0120).
+export function FeedbackView({ branch, mobile, navigate, onDismiss, onOpenThread, project, view, visible, isCurrent }: FeedbackViewProps & {
+  isCurrent(actions: FeedbackActions): boolean
+}) {
+  const { actions, feedback } = view.session
+  const [confirmation, setConfirmation] = useState<{ actions: FeedbackActions; busy: boolean; error: string } | null>(null)
   const markdown = useClipboardCopy()
   const shownThreads = useMemo(() => (feedback?.threads ?? [])
     .filter((thread) => matchesFilter(thread, view.filter) && (!view.path || thread.location.path === view.path)), [feedback, view.filter, view.path])
@@ -127,11 +137,11 @@ export function FeedbackView({ branch, mobile, navigate, onDismiss, onOpenThread
     if (!confirmation || confirmation.actions !== actions || confirmation.busy || !feedback?.id) return
     setConfirmation({ actions, busy: true, error: "" })
     actions.removeFeedback().then(() => {
-      if (current.current !== actions) return
+      if (!isCurrent(actions)) return
       setConfirmation(null)
       view.show("")
     }, (error: unknown) => {
-      if (current.current === actions) setConfirmation({ actions, busy: false, error: error instanceof Error ? error.message : "Couldn't delete the feedback." })
+      if (isCurrent(actions)) setConfirmation({ actions, busy: false, error: error instanceof Error ? error.message : "Couldn't delete the feedback." })
     })
   }
   const hasThreads = (feedback?.threads.length ?? 0) > 0
@@ -193,7 +203,7 @@ export function FeedbackView({ branch, mobile, navigate, onDismiss, onOpenThread
             <IconButton size="xs" label="Show Every File" icon={<XIcon aria-hidden="true" />} onClick={view.clearPath} />
           </p>
         )}
-        <FeedbackBody view={view} threads={shownThreads} project={project} navigate={navigate} onOpenThread={(route) => {
+        <FeedbackBody view={view} threads={shownThreads} project={project} navigate={navigate} visible={visible} onOpenThread={(route) => {
           onOpenThread(route)
           if (mobile) onDismiss()
         }} />
@@ -204,13 +214,14 @@ export function FeedbackView({ branch, mobile, navigate, onDismiss, onOpenThread
 
 interface BodyProps {
   view: FeedbackViewState
+  visible: boolean
   threads: readonly FeedbackThread[]
   project: string
   navigate(href: string): void
   onOpenThread(route: ThreadRoute): void
 }
 
-function FeedbackBody({ navigate, onOpenThread, project, threads, view }: BodyProps) {
+function FeedbackBody({ navigate, onOpenThread, project, threads, view, visible }: BodyProps) {
   const { load, feedback } = view.session
   if (load.kind === "missing") {
     return (
@@ -241,7 +252,7 @@ function FeedbackBody({ navigate, onOpenThread, project, threads, view }: BodyPr
     {load.kind === "error" && <StatusMessage tone="error" role="alert" className="feedback-stale">{load.message}</StatusMessage>}
     {threads.length === 0
       ? <div className="feedback-note"><StatusMessage>{view.filter === "resolved" ? "No resolved threads." : view.filter === "awaiting" ? "Nothing awaits the agent." : "No open threads."}</StatusMessage></div>
-      : <ThreadRows key={feedback.id} feedback={feedback} threads={threads} view={view} navigate={navigate} onOpenThread={onOpenThread} />}
+      : <ThreadRows key={feedback.id} feedback={feedback} threads={threads} view={view} visible={visible} navigate={navigate} onOpenThread={onOpenThread} />}
   </>
 }
 
@@ -249,11 +260,12 @@ interface RowsProps {
   feedback: Feedback
   threads: readonly FeedbackThread[]
   view: FeedbackViewState
+  visible: boolean
   navigate(href: string): void
   onOpenThread(route: ThreadRoute): void
 }
 
-function ThreadRows({ feedback, navigate, onOpenThread, threads, view }: RowsProps) {
+function ThreadRows({ feedback, navigate, onOpenThread, threads, view, visible }: RowsProps) {
   const groups = useMemo(() => groupByFile(threads), [threads])
   const ordered = useMemo(() => groups.flatMap((group) => group.threads), [groups])
   const [expanded, setExpanded] = useState<number | null>(null)
@@ -304,7 +316,7 @@ function ThreadRows({ feedback, navigate, onOpenThread, threads, view }: RowsPro
               </ListRow>,
               outdated && expanded === thread.number && (
                 <div key={`${thread.number}-thread`} className="feedback-inline">
-                  <FeedbackThreadZone thread={thread} feedbackId={feedback.id} project={feedback.project} actions={view.session.actions} navigate={navigate}
+                  <FeedbackThreadZone thread={thread} feedbackId={feedback.id} project={feedback.project} actions={view.session.actions} navigate={navigate} visible={visible}
                     before={thread.anchor.text && thread.anchor.text.length > 0
                       ? <pre className="feedback-original" aria-label="The code this thread was about">{thread.anchor.text.join("\n")}</pre>
                       : undefined} />

@@ -30,9 +30,10 @@ import {
   type PageLoadResult,
 } from "./api/page-data.ts"
 import type { SearchMatch } from "./features/search/search-engine.ts"
-import { SearchView } from "./features/search/SearchView.tsx"
+import { SearchSidebarView } from "./features/search/SearchView.tsx"
 import { Sidebar, sidebarViewName } from "./workspace/Sidebar.tsx"
-import { SourceControlView } from "./features/source-control/SourceControlView.tsx"
+import { SidebarBody } from "./workspace/SidebarBody.tsx"
+import { SourceControlSidebarView } from "./features/source-control/SourceControlView.tsx"
 import { ReviewDocument, type HunkStep, type ReviewStatus, type RevealRequest } from "./features/source-control/ReviewDocument.tsx"
 import { DiffToolbar } from "./features/source-control/DiffToolbar.tsx"
 import { countedLines } from "./features/source-control/diff-stats.ts"
@@ -119,7 +120,7 @@ import { stepPrompt } from "./features/walkthrough/agent-instructions.ts"
 import { shareableOrigin } from "./lib/shareable-origin.ts"
 import type { SourceAnnotation } from "./features/documents/SourceDocument.tsx"
 import type { ReviewAnnotation } from "./features/source-control/ReviewDocument.tsx"
-import { FeedbackView } from "./features/feedback/FeedbackView.tsx"
+import { FeedbackSidebarView } from "./features/feedback/FeedbackView.tsx"
 import { routeFeedback, type ThreadRoute } from "./features/feedback/feedback-model.ts"
 import { useFeedbackView } from "./features/feedback/use-feedback-view.ts"
 import { useReviewFeedback } from "./features/feedback/use-review-feedback.tsx"
@@ -302,7 +303,7 @@ export function App({ project }: AppProps) {
   // fb=<id> reveals the Feedback view at that feedback.
   const searchFeedback = useSearch({ strict: false, select: (search) => routeFeedback(search.fb) ?? "" })
   const feedbackView = useFeedbackView({
-    project, version: feedbackVersion, shown: !sidebar.hidden && sidebar.view === "feedback", onChanged: rereadFeedback,
+    project, version: feedbackVersion, shown: sidebar.visibleView === "feedback", onChanged: rereadFeedback,
   })
   const { show: showFeedback } = feedbackView
   const revealedFeedback = useRef("")
@@ -318,7 +319,7 @@ export function App({ project }: AppProps) {
   }, [revealSidebar, showFeedback])
   const revealExplorer = useCallback(() => revealSidebar("explorer"), [revealSidebar])
   const revealSearch = useCallback(() => revealSidebar("search"), [revealSidebar])
-  const sourceControlActive = !sidebar.hidden && sidebar.view === "source-control"
+  const sourceControlActive = sidebar.visibleView === "source-control"
   // A live review rereads its compare like an open Source Control view.
   const reviewLive = reviewCompare !== null && isLiveCompare(reviewCompare)
   const changes = useChanges(project, sourceControlActive || reviewCompare?.kind === "working" || welcomeRoute)
@@ -411,13 +412,17 @@ export function App({ project }: AppProps) {
   const leaveStep = useCallback(() => leaveWalkthrough.current(), [])
   const walkthroughs = useWalkthroughSession({
     project, routeId: searchWalkthrough, routeStep: searchStep, go: goStep, leave: leaveStep,
-    viewShown: !sidebar.hidden && sidebar.view === "walkthroughs",
   })
   // Present mode hides the workspace chrome around the followed walkthrough;
   // Escape, before anything else, ends it.
   const [presentRequested, setPresentRequested] = useState(false)
   const presenting = presentRequested && walkthroughs.walkthrough !== null
-  const { goTo: goToStep, position: stepPosition } = walkthroughs
+  const visibleSidebarView = presenting && !mobileSidebar ? null : sidebar.visibleView
+  const walkthroughsShown = visibleSidebarView === "walkthroughs"
+  const { goTo: goToStep, position: stepPosition, markListSeen } = walkthroughs
+  useEffect(() => {
+    if (walkthroughsShown) markListSeen()
+  }, [markListSeen, walkthroughsShown])
   const present = useCallback(() => {
     if (!walkthroughs.walkthrough) return
     setPresentRequested(true)
@@ -684,7 +689,8 @@ export function App({ project }: AppProps) {
   }, [lineTarget, lineTargetAt, navigateToDocument])
   // Live updates reread what each change touches (decision 0050).
   const liveDocument = routedPage?.hasFile && !routedPage.at ? routedPage.selected : ""
-  const searchShown = !sidebar.hidden && sidebar.view === "search"
+  const searchShown = visibleSidebarView === "search"
+  const leaveSearch = useCallback(() => main.current?.focus({ preventScroll: true }), [main])
   const { refresh: refreshChanges } = changes
   const { refresh: refreshCommits } = commits
   const { refresh: refreshStack } = stack
@@ -889,7 +895,8 @@ export function App({ project }: AppProps) {
     <NavigationProvider project={project} path={page.selected} textFile={page.hasFile && !page.binary && !page.at}
       languageServers={languageServers} source={showSource && documentMode === "source"} supported={page.navigationSupported}
       mode={documentMode} isLoading={isLoading} caret={caret} openLocation={openLocation} registerCommand={registerNavigation}>
-    <SearchProvider documentPane={main} openMatch={openSearchMatch} project={project} registerCommands={registerSearch} reveal={revealSearch}>
+    <SearchProvider documentPane={main} openMatch={openSearchMatch} project={project} registerCommands={registerSearch} reveal={revealSearch}
+      visible={searchShown}>
       <div className={`navigation-progress${isLoading ? " active" : ""}`} aria-hidden="true" />
       <div className="visually-hidden" role="status" aria-live="polite">
         {isLoading ? "Loading document…" : documentTitle ? `${documentTitle} loaded.` : ""}
@@ -902,6 +909,8 @@ export function App({ project }: AppProps) {
           explorer={<FileTree
             gitStatus={gitStatus}
             hasData={hasData}
+            mobile={mobileSidebar}
+            visible={visibleSidebarView === "explorer"}
             onDismiss={sidebar.dismiss}
             onNavigate={navigateToDocument}
             onFindFile={findFile}
@@ -912,16 +921,16 @@ export function App({ project }: AppProps) {
             page={page}
             registerOpen={registerFiles}
           />}
-          search={<SearchView mobile={sidebar.mobile} onDismiss={sidebar.dismiss}
-            onLeave={() => main.current?.focus({ preventScroll: true })} />}
+          search={<SearchSidebarView mobile={mobileSidebar} onDismiss={sidebar.dismiss} onLeave={leaveSearch} visible={searchShown} />}
           unseenWalkthroughs={walkthroughs.unseen}
           openFeedbackThreads={feedbackView.openThreadCount}
-          feedback={<FeedbackView project={project} branch={page.branch} view={feedbackView} mobile={sidebar.mobile}
-            onDismiss={sidebar.dismiss} onOpenThread={openThread} navigate={navigateToHref} />}
-          walkthroughs={<WalkthroughsView project={project} session={walkthroughs} context={compareContext} mobile={sidebar.mobile}
-            shown={!sidebar.hidden && sidebar.view === "walkthroughs"} onPresent={present}
-            onDismiss={sidebar.dismiss} />}
-          sourceControl={<SourceControlView active={sourceControlActive && !presenting} changes={changes} commits={commits} stack={stack} refs={refs}
+          feedback={<FeedbackSidebarView project={project} branch={page.branch} view={feedbackView} mobile={mobileSidebar}
+            visible={visibleSidebarView === "feedback"} onDismiss={sidebar.dismiss} onOpenThread={openThread} navigate={navigateToHref} />}
+          walkthroughs={<SidebarBody visible={walkthroughsShown}>
+            <WalkthroughsView project={project} session={walkthroughs} context={compareContext} mobile={mobileSidebar}
+              shown={walkthroughsShown} onPresent={present} onDismiss={sidebar.dismiss} />
+          </SidebarBody>}
+          sourceControl={<SourceControlSidebarView active={visibleSidebarView === "source-control"} changes={changes} commits={commits} stack={stack} refs={refs}
             working={workingData} workingPath={reviewCompare?.kind === "working" ? currentFile : ""}
             review={reviewCompare} allOnly={allOnly} mobile={sidebar.mobile}
             onDismiss={sidebar.dismiss} onOpenReview={openReview} />}

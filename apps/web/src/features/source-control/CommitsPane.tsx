@@ -37,6 +37,7 @@ interface CommitsPaneProps {
   // allOnly is set when HEAD is the base branch: the list is all history.
   allOnly: boolean
   mobile: boolean
+  visible: boolean
   onSelect(compare: Compare): void
   // onOpen opens a compare's review, at path when given; focusDocument moves
   // focus to it.
@@ -51,7 +52,7 @@ interface CommitsPaneProps {
 // narrows a range. With a path filter, opening a commit opens its review at
 // that file. The filter field and Branch/All head the pane (decision 0129).
 export function CommitsPane({
-  allOnly, chips, commits, filter, lanes, mobile, range, selection, onOpen, onSelect, onShowAll,
+  allOnly, chips, commits, filter, lanes, mobile, range, selection, visible, onOpen, onSelect, onShowAll,
 }: CommitsPaneProps) {
   const { error, files, loadFiles, loadMore, loadingMore, moreError, refresh, result } = commits
   // at is the file a path-filtered list opens reviews at.
@@ -59,10 +60,16 @@ export function CommitsPane({
   const filterInput = useRef<HTMLInputElement>(null)
   const { focusPending, focused } = filter
   useEffect(() => {
-    if (!focusPending || !filterInput.current) return
-    filterInput.current.focus()
-    focused()
-  }, [focusPending, focused])
+    if (!visible || !focusPending) return
+    // WebKit can finish restoring native dialog focus after the view's commit.
+    const frame = requestAnimationFrame(() => {
+      const field = filterInput.current
+      if (!field) return
+      field.focus()
+      if (document.activeElement === field) focused()
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [focusPending, focused, visible])
   const list = useMemo(() => result?.commits ?? [], [result])
   const selected = useMemo(() => selectedHashes(list, selection), [list, selection])
   const container = useRef<HTMLDivElement>(null)
@@ -84,11 +91,11 @@ export function CommitsPane({
   const focusListOnLoad = useRef(false)
   const unfiltered = result !== null && !isFiltered(result)
   useEffect(() => {
-    if (!focusListOnLoad.current || !unfiltered || !tabKey) return
+    if (!visible || !focusListOnLoad.current || !unfiltered || !tabKey) return
     focusListOnLoad.current = false
     const row = container.current?.querySelector(`[data-row-key="${CSS.escape(tabKey)}"]`)
     if (row instanceof HTMLElement) row.focus()
-  }, [tabKey, unfiltered])
+  }, [tabKey, unfiltered, visible])
 
   function focusRow(hash: string) {
     setFocusedKey(hash)

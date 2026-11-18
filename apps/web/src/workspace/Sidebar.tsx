@@ -47,14 +47,14 @@ interface SidebarProps {
 }
 
 // Sidebar groups the VS Code activity bar and its views into one desktop
-// pane; mobile opens it as a modal drawer. All views
-// stay mounted so switching keeps tree, search, and change-list state.
+// pane; mobile opens it as a modal drawer. Each feature owns its body lifetime.
 export function Sidebar({ explorer, feedback, openFeedbackThreads, pendingChanges, search, sidebar, sourceControl, unseenWalkthroughs, walkthroughs }: SidebarProps) {
   const { drawer, hidden, mobile, view } = sidebar
   // Only the mobile drawer is a dialog; inline, the element is presentational.
   return (
     <DialogShell ref={drawer} variant="drawer" className="sidebar-drawer explorer-drawer" role={mobile ? undefined : "none"}
       aria-label={mobile ? viewNames[view] : undefined}
+      onClose={sidebar.syncDrawer}
       onClick={(event) => { if (event.target === drawer.current) sidebar.dismiss() }}>
       <nav className="activity-bar" aria-label="Views">
         {activities.map((activity) => {
@@ -66,7 +66,7 @@ export function Sidebar({ explorer, feedback, openFeedbackThreads, pendingChange
           const label = badge ? `${activity.label}, ${count.toLocaleString()} ${nouns}` : activity.label
           return (
             <IconButton key={activity.view} size="bar" className="activity-item" data-view={activity.view}
-              label={label} aria-pressed={!hidden && view === activity.view}
+              label={label} aria-pressed={sidebar.visibleView === activity.view}
               aria-keyshortcuts={activity.keys} title={activity.shortcut ? `${label} (${activity.shortcut})` : label}
               icon={<>
                 {activity.icon}
