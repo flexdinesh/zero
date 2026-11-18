@@ -17,7 +17,9 @@ including when the server answered with unchanged data.
   step count and update time match. Initial and manual reads expose loading;
   background reads retain displayed data without a loading transition. Errors
   remain visible, including with a cached empty list, and successful reads clear
-  errors. The existing walkthrough session remains the state owner.
+  errors. The existing walkthrough session remains the state owner. Relative-age
+  labels keep their five-second visible-page cadence through a clock local to
+  the visible populated list; unchanged response identity does not freeze them.
 - Navigation status polling calls the reader directly. Complete semantic
   equality retains unchanged status identity, including installation guidance,
   capabilities, memory and failure details. Request cancellation and identity

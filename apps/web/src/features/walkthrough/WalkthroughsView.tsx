@@ -2,7 +2,7 @@ import {
   ArrowLeftIcon, BookOpenIcon, CheckIcon, CopyIcon, FileClockIcon, FileCodeIcon, GitCompareArrowsIcon, PresentationIcon, RefreshCwIcon, RouteIcon, StickyNoteIcon,
   Trash2Icon, XIcon,
 } from "lucide-react"
-import { useMemo, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 
 import { Button } from "../../components/ui/button.tsx"
 import { IconButton } from "../../components/ui/icon-button.tsx"
@@ -24,6 +24,7 @@ interface WalkthroughsViewProps {
   session: WalkthroughSession
   context: CompareContext
   mobile: boolean
+  shown: boolean
   onDismiss(): void
   // onPresent follows the walkthrough with the workspace chrome hidden.
   onPresent(): void
@@ -43,7 +44,7 @@ function stepIcon(step: WalkthroughStep): ReactNode {
 // WalkthroughsView is the Walkthroughs activity (decision 0047): the
 // project's walkthroughs, newest first, then one walkthrough's steps.
 // Choosing a step opens its file or review with the narration in place.
-export function WalkthroughsView({ context, mobile, onDismiss, onPresent, project, session }: WalkthroughsViewProps) {
+export function WalkthroughsView({ context, mobile, onDismiss, onPresent, project, session, shown }: WalkthroughsViewProps) {
   const copy = <CopyInstructions project={project} />
   const close = mobile ? <IconButton label="Close walkthroughs" icon={<XIcon aria-hidden="true" />} onClick={onDismiss} /> : null
   if (!session.selectedId) {
@@ -54,7 +55,7 @@ export function WalkthroughsView({ context, mobile, onDismiss, onPresent, projec
           {copy}
           {close}
         </>} />
-        <WalkthroughList session={session} project={project} onOpened={mobile ? onDismiss : undefined} />
+        <WalkthroughList session={session} project={project} shown={shown} onOpened={mobile ? onDismiss : undefined} />
       </div>
     )
   }
@@ -100,12 +101,40 @@ interface ListProps {
   session: WalkthroughSession
   project: string
   onOpened: (() => void) | undefined
+  shown: boolean
 }
 
-function WalkthroughList({ session, project, onOpened }: ListProps) {
+// Relative ages advance independently of response identity. Only the visible
+// populated list owns this displayed clock; it never updates the workspace.
+function useListTime(active: boolean) {
+  const [now, setNow] = useState(Date.now)
+  useEffect(() => {
+    if (!active) return
+    let timer = 0
+    const update = () => setNow(Date.now())
+    const returned = () => {
+      window.clearInterval(timer)
+      if (document.visibilityState === "visible") {
+        update()
+        timer = window.setInterval(update, 5_000)
+      }
+    }
+    returned()
+    document.addEventListener("visibilitychange", returned)
+    window.addEventListener("focus", update)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener("visibilitychange", returned)
+      window.removeEventListener("focus", update)
+    }
+  }, [active])
+  return now
+}
+
+function WalkthroughList({ session, project, onOpened, shown }: ListProps) {
   const { error, refresh, result } = session.list
   const entries = useMemo(() => result ?? [], [result])
-  const now = useMemo(() => result ? Date.now() : 0, [result])
+  const now = useListTime(shown && entries.length > 0)
   const open = (index: number) => {
     const entry = entries[index]
     if (!entry) return

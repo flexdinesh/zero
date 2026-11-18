@@ -915,7 +915,8 @@ export function App({ project }: AppProps) {
           openFeedbackThreads={feedbackView.openThreadCount}
           feedback={<FeedbackView project={project} branch={page.branch} view={feedbackView} mobile={sidebar.mobile}
             onDismiss={sidebar.dismiss} onOpenThread={openThread} navigate={navigateToHref} />}
-          walkthroughs={<WalkthroughsView project={project} session={walkthroughs} context={compareContext} mobile={sidebar.mobile} onPresent={present}
+          walkthroughs={<WalkthroughsView project={project} session={walkthroughs} context={compareContext} mobile={sidebar.mobile}
+            shown={!sidebar.hidden && sidebar.view === "walkthroughs"} onPresent={present}
             onDismiss={sidebar.dismiss} />}
           sourceControl={<SourceControlView active={sourceControlActive && !presenting} changes={changes} commits={commits} stack={stack} refs={refs}
             working={workingData} workingPath={reviewCompare?.kind === "working" ? currentFile : ""}

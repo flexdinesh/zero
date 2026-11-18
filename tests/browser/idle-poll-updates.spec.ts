@@ -30,6 +30,25 @@ const provider = (page: Page) => page.getByTitle("Language server status", { exa
 const navigationPanel = (page: Page) => page.locator(".status-navigation-panel")
 const walkthroughView = (page: Page) => page.locator(".walkthroughs-view")
 
+test("unchanged walkthroughs keep relative ages current without losing row focus", async ({ page }) => {
+  const time = new Date("2026-11-18T00:00:00Z")
+  await page.clock.install({ time })
+  await page.route("**/api/walkthroughs?*", (route) => route.fulfill({ json: [summary("first", "First tour", time.toISOString())] }))
+  await page.goto(`/view?project=${rootParam}&path=navigation%2Fgreet.go`)
+  await page.getByRole("button", { name: /^Walkthroughs/ }).click()
+  const row = walkthroughs(page).getByRole("option", { name: /^First tour/ })
+  await expect(row).toContainText("just now")
+  await row.focus()
+  await pause(page)
+  await page.clock.fastForward(65_000)
+  await expect(row).toContainText("1 minute ago")
+  await expect(row).toBeFocused()
+  await page.getByRole("button", { name: "Explorer", exact: true }).click()
+  await page.clock.fastForward(65_000)
+  await page.getByRole("button", { name: /^Walkthroughs/ }).click()
+  await expect(row).toContainText("2 minutes ago")
+})
+
 test("status polls preserve the remembered caret for F12 and palette navigation", async ({ page }) => {
   let memory = 1_048_576
   const targets: { endpoint: string; path: string | null; column: string | null }[] = []
