@@ -471,15 +471,22 @@ function ReviewBody({
         timer = window.setTimeout(settle, pinWait(now, state))
         return
       }
+      // Resize/render callbacks can still be queued when this timer runs.
+      // Place the target from current geometry and refresh the virtual window
+      // before release cancels their pending correction, even at the same top.
+      placeTarget(true)
       end()
     }
-    const pin = () => {
-      clock.changedAt = performance.now()
+    const placeTarget = (refreshWindow: boolean) => {
       const top = place(true)?.top
       if (top !== undefined) {
         const reachable = Math.max(0, Math.min(top, root.scrollHeight - root.clientHeight))
-        if (Math.abs(root.scrollTop - reachable) > 1) scrollPane(root, reachable)
+        if (refreshWindow || Math.abs(root.scrollTop - reachable) > 1) scrollPane(root, reachable)
       }
+    }
+    const pin = () => {
+      clock.changedAt = performance.now()
+      placeTarget(false)
       settle()
     }
     const renderPin = createPinRender(pin, {
@@ -501,11 +508,12 @@ function ReviewBody({
       revealed.current.released = true
       release()
     }
-    // A press inside the content (selecting lines, toggling Viewed) keeps the
-    // pin; one on the pane itself is its native scrollbar, and the overlay
-    // scrollbar announces its own (decision 0140).
+    // Line selection and Viewed keep the pin. A fold press changes layout:
+    // release before the header can move between pointerdown and click.
+    // The pane itself is its native scrollbar; the overlay announces its own.
     const onInput = (event: Event) => {
-      if (event.type !== "pointerdown" || event.target === root) end()
+      const folding = event.target instanceof Element && event.target.closest(".review-file-toggle") !== null
+      if (event.type !== "pointerdown" || event.target === root || folding) end()
     }
     const onPress = () => end()
     pin()

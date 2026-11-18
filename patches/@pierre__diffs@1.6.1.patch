@@ -1,8 +1,20 @@
 diff --git a/dist/components/Virtualizer.js b/dist/components/Virtualizer.js
-index 4063b992bf7c4958c0d8a305977280ea9a3a7330..cb1f153ace06c0218cbb0df320e230b01569f111 100644
+index 4063b992bf7c4958c0d8a305977280ea9a3a7330..3db266d19e91e89621d96e2e51a87c737939cc34 100644
 --- a/dist/components/Virtualizer.js
 +++ b/dist/components/Virtualizer.js
-@@ -300,9 +300,10 @@ var Virtualizer = class Virtualizer {
+@@ -187,7 +187,10 @@ var Virtualizer = class Virtualizer {
+ 		this.scrollHeightDirty = true;
+ 	}
+ 	getOffsetInScrollContainer(element) {
+-		return this.getScrollTop() + getRelativeBoundingTop(element, this.getScrollContainerElement());
++		const top = getRelativeBoundingTop(element, this.getScrollContainerElement());
++		// Pair the DOM rectangle with its post-layout physical scroll position.
++		const scrollTop = this.root instanceof Document ? window.scrollY : this.root?.scrollTop ?? 0;
++		return scrollTop + top;
+ 	}
+ 	connect(container, instance) {
+ 		if (this.observers.has(container)) throw new Error("Virtualizer.connect: instance is already connected...");
+@@ -300,9 +303,10 @@ var Virtualizer = class Virtualizer {
  	}
  	getScrollAnchor(viewportHeight) {
  		const scrollContainer = this.getScrollContainerElement();
@@ -14,7 +26,7 @@ index 4063b992bf7c4958c0d8a305977280ea9a3a7330..cb1f153ace06c0218cbb0df320e230b0
  			const fileBottom = fileTop + fileElement.offsetHeight;
  			let fileOffset;
  			let fileTypeOffset;
-@@ -315,14 +316,24 @@ var Virtualizer = class Virtualizer {
+@@ -315,14 +319,24 @@ var Virtualizer = class Virtualizer {
  			}
  			let bestLineIndex;
  			let bestLineOffset;
@@ -47,12 +59,22 @@ index 4063b992bf7c4958c0d8a305977280ea9a3a7330..cb1f153ace06c0218cbb0df320e230b0
  			}
  			if (bestAnchor?.lineOffset != null && bestLineOffset == null) continue;
 diff --git a/dist/managers/InteractionManager.js b/dist/managers/InteractionManager.js
+index fbfc10efafa50a07a1b339f6e82baad84c4b70ee..c0b0dabe4d7a232541036c9944567d9c77c12c57 100644
 --- a/dist/managers/InteractionManager.js
 +++ b/dist/managers/InteractionManager.js
-@@ -6,0 +7,2 @@
+@@ -3,6 +3,8 @@ import { areSelectionsEqual } from "../utils/areSelectionsEqual.js";
+ import { areSelectionPointsEqual } from "../utils/areSelectionPointsEqual.js";
+ import { createGutterUtilityElement } from "../utils/createGutterUtilityElement.js";
+ import { hastToHtml } from "../utils/hastToHtml.js";
 +import { guardWebKitScrollDuringRebuild } from "../utils/guardWebKitScrollDuringRebuild.js";
 +import { isSafari } from "../utils/platform.js";
-@@ -581,1 +583,6 @@ showUtilityOnLine(line) {
+ import { isGutterUtilityPath } from "../utils/isGutterUtilityPath.js";
+ //#region src/managers/InteractionManager.ts
+ var InteractionManager = class {
+@@ -568,7 +570,12 @@ var InteractionManager = class {
+ 	showUtilityOnLine(line) {
+ 		if (this.gutterUtilityContainer == null) return;
+ 		this.gutterUtilityLine = line;
 -		line.numberElement.appendChild(this.gutterUtilityContainer);
 +		// Slot moves can transiently collapse WebKit's layout and clamp scroll.
 +		// Reuse the rebuild guard only when the utility actually changes cells.
@@ -60,3 +82,6 @@ diff --git a/dist/managers/InteractionManager.js b/dist/managers/InteractionMana
 +		const move = () => line.numberElement.appendChild(this.gutterUtilityContainer);
 +		if (isSafari()) guardWebKitScrollDuringRebuild(this.pre, move);
 +		else move();
+ 	}
+ 	hideUtility() {
+ 		this.gutterUtilityContainer?.remove();

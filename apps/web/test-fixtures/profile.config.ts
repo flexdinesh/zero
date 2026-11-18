@@ -8,6 +8,9 @@ import appConfig from "../vite.config.ts"
 // instruments components. Use the same boundaries on both sides of a change.
 const boundaries: ReadonlyMap<string, readonly string[]> = new Map([
   ["/src/App.tsx", ["App"]],
+  ["/src/features/navigation/NavigationProvider.tsx", ["NavigationProvider"]],
+  ["/src/features/navigation/NavigationStatusPanel.tsx", ["NavigationStatusPanel"]],
+  ["/src/workspace/StatusBar.tsx", ["StatusBar"]],
   ["/src/workspace/Sidebar.tsx", ["Sidebar"]],
   ["/src/features/search/SearchView.tsx", ["SearchView"]],
   ["/src/features/explorer/FileTree.tsx", ["FileTree"]],

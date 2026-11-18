@@ -1,5 +1,6 @@
 import { formatBytes } from "../lib/format-bytes.ts"
 import type { PageData } from "@zero/contracts"
+import type { ReactNode } from "react"
 import { projectUrl } from "../api/project-url.ts"
 import { useProcessMetrics } from "./process-metrics.ts"
 import { CheckIcon, CopyIcon, SearchIcon, SettingsIcon } from "lucide-react"
@@ -9,7 +10,6 @@ import { Button } from "../components/ui/button.tsx"
 import { IconButton } from "../components/ui/icon-button.tsx"
 import { lineRangeLabel, type LineRange } from "../lib/line-selection.ts"
 import { settingsShortcutLabel } from "../settings/SettingsDialog.tsx"
-import { NavigationStatusPanel, type NavigationStatusPanelProps } from "../features/navigation/NavigationStatusPanel.tsx"
 import type { DiffStats } from "../features/source-control/diff-stats.ts"
 import { DiffStatsText } from "../features/source-control/DiffStatsText.tsx"
 import type { DiffLineTarget } from "../features/source-control/diff-line-selection.ts"
@@ -35,7 +35,7 @@ interface StatusBarProps {
   // live is how the project is followed; null before the stream reports.
   live?: LiveStatus | null
   // navigation shows who answers code navigation for the open file.
-  navigation?: NavigationStatusPanelProps
+  navigation?: ReactNode
   page: PageData
   error: string
   onSearch(): void
@@ -128,7 +128,7 @@ export function StatusBar({ detail, diff, isLoading, error, lines, live, navigat
           {page.hasFile && lines && <span className="status-lines">{lineRangeLabel(lines)}</span>}
           {page.hasFile && detail && <span className="status-document-detail">{detail}</span>}
           {page.hasFile && <span className="status-file-size">{formatBytes(page.fileSize)}</span>}
-          {page.hasFile && navigation && <NavigationStatusPanel {...navigation} />}
+          {page.hasFile && navigation}
           {page.hasFile && page.documentType && (
             <span className="status-file-type">
               {page.binary && !page.documentType.previewKind ? "Binary" : page.documentType.label}

@@ -1,6 +1,30 @@
 import { formatBytes } from "../../lib/format-bytes.ts"
 import type { LanguageServerStatus, NavigationStatus } from "@zero/contracts"
 
+function sameStrings(left: readonly string[] | undefined, right: readonly string[] | undefined): boolean {
+  return left === right || (left !== undefined && right !== undefined && left.length === right.length && left.every((value, index) => value === right[index]))
+}
+
+// Compare the complete wire value: memory, capabilities and install advice
+// belong to the status panel even when command eligibility stays unchanged.
+export function sameNavigationStatus(left: NavigationStatus | null, right: NavigationStatus | null): boolean {
+  if (left === right) return true
+  if (!left || !right || left.supported !== right.supported || left.enabled !== right.enabled || left.eligible !== right.eligible || left.reason !== right.reason) return false
+  const a = left.server
+  const b = right.server
+  if (a === b) return true
+  if (!a || !b) return false
+  return a.name === b.name && a.language === b.language && a.state === b.state && a.message === b.message
+    && a.docs === b.docs && a.memory === b.memory && a.idleMinutes === b.idleMinutes
+    && (a.capabilities === b.capabilities || (a.capabilities !== null && b.capabilities !== null
+      && a.capabilities.definition === b.capabilities.definition && a.capabilities.references === b.capabilities.references))
+    && a.install.length === b.install.length && a.install.every((install, index) => {
+      const other = b.install[index]
+      return other !== undefined && install.label === other.label && install.command === other.command && install.docs === other.docs
+        && sameStrings(install.prerequisites, other.prerequisites)
+    })
+}
+
 // LANGUAGE_SERVER_HEADER opts a navigation request into language servers. A
 // header, not a query parameter, so other sites cannot start servers.
 export const LANGUAGE_SERVER_HEADER = "X-Zero-Language-Servers"

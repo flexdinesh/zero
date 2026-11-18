@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 import { fetchJSON } from "../../api/http.ts"
 import { isNavigationStatus, type NavigationStatus } from "@zero/contracts"
-import { LANGUAGE_SERVER_HEADER, navigationStatusQuery, pollsServer } from "./navigation-status.ts"
+import { LANGUAGE_SERVER_HEADER, navigationStatusQuery, pollsServer, sameNavigationStatus } from "./navigation-status.ts"
 
 const POLL_MS = 3_000
 
@@ -19,38 +19,45 @@ export interface NavigationStatusState {
 // It never starts servers; it polls only while one is starting or running.
 export function useNavigationStatus(project: string, path: string, textFile: boolean, languageServers: boolean): NavigationStatusState {
   const [status, setStatus] = useState<NavigationStatus | null>(null)
-  const [token, setToken] = useState({ value: 0, refresh: false })
-
-  useEffect(() => { setStatus(null) }, [project, path, textFile, languageServers])
-
-  useEffect(() => {
+  const controller = useRef<AbortController | null>(null)
+  const load = useCallback((refresh: boolean) => {
+    controller.current?.abort()
     if (!textFile || !path) {
       setStatus(null)
       return
     }
-    const controller = new AbortController()
+    const current = new AbortController()
+    controller.current = current
     const headers: Record<string, string> = languageServers ? { [LANGUAGE_SERVER_HEADER]: "on" } : {}
     // Any failure shows that availability could not be checked.
-    fetchJSON(`/api/navigation-status?${navigationStatusQuery(project, path, token.refresh)}`, { headers, signal: controller.signal },
+    fetchJSON(`/api/navigation-status?${navigationStatusQuery(project, path, refresh)}`, { headers, signal: current.signal },
       isNavigationStatus, () => "Couldn't check language server availability.")
       .then((body) => {
-        if (!controller.signal.aborted) setStatus(body)
+        if (!current.signal.aborted && controller.current === current) setStatus((previous) => sameNavigationStatus(previous, body) ? previous : body)
       }, () => {
-        if (!controller.signal.aborted) setStatus(null)
+        if (!current.signal.aborted && controller.current === current) setStatus(null)
       })
-    return () => controller.abort()
-  }, [languageServers, textFile, path, project, token])
+  }, [languageServers, textFile, path, project])
+
+  const check = useCallback(() => load(true), [load])
+  const refresh = useCallback(() => load(false), [load])
+  useEffect(() => {
+    setStatus(null)
+    refresh()
+    return () => {
+      controller.current?.abort()
+      controller.current = null
+    }
+  }, [refresh])
 
   const polling = pollsServer(status)
   useEffect(() => {
     if (!polling) return
     const timer = window.setInterval(() => {
-      if (!document.hidden) setToken((current) => ({ value: current.value + 1, refresh: false }))
+      if (!document.hidden) refresh()
     }, POLL_MS)
     return () => window.clearInterval(timer)
-  }, [polling])
+  }, [polling, refresh])
 
-  const check = useCallback(() => setToken((current) => ({ value: current.value + 1, refresh: true })), [])
-  const refresh = useCallback(() => setToken((current) => ({ value: current.value + 1, refresh: false })), [])
   return { status, check, refresh }
 }

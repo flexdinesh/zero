@@ -71,14 +71,11 @@ import { SettingsDialog, type OpenSettings } from "./settings/SettingsDialog.tsx
 import { ColorThemePicker } from "./workspace/ColorThemePicker.tsx"
 import { CommandPalette, type CommandPaletteOptions } from "./workspace/CommandPalette.tsx"
 import { QuickOpen, type QuickOpenOptions } from "./features/quick-open/QuickOpen.tsx"
-import { navigationEligibility, type NavigationKind } from "./features/navigation/code-navigation.ts"
+import type { NavigationKind } from "./features/navigation/code-navigation.ts"
 import type { CommandAction } from "./workspace/commands.ts"
-import { NavigationDialog } from "./features/navigation/NavigationDialog.tsx"
 import { ReportProblemDialog } from "./features/diagnostics/ReportProblemDialog.tsx"
-import type { SourceChanges, SourceNavigation } from "./features/documents/SourceDocument.tsx"
-import type { SourceTarget } from "./features/navigation/source-position.ts"
-import { useCodeNavigation } from "./features/navigation/use-code-navigation.ts"
-import { useNavigationStatus } from "./features/navigation/use-navigation-status.ts"
+import type { SourceChanges } from "./features/documents/SourceDocument.tsx"
+import { NavigationProvider, NavigationStatus, type NavigationCaret } from "./features/navigation/NavigationProvider.tsx"
 import { useSettings } from "./settings/SettingsProvider.tsx"
 import { uiScale } from "./settings/settings.ts"
 import { treeRowHeight } from "./components/ui/tree-rows.ts"
@@ -272,6 +269,9 @@ export function App({ project }: AppProps) {
   const reportProblem = useCallback(() => openReport.current(), [])
   useDesktopReportProblem(reportProblem)
   const runNavigation = useRef<(kind: NavigationKind) => void>(() => {})
+  const registerNavigation = useCallback((command: ((kind: NavigationKind) => void) | null) => {
+    runNavigation.current = command ?? (() => {})
+  }, [])
   const walkthroughCommands = useRef({ move: (_direction: 1 | -1) => {}, close: () => {}, present: () => {} })
   const openWelcomeCommand = useRef(() => {})
   const fileHistoryCommand = useRef(() => {})
@@ -656,7 +656,7 @@ export function App({ project }: AppProps) {
   })
 
   // The name last clicked in Source, per file, for F12 and the palette.
-  const caret = useRef<{ path: string; target: SourceTarget } | null>(null)
+  const caret = useRef<NavigationCaret | null>(null)
   const openLocation = useCallback((location: NavigationLocation) => {
     caret.current = { path: location.path, target: { position: { line: location.line, column: location.column }, word: null, text: "" } }
     prepareDocumentNavigation()
@@ -708,36 +708,6 @@ export function App({ project }: AppProps) {
   usePresence()
   const notificationStatus = useNotificationSync(project, settings)
   const languageServers = settings.languageServers === "on"
-  // Snapshots do not navigate: language servers see the working tree.
-  const navigationStatus = useNavigationStatus(project, page.selected, page.hasFile && !page.binary && !page.at, languageServers)
-  const codeNavigation = useCodeNavigation(project, languageServers, openLocation, navigationStatus.refresh)
-  const { request: requestNavigation, explain: explainNavigation, close: closeNavigation } = codeNavigation
-  const openNavigationResult = useCallback((location: NavigationLocation) => {
-    closeNavigation()
-    openLocation(location)
-  }, [closeNavigation, openLocation])
-  const navigationReason = navigationEligibility(showSource && documentMode === "source", page.navigationSupported, languageServers, navigationStatus.status)
-  const navigable = navigationReason === ""
-  const sourceNavigation = useMemo((): SourceNavigation | undefined => navigable ? {
-    onPoint(target) {
-      caret.current = { path: page.selected, target }
-    },
-    onNavigate(kind, target) {
-      if (target) caret.current = { path: page.selected, target }
-      const remembered = caret.current?.path === page.selected ? caret.current.target : null
-      if (remembered) requestNavigation(kind, page.selected, remembered)
-      else explainNavigation(kind, "Click a name in the code first, then try again.")
-    },
-  } : undefined, [explainNavigation, navigable, page.selected, requestNavigation])
-  // The palette runs navigation against the current document.
-  useLayoutEffect(() => {
-    runNavigation.current = (kind) => {
-      if (sourceNavigation) sourceNavigation.onNavigate(kind, null)
-      else explainNavigation(kind, navigationReason)
-    }
-  }, [explainNavigation, navigationReason, sourceNavigation])
-  useEffect(() => { closeNavigation() }, [closeNavigation, page.selected, documentMode, languageServers])
-  useEffect(() => { if (isLoading) closeNavigation() }, [closeNavigation, isLoading])
   // Source marks the open file's uncommitted changes; a mark opens the
   // Uncommitted review at its first line (decision 0115).
   const changeMarkers = useChangeMarkers(project, page, changes.byPath.get(page.selected), gitVersion)
@@ -913,6 +883,9 @@ export function App({ project }: AppProps) {
   }, [windowTitle])
 
   return (
+    <NavigationProvider project={project} path={page.selected} textFile={page.hasFile && !page.binary && !page.at}
+      languageServers={languageServers} source={showSource && documentMode === "source"} supported={page.navigationSupported}
+      mode={documentMode} isLoading={isLoading} caret={caret} openLocation={openLocation} registerCommand={registerNavigation}>
     <SearchProvider documentPane={main} openMatch={openSearchMatch} project={project} registerCommands={registerSearch} reveal={revealSearch}>
       <div className={`navigation-progress${isLoading ? " active" : ""}`} aria-hidden="true" />
       <div className="visually-hidden" role="status" aria-live="polite">
@@ -942,7 +915,8 @@ export function App({ project }: AppProps) {
           openFeedbackThreads={feedbackView.openThreadCount}
           feedback={<FeedbackView project={project} branch={page.branch} view={feedbackView} mobile={sidebar.mobile}
             onDismiss={sidebar.dismiss} onOpenThread={openThread} navigate={navigateToHref} />}
-          walkthroughs={<WalkthroughsView project={project} session={walkthroughs} context={compareContext} mobile={sidebar.mobile} onPresent={present}
+          walkthroughs={<WalkthroughsView project={project} session={walkthroughs} context={compareContext} mobile={sidebar.mobile}
+            shown={!sidebar.hidden && sidebar.view === "walkthroughs"} onPresent={present}
             onDismiss={sidebar.dismiss} />}
           sourceControl={<SourceControlView active={sourceControlActive && !presenting} changes={changes} commits={commits} stack={stack} refs={refs}
             working={workingData} workingPath={reviewCompare?.kind === "working" ? currentFile : ""}
@@ -1027,7 +1001,6 @@ export function App({ project }: AppProps) {
             onLeaveProject={leaveProject}
             page={page}
             retry={() => { void router.invalidate() }}
-            sourceNavigation={sourceNavigation}
             view={view}
           />
           {shownRail && shownReview && !sidebar.mobile && (
@@ -1049,11 +1022,7 @@ export function App({ project }: AppProps) {
           ? `${image.width} × ${image.height} · ${image.percent}%`
           : undefined}
         lines={selectedLines}
-        navigation={page.hasFile && !page.binary ? {
-          status: navigationStatus.status,
-          onCheck: navigationStatus.check,
-          onOpenSetting: () => openSettings.current("languageServers"),
-        } : undefined}
+        navigation={page.hasFile && !page.binary ? <NavigationStatus onOpenSetting={() => openSettings.current("languageServers")} /> : undefined}
         onSearch={() => openSearch.current()}
         onSettings={() => openSettings.current()}
         onReport={reportProblem}
@@ -1067,8 +1036,8 @@ export function App({ project }: AppProps) {
       <ColorThemePicker registerOpen={registerColorTheme} />
       <RecentLocations log={historyLog} project={project} registerOpen={registerRecent} onOpen={navigateToHref} />
       <ReportProblemDialog registerOpen={registerReport} />
-      <NavigationDialog panel={codeNavigation.panel} onClose={closeNavigation} onOpen={openNavigationResult} />
       <OverlayScrollbars />
     </SearchProvider>
+    </NavigationProvider>
   )
 }
