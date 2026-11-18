@@ -21,7 +21,8 @@ ships in the product.
 
 Captured 2026-11-18 with Chromium 153.0.8010.12, Linux amd64/Debian 12, a
 1440×900 viewport, and the repository's 2 CPU/4 GiB container limits. Baseline
-runtime matches all 291 frontend source files at `174c647f`; candidate runtime
+runtime matches all 291 production frontend source inputs in its snapshot at
+`174c647f`; candidate runtime
 is `ca662755`. Later commits add behavior tests and this report only.
 
 ## Results
