@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test"
 
 import type { LanguageServerState, NavigationStatus } from "../../packages/contracts/src/navigation.ts"
-import type { WalkthroughSummary } from "../../packages/contracts/src/walkthroughs.ts"
+import type { Walkthrough, WalkthroughSummary } from "../../packages/contracts/src/walkthroughs.ts"
 import { fixtureRoot, projectParam, rootParam } from "./fixture-root.ts"
 
 function gate() {
@@ -29,6 +29,78 @@ const walkthroughs = (page: Page) => page.getByRole("listbox", { name: "Walkthro
 const provider = (page: Page) => page.getByTitle("Language server status", { exact: true })
 const navigationPanel = (page: Page) => page.locator(".status-navigation-panel")
 const walkthroughView = (page: Page) => page.locator(".walkthroughs-view")
+
+test("status polls preserve the remembered caret for F12 and palette navigation", async ({ page }) => {
+  let memory = 1_048_576
+  const targets: { endpoint: string; path: string | null; column: string | null }[] = []
+  await page.clock.install()
+  await page.route("**/api/navigation-status?*", (route) => route.fulfill({ json: navigation("ready", memory) }))
+  for (const endpoint of ["definition", "references"]) await page.route(`**/api/${endpoint}?*`, (route) => {
+    const query = new URL(route.request().url()).searchParams
+    targets.push({ endpoint, path: query.get("path"), column: query.get("column") })
+    return route.fulfill({ json: { symbol: "Format", locations: [], server: "gopls", filtered: 0, truncated: false } })
+  })
+  await page.goto(`/view?project=${rootParam}&path=navigation%2Fgreet.go`)
+  const source = page.getByRole("textbox", { name: "Go source" })
+  await source.locator('[data-line="6"] .source-document-line-content').getByText("Format", { exact: true }).click()
+  await pause(page)
+  memory = 2_097_152
+  await poll(page, "/api/navigation-status", 3_000)
+  await source.press("F12")
+  await expect(page.getByRole("dialog").getByRole("status")).toContainText("Format")
+  await page.keyboard.press("Escape")
+  await expect(source).toBeFocused()
+  await poll(page, "/api/navigation-status", 3_000)
+  await page.keyboard.press("ControlOrMeta+Shift+P")
+  const palette = page.getByRole("dialog", { name: "Command palette" })
+  await palette.getByRole("combobox", { name: "Command" }).fill("Find All References")
+  await palette.getByRole("option", { name: "Navigation: Find All References, Shift+F12", exact: true }).click()
+  await expect(page.getByRole("dialog").getByRole("status")).toContainText("Format")
+  expect(targets.map((target) => target.endpoint)).toEqual(["definition", "references"])
+  expect(targets[0]?.path).toBe("navigation/greet.go")
+  expect(targets[1]?.path).toBe(targets[0]?.path)
+  expect(targets[1]?.column).toBe(targets[0]?.column)
+  expect(Number(targets[0]?.column)).toBeGreaterThan(8)
+})
+
+for (const stale of ["success", "error"]) {
+  test(`a changed walkthrough version replaces detail and ignores superseded ${stale}`, async ({ page }) => {
+    let revision = 1
+    const pending = gate()
+    const handled = gate()
+    const updatedAt = (value: number) => `2026-11-18T00:0${value}:00Z`
+    await page.clock.install()
+    await page.route("**/api/walkthroughs?*", (route) => route.fulfill({ json: [summary("first", `Version ${revision}`, updatedAt(revision))] }))
+    await page.route("**/api/walkthrough?*", async (route) => {
+      const requestedRevision = revision
+      if (requestedRevision === 2) await pending.promise
+      const detail: Walkthrough = { id: "first", project: fixtureRoot, title: `Version ${requestedRevision}`,
+        summaryHTML: "<p>A versioned tour</p>", steps: [{ title: "Note", bodyHTML: "<p>A note</p>" }],
+        createdAt: updatedAt(1), updatedAt: updatedAt(requestedRevision) }
+      await route.fulfill(requestedRevision === 2 && stale === "error"
+        ? { status: 503, json: { error: "obsolete failure" } } : { json: detail })
+      if (requestedRevision === 2) handled.release()
+    })
+    try {
+      await page.goto(`/view?project=${rootParam}&wt=first`)
+      await expect(page.getByRole("heading", { level: 1, name: "Version 1", exact: true })).toBeVisible()
+      await pause(page)
+      revision = 2
+      const requested = page.waitForRequest("**/api/walkthrough?*")
+      await poll(page, "/api/walkthroughs", 5_000)
+      const old = await requested
+      const aborted = page.waitForEvent("requestfailed", { predicate: (request) => request === old })
+      revision = 3
+      await poll(page, "/api/walkthroughs", 5_000)
+      await aborted
+      await expect(page.getByRole("heading", { level: 1, name: "Version 3", exact: true })).toBeVisible()
+    } finally { pending.release() }
+    await handled.promise
+    await page.clock.runFor(50)
+    await expect(page.getByRole("heading", { level: 1, name: "Version 3", exact: true })).toBeVisible()
+    await expect(page.getByText("obsolete failure", { exact: false })).toHaveCount(0)
+  })
+}
 
 async function pause(page: Page) {
   await page.clock.pauseAt(new Date(await page.evaluate(() => Date.now()) + 100))
