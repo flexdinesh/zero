@@ -2,7 +2,7 @@
 
 Walkthrough summaries retain semantic result identity. Navigation polling and
 dialog state live below App, with independent Source command and detailed
-status subscriptions. See [decision 0161](decisions/0161-coherent-background-polls.md).
+status subscriptions. See [decision 0162](decisions/0162-coherent-background-polls.md).
 
 ## Repeat the capture
 
@@ -175,7 +175,7 @@ current DOM rectangles with the post-layout physical scroll offset. Cached
 virtual-window calculations remain. Independent review supported this change;
 22 focused cases passed in each engine (`55c50a89`, `1c5bbdda`). The contract
 test does not alone establish the cause of every earlier blank-row failure.
-See [decision 0162](decisions/0162-review-placement-uses-live-geometry.md).
+See [decision 0163](decisions/0163-review-placement-uses-live-geometry.md).
 
 The complete committed WebKit group passed all 230 cases at the final runtime
 (`82c04654`, 14.9 minutes). The subsequent final capture above used that same

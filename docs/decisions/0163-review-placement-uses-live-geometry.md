@@ -1,4 +1,4 @@
-# 0162: Review placement uses live geometry
+# 0163: Review placement uses live geometry
 
 - Status: Accepted
 - Date: 2026-11-18

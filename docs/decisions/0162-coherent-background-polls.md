@@ -1,4 +1,4 @@
-# 0161: Coherent background polls and navigation ownership
+# 0162: Coherent background polls and navigation ownership
 
 - Status: Accepted
 - Date: 2026-11-18
