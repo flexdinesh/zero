@@ -471,15 +471,22 @@ function ReviewBody({
         timer = window.setTimeout(settle, pinWait(now, state))
         return
       }
+      // Resize/render callbacks can still be queued when this timer runs.
+      // Place the target from current geometry and refresh the virtual window
+      // before release cancels their pending correction, even at the same top.
+      placeTarget(true)
       end()
     }
-    const pin = () => {
-      clock.changedAt = performance.now()
+    const placeTarget = (refreshWindow: boolean) => {
       const top = place(true)?.top
       if (top !== undefined) {
         const reachable = Math.max(0, Math.min(top, root.scrollHeight - root.clientHeight))
-        if (Math.abs(root.scrollTop - reachable) > 1) scrollPane(root, reachable)
+        if (refreshWindow || Math.abs(root.scrollTop - reachable) > 1) scrollPane(root, reachable)
       }
+    }
+    const pin = () => {
+      clock.changedAt = performance.now()
+      placeTarget(false)
       settle()
     }
     const renderPin = createPinRender(pin, {
