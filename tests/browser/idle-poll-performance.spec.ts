@@ -101,7 +101,7 @@ test("unchanged polling Source measurements @extended", async ({ browser, browse
         }
         await page.goto(`${live.origin}/view?project=${encodeURIComponent(live.root)}&path=poll-large.ts`)
         await expect(page.locator(".source-document-line")).toHaveCount(10_000)
-        await expect(page.locator(".source-document-line-content span").first()).toBeAttached()
+        await expect(page.locator(".source-document-line-content span").first()).toBeAttached({ timeout: 30_000 })
         await expect(page.getByText("LSP ready", { exact: true })).toBeVisible()
         await expect.poll(() => walkthroughs).toBeGreaterThan(0)
         await page.waitForTimeout(1000)

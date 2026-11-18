@@ -78,6 +78,11 @@ durations or treat these observations as exact-render-count tests.
 - The protocol and executed interactions match. A type-only contract import in
   the harness was changed to a root-resolvable relative path after baseline;
   its erased type annotation changes no measured behavior.
+- Concurrent full validation exposed a five-second highlighting warm-up timeout
+  in the new harness (21 other extended cases passed). The readiness wait now
+  uses the existing profiling harness's 30-second bound. Measurements still
+  begin only after highlighting is present; interval lengths and interactions
+  are unchanged. Both standalone captures above completed the original wait.
 - Existing workers, bounded caches, review virtualization and polling policies
   remain unchanged. No broad memoization was added.
 
