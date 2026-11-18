@@ -74,7 +74,8 @@ durations or treat these observations as exact-render-count tests.
   throttling or macOS web-view timings.
 - Host load was uncontrolled. Baseline host typecheck/dependency preparation
   overlapped part of its capture; candidate capture ran without another
-  validation workload from this task. Timing differences cannot all be assigned
+  validation workload from this task; another worktree's full validation was
+  active during final capture. Timing differences cannot all be assigned
   to the code change. React profiles independently establish the observed
   document-work isolation for these unchanged responses.
 - The protocol and executed interactions match. A type-only contract import in
@@ -122,3 +123,12 @@ An independent core review found no actionable issues. An optional follow-up
 review of the age clock could not execute because its tool host was missing;
 parent review and browser regressions cover that change. Superseded validation
 runs were cancelled explicitly while the age-preservation follow-up was added.
+
+The subsequent full run (`f802a2a4`) passed 12 groups, all 229 Chromium cases,
+all 22 extended cases, and the unchanged anchor case in both engines. WebKit
+passed 228 cases and failed the existing Mermaid expansion test. Its locator
+selected the first rendered diagram while lazy diagrams finished out of order:
+the trace shows a state diagram expanded before the first flowchart rendered.
+The test now selects the first stable source placeholder; all SVG, zoom and pan
+assertions remain. Three focused WebKit repetitions passed (`9bce975a`).
+No Mermaid product code changed.

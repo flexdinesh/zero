@@ -424,7 +424,8 @@ test("opens Mermaid files as diagrams with Source available", async ({ page }) =
 test("expands a Mermaid diagram with zoom and pan", async ({ page }) => {
   await page.goto(`${apiOrigin}/view?path=guides%2Fdiagrams.md`)
   await showPreview(page)
-  const diagram = page.locator("main .mermaid-diagram").first()
+  // Lazy diagrams can finish out of order; select the first source placeholder.
+  const diagram = page.locator("main .mermaid-lazy").first().locator(".mermaid-diagram")
   await expect(diagram.locator("svg.ondine")).toBeVisible()
   await diagram.getByRole("button", { name: "Expand diagram" }).click()
 
