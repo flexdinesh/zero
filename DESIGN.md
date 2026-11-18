@@ -304,7 +304,7 @@ Implementation authority (decision 0033): tokens in `apps/web/src/styles/tokens.
 ### Token tiers
 
 1. **Theme values**: `light-dark()` colors in Tailwind's `@theme`, resolved by the root `color-scheme`; named themes override them in `themes.css`.
-2. **Semantic roles**: state layers, selection, focus, field colors, type roles (`--text-badge` (10px), `--text-metadata`, `--text-label`, `--text-list` (14px sidebar rows), `--text-supporting`, `--text-code`, `--font-chrome` and `--text-chrome` for chrome labels), motion (`--duration-fast` 100ms, `--duration-base` 120ms, `--delay-progress` 150ms, `--duration-feedback` 1.6s), and z-index (`--z-behind`, `--z-raised`, `--z-sticky`, `--z-popover`, `--z-progress`, `--z-menu`). There are no radius tokens.
+2. **Semantic roles**: state layers, selection, focus, field colors, type roles (`--text-badge` (10px), `--text-metadata`, `--text-label`, `--text-list` (14px sidebar rows), `--text-supporting`, `--text-code`, `--text-source` (`--text-code` × `--code-content-scale`, code in tabs), `--font-chrome` and `--text-chrome` for chrome labels), motion (`--duration-fast` 100ms, `--duration-base` 120ms, `--delay-progress` 150ms, `--duration-feedback` 1.6s), and z-index (`--z-behind`, `--z-raised`, `--z-sticky`, `--z-popover`, `--z-progress`, `--z-menu`). There are no radius tokens.
 3. **Component tokens**: controls (`--control-xs` 20, `sm` 24, `md` 28, `lg` 32, `touch` 44px), icons (`--icon-xs` 12, `sm` 14, `md` 16, `lg` 18px), rows (`--row-list` 24, `--row-menu` 28, `--row-pick` 32, `--row-drawer` 32px; list 32 and pick/menu 44px on narrow screens), `--chrome-height`, `--field-height`, `--field-height-palette` (40px; 44px narrow), `--status-height`.
 
 Feature CSS references tokens only; stylelint rejects color literals, raw font sizes, z-indexes, durations, px above 2, and any `border-radius` other than `0`. Raw `button`, `input`, `select`, `textarea`, and `dialog` elements live only in `components/ui/`; oxlint rejects them elsewhere.
@@ -346,10 +346,10 @@ One base size drives the whole scale: the Font Size setting (default 13px, 10–
 | File names in lists: Explorer, Source Control changes and trees, review rail, Search files, Quick Open (`--text-file`) | 13px | Monospace, `text-primary` |
 | Supporting UI / search input / tables | 14px / 20px | Shared small text role |
 | Footer / metadata | 12px | Sans; footer line-height 1; counts, ages, folders beside names, stats, git status letters (600), kbd, toggle glyphs |
-| Source | 13px / 22px (= base) | Monospace, fixed line rows |
-| Preview code | 13px | Monospace; block line-height 1.6 |
+| Source and diffs (`--text-source`) | 13.5px / 22px | Monospace, fixed line rows; `--text-code` × 27/26, so it scales with Font Size |
+| Preview code (`--text-source`) | 13.5px | Monospace; block line-height 1.6 |
 
-The UI uses three steps, 12, 13, and 14px, and carries further hierarchy in weight and color; the activity badge's 10px is the one smaller size (decision 0122). Sidebar rows sit at 14px Inter, which matches the optical size of 13px monospace source and of 14px prose, so the sidebar never reads a step smaller than the document beside it; file names in those rows are 13px mono, the source size (decision 0130). Monospace content inside the UI (review file paths, navigation snippets, branch names, walkthrough targets) uses `--text-code`. Project name uses 12px and 600 weight. UI uses the `--text-*` roles; preview uses `--preview-*` roles.
+The UI uses three steps, 12, 13, and 14px, and carries further hierarchy in weight and color; the activity badge's 10px is the one smaller size (decision 0122). Sidebar rows sit at 14px Inter, which matches the optical size of monospace source and of 14px prose, so the sidebar never reads a step smaller than the document beside it; file names in those rows are 13px mono (decision 0130). Code in tabs sits a half step above, at 13.5px (`--text-source`, decision 0165); its 22px rows are Zed's comfortable 1.618 line-height ratio. Monospace content inside the UI (review file paths, navigation snippets, branch names, walkthrough targets) uses `--text-code`. Project name uses 12px and 600 weight. UI uses the `--text-*` roles; preview uses `--preview-*` roles.
 
 ## Layout
 

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test"
+import { expect, test, type Locator, type Page } from "@playwright/test"
 import { endsWith, rootParam } from "./fixture-root.ts"
 import { apiOrigin } from "./ports.ts"
 import { grantClipboard, readClipboard } from "./clipboard.ts"
@@ -180,6 +180,11 @@ test("command palette opens settings at the chosen setting", async ({ page }) =>
   await page.goto("/view?path=guides%2Fgetting-started.md")
   const source = page.getByRole("textbox", { name: "Markdown source" })
   await source.click()
+  const computedFontSize = (locator: Locator) => locator.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))
+  // Code in tabs reads a half step over UI monospace; file names stay at 13px (decision 0165).
+  await expect.poll(() => computedFontSize(source)).toBeCloseTo(13.5, 2)
+  const fileName = page.getByRole("complementary", { name: "Files" }).getByRole("treeitem", { name: "getting-started.md" })
+  await expect.poll(() => computedFontSize(fileName)).toBe(13)
 
   await page.keyboard.press("ControlOrMeta+Shift+P")
   const palette = page.getByRole("dialog", { name: "Command palette" })
@@ -234,7 +239,7 @@ test("command palette opens settings at the chosen setting", async ({ page }) =>
   await expect(item).not.toHaveAttribute("data-revealed")
 
   await page.keyboard.type("15")
-  await expect(source).toHaveCSS("font-size", "15px")
+  await expect.poll(() => computedFontSize(source)).toBeCloseTo(15 * 27 / 26, 2)
   await page.keyboard.press("Escape")
   await page.keyboard.press("ControlOrMeta+Shift+P")
   await page.keyboard.press("ArrowDown")

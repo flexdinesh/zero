@@ -79,7 +79,7 @@
 .diff-view {
   --diffs-font-family: var(--font-mono);
   --diffs-header-font-family: var(--font-sans);
-  --diffs-font-size: var(--text-code);
+  --diffs-font-size: var(--text-source);
   --diffs-line-height: var(--source-line-height);
   --diffs-addition-color-override: var(--color-success);
   --diffs-deletion-color-override: var(--color-destructive);

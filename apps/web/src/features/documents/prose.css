@@ -177,7 +177,7 @@ article .code-block > pre {
 article code,
 .preview-fence-chunk-text {
   font-family: var(--font-mono);
-  font-size: var(--text-code);
+  font-size: var(--text-source);
   font-variant-ligatures: none;
 }
 
