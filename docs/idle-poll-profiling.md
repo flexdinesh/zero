@@ -22,10 +22,10 @@ ships in the product.
 Captured 2026-11-18 with Chromium 153.0.8010.12, Linux amd64/Debian 12, a
 1440×900 viewport, and the repository's 2 CPU/4 GiB container limits. Baseline
 runtime matches all 291 production frontend source inputs in its snapshot at
-`174c647f`; final candidate runtime is `400ef212`. It includes a clock local to
+`174c647f`; the recorded candidate runtime is `400ef212`. It includes a clock local to
 the visible populated walkthrough list, preserving relative-age updates without
 making unchanged results update App, and the review-settlement correction below.
-Later commits update this report only.
+The later fold-input and coordinate fixes require a fresh final capture.
 
 ## Results
 
@@ -155,3 +155,23 @@ supported this correction; nine focused WebKit reveal cases, eight Chromium
 keyboard/native-scroll cases and six WebKit native-scroll cases passed
 (`196e15dd`, `d5c09afa`, `943736f6`). Existing viewport assertions cover both
 failure forms. Temporary diagnostics were removed and archived.
+
+Run `b43f74ad` completed twelve groups, including 229 Chromium and 22 extended
+cases, but received SIGTERM before WebKit finished. Its aggregate remains
+uncertified; the termination cause is unknown. A live-copied failure showed a
+fold-preservation setup click was lost, not a later fold-state reset. In two of
+ten diagnostic repetitions (`7a10340e`), pointerdown reached the fold button
+while pointerup and click landed elsewhere. Releasing an active reveal on a
+fold-button press, matching existing keyboard release, passed ten repetitions
+(`179feea3`). The test now asserts the initial collapse before later preservation.
+
+The next WebKit run (`b08e7952`) found a blank README diff and was stopped
+gracefully after its failure artifacts were copied. A deterministic coordinate
+regression then proved a separate defect: after an 80-pixel physical scroll in
+one JavaScript task, Pierre reported the stationary file's content offset 80
+pixels wrong (`783cff86`, `f378939a`). The existing dependency patch now pairs
+current DOM rectangles with the post-layout physical scroll offset. Cached
+virtual-window calculations remain. Independent review supported this change;
+22 focused cases passed in each engine (`55c50a89`, `1c5bbdda`). The contract
+test does not alone establish the cause of every earlier blank-row failure.
+See [decision 0162](decisions/0162-review-placement-uses-live-geometry.md).

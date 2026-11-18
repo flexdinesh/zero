@@ -317,6 +317,39 @@ test("diff line numbers select lines, update the URL, and copy path:line", async
   await expect(status).toHaveCount(0)
 })
 
+test("review placement uses the pane's current scroll before its scroll event arrives", async ({ page }) => {
+  await openReview(page, "review=working#f=large.txt")
+  await expect(diffLines(page, "change-addition", "large.txt").first()).toBeVisible({ timeout: 20_000 })
+  const placement = await page.evaluate(() => {
+    const root = document.querySelector("main")
+    const file = root?.querySelector('[data-review-path="large.txt"] diffs-container')
+    // Pierre exposes its resident simple virtualizer for diagnostics.
+    const instance: unknown = Reflect.get(window, "__INSTANCE")
+    if (!(root instanceof HTMLElement) || !(file instanceof HTMLElement)
+      || typeof instance !== "object" || instance === null
+      || !("getRoot" in instance) || typeof instance.getRoot !== "function"
+      || !("markDOMDirty" in instance) || typeof instance.markDOMDirty !== "function"
+      || !("getScrollTop" in instance) || typeof instance.getScrollTop !== "function"
+      || !("getOffsetInScrollContainer" in instance) || typeof instance.getOffsetInScrollContainer !== "function") {
+      throw new Error("Review virtualizer is not ready")
+    }
+    if (instance.getRoot() !== root) throw new Error("Review virtualizer belongs to another pane")
+    root.scrollTop = 0
+    instance.markDOMDirty()
+    instance.getScrollTop()
+    const before = root.scrollTop
+    const initial: unknown = instance.getOffsetInScrollContainer(file)
+    // The browser queues scroll events; DOM geometry changes synchronously.
+    root.scrollTop = 80
+    const after = root.scrollTop
+    const actual: unknown = instance.getOffsetInScrollContainer(file)
+    if (typeof initial !== "number" || typeof actual !== "number") throw new Error("Review placement is not numeric")
+    return { before, after, initial, actual }
+  })
+  expect(placement.after).toBeGreaterThan(placement.before)
+  expect(placement.actual).toBeCloseTo(placement.initial, 2)
+})
+
 test("review anchors scroll their lines into view and open the unchanged lines they name", async ({ page }) => {
   test.setTimeout(60_000)
   const gutter = (line: number) => reviewFile(page, "large.txt").locator(`.diff-view [data-additions] [data-column-number="${line}"]`)
