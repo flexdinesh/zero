@@ -138,6 +138,8 @@ func TestFeedbackAttachmentEndpoints(t *testing.T) {
 		{"not a PNG type", blankPNG(t, 1, 1), map[string]string{"Content-Type": "image/jpeg"}, http.StatusUnsupportedMediaType, contract.CodeUnsupportedMediaType, "image/png"},
 		{"past 8 MiB", make([]byte, contract.MaxFeedbackAttachmentBytes+1), nil, http.StatusRequestEntityTooLarge, contract.CodeInvalidFeedback, "A screenshot is at most 8 MiB."},
 		{"bad image", []byte("\x89PNG\r\n\x1a\nbroken"), nil, http.StatusBadRequest, contract.CodeInvalidFeedback, "invalid image: the PNG ends inside a chunk"},
+		{"past 16 MP", blankPNG(t, 4097, 4097), nil, http.StatusBadRequest, contract.CodeInvalidFeedback, "its area must be at most 16 MP"},
+		{"past 8192 px", blankPNG(t, 8193, 1), nil, http.StatusBadRequest, contract.CodeInvalidFeedback, "each side must be at most 8192 px"},
 	} {
 		response := uploadRequest(t, app, project, test.body, test.headers)
 		body := decodeError(t, response)
