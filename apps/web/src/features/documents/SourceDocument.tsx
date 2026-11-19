@@ -9,6 +9,7 @@ import { clampLineRange, lineReference, spanLines, splitSourceLines, startLineSe
 import { showLink, targetAt, wordRange, type SourceTarget } from "../navigation/source-position.ts"
 import { useHighlightedLines } from "../../highlighting/use-highlighted-lines.ts"
 import { useSourceFind } from "../find/use-source-find.ts"
+import { isSelectAll, isTextField, selectSpan, spansAll } from "../../lib/select-all.ts"
 import { markerLabel, markerRows, type ChangeMarker, type RowMarkers } from "../source-control/change-markers.ts"
 
 // LineSelection connects gutter selection to its owner (the URL fragment).
@@ -130,10 +131,13 @@ function LineBlame({ children }: { children: ReactNode }) {
   return <span className="source-line-blame" onPointerDown={stop} onMouseDown={stop} onClick={stop}>{children}</span>
 }
 
-// isTextField reports a target that takes typed text, whose keys are its own.
-function isTextField(target: EventTarget | null): boolean {
-  return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement
-    || (target instanceof HTMLElement && target.isContentEditable)
+// lineSpan is the first and last lines' code, without gutters, blame, or
+// zones; Select All spans it and its copy is the source (decision 0174).
+function lineSpan(root: Element): [Element, Element] | null {
+  const contents = root.querySelectorAll(":scope > code > .source-document-line > .source-document-line-content")
+  const first = contents.item(0)
+  const last = contents.item(contents.length - 1)
+  return contents.length > 0 ? [first, last] : null
 }
 
 // zoneLine is the line a zone follows: 0, the top, when it is past the last.
@@ -445,6 +449,12 @@ export function SourceDocument({ source, language, label, selection, navigation,
         // A zone's text field keeps its own keys, as does a card portaled
         // out of the document, such as the blame card.
         if (isTextField(event.target) || !(event.target instanceof Node && event.currentTarget.contains(event.target))) return
+        if (isSelectAll(event)) {
+          event.preventDefault()
+          const span = lineSpan(event.currentTarget)
+          if (span) selectSpan(span[0], span[1])
+          return
+        }
         if (navigation && event.key === "F12" && !event.altKey && !modified(event)) {
           event.preventDefault()
           navigation.onNavigate(event.shiftKey ? "references" : "definition", null)
@@ -454,6 +464,14 @@ export function SourceDocument({ source, language, label, selection, navigation,
         event.preventDefault()
         selectionAnchor.current = null
         selection.onChange(null)
+      }}
+      onCopy={(event) => {
+        // Copying every line copies the source as it is, without zones.
+        if (isTextField(event.target)) return
+        const span = lineSpan(event.currentTarget)
+        if (!span || !spansAll(window.getSelection(), span[0], span[1])) return
+        event.preventDefault()
+        event.clipboardData.setData("text/plain", source)
       }}
     >
       <code

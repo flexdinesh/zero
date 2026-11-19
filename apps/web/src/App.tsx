@@ -94,6 +94,7 @@ import { NavigationButtons } from "./workspace/NavigationButtons.tsx"
 import { RecentLocations } from "./workspace/RecentLocations.tsx"
 import { entryKey, useNavigationHistory } from "./workspace/navigation-history-store.ts"
 import { useNavigationKeys } from "./workspace/use-navigation-keys.ts"
+import { useSelectAllGuard } from "./workspace/use-select-all-guard.ts"
 import { useDocumentFormats } from "./features/documents/use-document-format.ts"
 import { useDelayedFlag } from "./lib/use-delayed-flag.ts"
 import { useDocumentNavigation } from "./features/documents/use-document-navigation.ts"
@@ -272,6 +273,7 @@ export function App({ project }: AppProps) {
   }, [])
   const showRecent = useCallback(() => openRecent.current(), [])
   useNavigationKeys(historyStore, showRecent)
+  useSelectAllGuard()
   const registerReport = useCallback((open: (() => void) | null) => {
     openReport.current = open ?? (() => {})
   }, [])

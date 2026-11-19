@@ -1,4 +1,4 @@
-import { Activity, type ReactNode, type RefObject } from "react"
+import { Activity, type KeyboardEvent, type ReactNode, type RefObject } from "react"
 
 import { Button } from "@/components/ui/button"
 import { StatusMessage } from "@/components/ui/notice"
@@ -19,6 +19,7 @@ import { FolderProblem } from "../projects/FolderProblem.tsx"
 import { isFolderProblem } from "../projects/folder-problem.ts"
 import type { ImageViewer } from "./use-image-viewer.ts"
 import { useDelayedFlag } from "../../lib/use-delayed-flag.ts"
+import { isSelectAll, isTextField, selectSpan } from "../../lib/select-all.ts"
 
 interface DocumentPaneProps {
   // diff is a review tab's content, shown instead of the page's file while
@@ -57,6 +58,17 @@ interface DocumentPaneProps {
   view: DocumentView
 }
 
+// selectPage answers Select All in the pane that Source has not (decision
+// 0174): it selects the view's `data-select-all` text, such as a rendered
+// preview, and nothing in views without one.
+function selectPage(event: KeyboardEvent<HTMLElement>): boolean {
+  if (event.defaultPrevented || !isSelectAll(event) || isTextField(event.target)) return false
+  event.preventDefault()
+  const text = event.currentTarget.querySelector("[data-select-all]")
+  if (text) selectSpan(text, text)
+  return true
+}
+
 function fileName(path: string): string {
   return path.split("/").at(-1) || path
 }
@@ -76,7 +88,10 @@ export function DocumentPane({
       ref={main}
       tabIndex={-1}
       aria-busy={isLoading}
-      onKeyDown={viewKind === "image" ? (event) => handleImageKey(event, image) : undefined}
+      onKeyDown={(event) => {
+        if (selectPage(event)) return
+        if (viewKind === "image") handleImageKey(event, image)
+      }}
     >
       {/* First, so the diff virtualizer finds it as the pane's content. */}
       {diff && <Activity mode={showDiff ? "visible" : "hidden"}>{diff}</Activity>}

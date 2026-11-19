@@ -96,6 +96,7 @@ export function DocumentPreview({ html, navigate, findable = false }: DocumentPr
     <>
       <article
         ref={article}
+        data-select-all
         dangerouslySetInnerHTML={renderedHTML}
         onClick={(event) => {
           const href = internalDocumentHref(event)
