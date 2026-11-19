@@ -173,3 +173,4 @@ rewriting history; update `Status` on the old record.
 | [0171](0171-review-remeasure-survives-cache-reads.md) | Review re-measure survives cache reads | Accepted; extends 0157, 0163 |
 | [0172](0172-find-in-file.md) | Find in file | Accepted; extends 0020, 0029, 0035, 0140 |
 | [0173](0173-document-word-wrap.md) | Document word wrap | Accepted; extends 0014, 0139 |
+| [0174](0174-scoped-select-all.md) | Scoped Select All | Accepted; extends 0033, 0172 |

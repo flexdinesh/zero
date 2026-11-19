@@ -50,6 +50,23 @@ main.image-mode {
   padding: 0;
 }
 
+/* Chrome is not text, as in VS Code (decision 0174): drags and Select All
+   leave it alone. Its errors and a commit's details stay copyable. */
+.title-bar,
+.activity-bar,
+.sidebar,
+.workspace-toolbar,
+.status-bar {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+:is(.sidebar, .status-bar) :is(.error, [role="alert"]),
+.sidebar .commit-details-body {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 .sidebar-resizer {
   position: relative;
   z-index: var(--z-sticky);
