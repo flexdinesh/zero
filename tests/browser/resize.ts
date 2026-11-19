@@ -24,7 +24,16 @@ export async function beginResize(page: Page, separator: Locator) {
   await page.mouse.move(point.x, point.y)
   await page.mouse.down()
   const pointer = await separator.getAttribute("data-test-pointer")
-  if (pointer === null || !Number.isFinite(Number(pointer))) throw new Error("Resize pointer did not start")
+  if (pointer === null || !Number.isFinite(Number(pointer))) {
+    const hit = await page.evaluate(({ x, y }) => {
+      const element = document.elementFromPoint(x, y)
+      const describe = (node: Element | null) => node ? `${node.tagName.toLowerCase()}.${node.className} ${JSON.stringify(node.getBoundingClientRect())} z=${getComputedStyle(node).zIndex}` : "none"
+      const chain: string[] = []
+      for (let node = element; node && chain.length < 8; node = node.parentElement) chain.push(describe(node))
+      return chain.join("\n  < ")
+    }, point)
+    throw new Error(`Resize pointer did not start at ${JSON.stringify(point)} box ${JSON.stringify(box)}; hit:\n  ${hit}`)
+  }
   return {
     x: Number(await separator.getAttribute("data-test-pointer-x")),
     y: Number(await separator.getAttribute("data-test-pointer-y")),

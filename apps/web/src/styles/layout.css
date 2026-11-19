@@ -69,7 +69,7 @@ main.image-mode {
 
 .sidebar-resizer {
   position: relative;
-  z-index: var(--z-sticky);
+  z-index: var(--z-sash);
   cursor: col-resize;
   touch-action: none;
   -webkit-user-select: none;
