@@ -180,3 +180,4 @@ rewriting history; update `Status` on the old record.
 | [0178](0178-agent-facing-visual-thread-output.md) | Agent-facing visual thread output | Accepted; extends 0120, 0176 |
 | [0179](0179-sweep-interrupted-uploads.md) | Sweep interrupted uploads | Accepted; extends 0176 |
 | [0180](0180-hit-map-at-capture.md) | Hit map at capture | Accepted; supersedes 0177's element hint; extends 0175, 0176 |
+| [0181](0181-project-browser-tab.md) | Project browser tab | Accepted; extends 0052, 0081, 0175, 0177 |

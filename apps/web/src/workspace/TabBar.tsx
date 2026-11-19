@@ -1,5 +1,5 @@
 import { ContextMenu } from "@base-ui/react/context-menu"
-import { GitCompareArrowsIcon, HouseIcon, RouteIcon, XIcon } from "lucide-react"
+import { AppWindowIcon, GitCompareArrowsIcon, HouseIcon, RouteIcon, XIcon } from "lucide-react"
 import { useEffect, useRef, type KeyboardEvent, type MouseEvent } from "react"
 
 import { FileIcon } from "../components/FileIcon.tsx"
@@ -157,6 +157,7 @@ export function TabBar({ active, name: tabName, onClose, onCloseMany, onPin, onS
               {tab.kind === "review" ? <GitCompareArrowsIcon className="file-icon" aria-hidden="true" />
                 : tab.kind === "walkthrough" ? <RouteIcon className="file-icon" aria-hidden="true" />
                 : tab.kind === "welcome" ? <HouseIcon className="file-icon" aria-hidden="true" />
+                : tab.kind === "browser" ? <AppWindowIcon className="file-icon" aria-hidden="true" />
                 : <FileIcon path={tab.path} />}
               <span>{name}</span>
             </Button>

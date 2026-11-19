@@ -22,6 +22,7 @@ import (
 	"hash/crc32"
 	"image"
 	"image/png"
+	"io"
 	"io/fs"
 	"math"
 	"net"
@@ -793,6 +794,99 @@ func TestWebViewApp(t *testing.T) {
 			}
 			time.Sleep(100 * time.Millisecond)
 		}
+	})
+
+	// The Browser tab (decision 0181): the local window reads and drives the
+	// project's guest window through the bridge and hears of its changes.
+	run("the Browser tab drives the project's guest window", func(t *testing.T) {
+		site := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+			response.Header().Set("Content-Type", "text/html")
+			_, _ = io.WriteString(response, `<!doctype html><title>`+request.URL.Path+`</title><a href="/two">Two</a>`)
+		}))
+		defer site.Close()
+		secure := httptest.NewTLSServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+			_, _ = io.WriteString(response, "secure")
+		}))
+		defer secure.Close()
+		closed, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		closedURL := "http://" + closed.Addr().String() + "/"
+		_ = closed.Close()
+
+		local := app.windowOn(proxyOrigin("local"))
+		app.target = local
+		defer func() { app.target = 0 }()
+		project := strconv.Quote(w.project)
+		state := `(await window.zeroDesktop.browserState(` + project + `))`
+		if got := app.eval(`return typeof window.zeroDesktop.browserState + " " + typeof window.zeroDesktop.browserAction`); got != "function function" {
+			t.Fatalf("bridge methods = %v", got)
+		}
+		app.waitEval("no guest window yet", `return `+state+` === null`)
+		app.eval(`window.__browserEvents = []
+			window.__browserFocus = []
+			window.addEventListener("zero:browser", (event) => window.__browserEvents.push(event.detail))
+			window.addEventListener("zero:browser-focus", (event) => { event.stopImmediatePropagation(); window.__browserFocus.push(event.detail) }, { capture: true })
+			return true`)
+
+		app.eval(`window.zeroDesktop.openReview(` + project + `, ` + strconv.Quote(site.URL+"/one") + `); return true`)
+		guest := app.waitWindow(site.URL)
+		app.waitEval("the first page's state", `const s = `+state+`; return s?.url === `+strconv.Quote(site.URL+"/one")+` && !s.loading && !s.canGoBack && !s.canGoForward && s.failure === null`)
+		app.waitEval("a zero:browser event for the project", `return window.__browserEvents.includes(`+project+`)`)
+
+		app.target = guest
+		if got := app.eval(`return typeof window.zeroDesktop`); got != "undefined" {
+			t.Errorf("guest page reaches %v, want no bridge", got)
+		}
+		app.eval(`document.querySelector("a").click(); return true`)
+		app.target = local
+		app.waitEval("the second page's state", `const s = `+state+`; return s?.url === `+strconv.Quote(site.URL+"/two")+` && !s.loading && s.canGoBack && !s.canGoForward`)
+
+		app.eval(`await window.zeroDesktop.browserAction(` + project + `, "back"); return true`)
+		app.waitEval("back on the first page", `const s = `+state+`; return s?.url === `+strconv.Quote(site.URL+"/one")+` && !s.loading && !s.canGoBack && s.canGoForward`)
+
+		// A page asking for the app's scheme is refused, and the failure
+		// names only the scheme and host.
+		app.target = guest
+		app.eval(`location.href = "zero-app://local/view?project=/secret"; return true`)
+		app.target = local
+		app.waitEval("the refused navigation", `const s = `+state+`; return s?.failure?.kind === "refused" && s.failure.url === "zero-app://local" && s.url === `+strconv.Quote(site.URL+"/one"))
+		app.eval(`await window.zeroDesktop.browserAction(` + project + `, "reload"); return true`)
+		app.waitEval("a reload clears the failure", `const s = `+state+`; return s?.failure === null && !s.loading`)
+
+		app.eval(`await window.zeroDesktop.openReview(` + project + `, ` + strconv.Quote(closedURL) + `); return true`)
+		app.waitEval("the failed load", `const s = `+state+`; return s?.failure?.kind === "load" && s.failure.url === `+strconv.Quote(closedURL)+` && s.failure.description !== "" && !s.loading`)
+		app.eval(`await window.zeroDesktop.openReview(` + project + `, ` + strconv.Quote(secure.URL+"/") + `); return true`)
+		app.waitEval("the refused certificate", `const s = `+state+`; return s?.failure?.kind === "certificate" && s.failure.url === `+strconv.Quote(secure.URL+"/")+` && !s.loading`)
+		app.eval(`await window.zeroDesktop.openReview(` + project + `, ` + strconv.Quote(site.URL+"/one") + `); return true`)
+		app.waitEval("a new page clears the failure", `const s = `+state+`; return s?.url === `+strconv.Quote(site.URL+"/one")+` && s.failure === null && !s.loading`)
+
+		if got := app.eval(`return await window.zeroDesktop.browserAction(` + project + `, "navigate").then(() => "done", () => "refused")`); got != "refused" {
+			t.Errorf("an unknown action = %v, want refused", got)
+		}
+		if got := app.eval(`return await window.zeroDesktop.browserAction("/no/such/project", "back").then(() => "done", () => "refused")`); got != "done" {
+			t.Errorf("an action for a project without a window = %v, want a no-op", got)
+		}
+		if got := app.eval(`return await window.zeroDesktop.browserState("relative").then(() => "done", () => "refused")`); got != "refused" {
+			t.Errorf("a relative project = %v, want refused", got)
+		}
+
+		// Open Location… in the guest window hands the keyboard to the tab.
+		if err := app.call("menu", map[string]any{"window": guest, "path": []string{"Page", "Open Location…"}}, nil); err != nil {
+			t.Fatal(err)
+		}
+		app.waitEval("zero:browser-focus for the project", `return window.__browserFocus.length === 1 && window.__browserFocus[0] === `+project)
+
+		app.eval(`window.__browserEvents = []; await window.zeroDesktop.browserAction(` + project + `, "close"); return true`)
+		deadline := time.Now().Add(pageTimeout)
+		for app.windowOn(site.URL) != 0 {
+			if time.Now().After(deadline) {
+				t.Fatal("the guest window did not close")
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		app.waitEval("no guest window after close", `return `+state+` === null && window.__browserEvents.includes(`+project+`)`)
 	})
 
 	run("a crashed page reloads once, then says so", func(t *testing.T) {

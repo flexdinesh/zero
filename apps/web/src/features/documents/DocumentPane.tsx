@@ -30,6 +30,8 @@ interface DocumentPaneProps {
   walkthrough?: ReactNode
   // welcome is the Welcome tab's content, shown without a file.
   welcome?: ReactNode
+  // browser is the Browser tab's content, shown without a file (decision 0181).
+  browser?: ReactNode
   // empty fills the pane while no tab is open.
   empty?: ReactNode
   // sourceAnnotation is a zone in Source, e.g. a walkthrough's narration.
@@ -75,11 +77,11 @@ function fileName(path: string): string {
 
 export function DocumentPane({
   diff, diffShown = true, empty, hasData, image, isLoading, lineSelection, loadError, main, navigate, onChooseProject, onLeaveProject, page, retry, sourceAnnotation,
-  sourceBlame, sourceChanges, sourceComments, view, walkthrough, welcome, documentPending, wordWrap,
+  sourceBlame, sourceChanges, sourceComments, view, walkthrough, welcome, browser, documentPending, wordWrap,
 }: DocumentPaneProps) {
   const showLoading = useDelayedFlag(documentPending, 150)
   const showDiff = !documentPending && Boolean(diff) && diffShown && !loadError && !page.projectUnavailable && !page.error
-  const viewKind = documentPending || loadError || page.error ? "none" : showDiff ? "diff" : walkthrough ? "walkthrough" : welcome ? "welcome" : view.kind
+  const viewKind = documentPending || loadError || page.error ? "none" : showDiff ? "diff" : walkthrough ? "walkthrough" : welcome ? "welcome" : browser ? "browser" : view.kind
 
   return (
     <main
@@ -121,6 +123,8 @@ export function DocumentPane({
         walkthrough
       ) : welcome ? (
         welcome
+      ) : browser ? (
+        browser
       ) : view.kind === "none" ? (
         hasData ? empty : null
       ) : sourceAnnotation && view.kind !== "source" ? (

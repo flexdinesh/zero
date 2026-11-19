@@ -220,7 +220,7 @@ func (a *App) newRoutes() *http.ServeMux {
 
 // serveShellPage serves the app shell. Without a project the browser
 // chooses one, so no page data is embedded; /view requires a file unless it
-// opens a review, walkthrough, feedback, or Welcome tab.
+// opens a review, walkthrough, feedback, Welcome, or Browser tab.
 func (a *App) serveShellPage(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	projectID := query.Get("project")
@@ -229,7 +229,7 @@ func (a *App) serveShellPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	selected, at := "", ""
-	required := r.URL.Path == "/view" && !reviewQuery(query) && !walkthroughQuery(query) && !feedbackQuery(query) && !welcomeQuery(query)
+	required := r.URL.Path == "/view" && !reviewQuery(query) && !walkthroughQuery(query) && !feedbackQuery(query) && !welcomeQuery(query) && !browserQuery(query)
 	if required {
 		selected, at = query.Get("path"), query.Get("at")
 	}
@@ -259,6 +259,12 @@ func feedbackQuery(query url.Values) bool {
 // 0052): welcome=1.
 func welcomeQuery(query url.Values) bool {
 	return !query.Has("path") && query.Get("welcome") == "1"
+}
+
+// browserQuery reports a pathless /view that opens the project's Browser tab
+// (decision 0181): browser=1.
+func browserQuery(query url.Values) bool {
+	return !query.Has("path") && query.Get("browser") == "1"
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

@@ -1,0 +1,169 @@
+/* The project browser tab (decision 0181): the guest window's address,
+   history, state, and comment target, on the document surface. A flat
+   column, no cards; the address band ends on a hairline that the loading
+   sweep runs along. */
+.project-browser {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 52rem;
+  align-content: start;
+  gap: var(--space-5);
+}
+
+.project-browser-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.project-browser-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.project-browser-controls {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.project-browser-address {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.project-browser-address-input {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+}
+
+/* Where a screen comment goes: the project, then its branch. */
+.project-browser-target {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 0;
+  gap: var(--space-1) var(--space-3);
+  color: var(--color-text-secondary);
+  font-size: var(--text-label);
+}
+
+.project-browser-target-label {
+  color: var(--color-text-muted);
+}
+
+.project-browser-target-part {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--color-text-primary);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.project-browser-target-part svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  flex: none;
+  color: var(--color-text-muted);
+}
+
+.project-browser-target-part[data-detached] {
+  color: var(--color-text-secondary);
+  font-style: italic;
+  font-weight: 400;
+}
+
+.project-browser-state:empty {
+  display: none;
+}
+
+.project-browser-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.project-browser-row .ui-status-message {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.project-browser-failure {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2);
+}
+
+.project-browser-failure p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.project-browser-failure-title {
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+.project-browser-section {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.project-browser-section h2 {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: var(--preview-h4);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+
+.project-browser-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.project-browser-hint {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-label);
+}
+
+/* Page rows: the address leads, in the code face, as in the field. */
+.project-browser-page-icon {
+  width: var(--icon-md);
+  height: var(--icon-md);
+  flex: none;
+  color: var(--color-text-muted);
+}
+
+.project-browser-page-title {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-browser-page-note {
+  flex: none;
+  color: var(--color-text-muted);
+  font-size: var(--text-label);
+}
+
+.project-browser-page-enter {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  flex: none;
+  color: var(--color-text-muted);
+}

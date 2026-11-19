@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 
 import type { CompareContext } from "../features/source-control/compare.ts"
-import { documentKey, documentTab, includesTab, parseStoredTab, placeTab, reviewTab, routeAt, sameTab, storedTab, tabKey, tabName, tabSearch, walkthroughTab, welcomeTab } from "./workspace-tabs.ts"
+import { browserTab, documentKey, documentTab, includesTab, parseStoredTab, placeTab, reviewTab, routeAt, sameTab, storedTab, tabKey, tabName, tabSearch, walkthroughTab, welcomeTab } from "./workspace-tabs.ts"
 
 const hash = "3577ec6a1b2c3d4e5f60718293a4b5c6d7e8f901"
 const other = "4f76e9a1b2c3d4e5f60718293a4b5c6d7e8f9012"
@@ -110,6 +110,21 @@ test("the Welcome tab is one tab that keys, names, stores, and routes", () => {
   assert.equal(parseStoredTab({ welcome: false }), null)
   assert.equal(parseStoredTab({ welcome: "yes" }), null)
   assert.deepEqual(tabSearch("/p", tab), { project: "/p", welcome: 1 })
+})
+
+test("the Browser tab is one tab per project, named by its page", () => {
+  const tab = browserTab()
+  assert.equal(tabKey(tab), "browser")
+  assert.equal(sameTab(tab, browserTab()), true)
+  assert.equal(sameTab(tab, documentTab("browser")), false)
+  assert.deepEqual(tabName(tab, context), { label: "Browser", title: "Browser" })
+  assert.deepEqual(tabName(tab, context, () => "", () => ({ label: "localhost:5173", title: "Browser: localhost:5173/" })),
+    { label: "localhost:5173", title: "Browser: localhost:5173/" })
+  assert.deepEqual(storedTab(tab), { browser: true })
+  assert.deepEqual(parseStoredTab(storedTab(tab)), tab)
+  assert.equal(parseStoredTab({ browser: 1 }), null)
+  assert.deepEqual(tabSearch("/p", tab), { project: "/p", browser: 1 })
+  assert.deepEqual(placeTab({ tabs: [], preview: null }, tab, true), { tabs: [tab], preview: null })
 })
 
 test("a walkthrough step's tab is the preview tab the next step replaces", () => {

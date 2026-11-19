@@ -63,7 +63,7 @@ import { useSourceControlCommands, useSourceControlQuery } from "./features/sour
 import { filePaths } from "./api/page-data.ts"
 import { isCommitHash } from "./lib/commit-hash.ts"
 import {
-  documentKey, documentTab, includesTab, reviewTab, tabKey, tabName, tabSearch, walkthroughTab, welcomeTab, type WorkspaceTab,
+  browserTab, documentKey, documentTab, includesTab, reviewTab, tabKey, tabName, tabSearch, walkthroughTab, welcomeTab, type WorkspaceTab,
 } from "./workspace/workspace-tabs.ts"
 import { FindBar } from "./features/find/FindBar.tsx"
 import { FindButton } from "./features/find/FindButton.tsx"
@@ -80,8 +80,9 @@ import { QuickOpen, type QuickOpenOptions } from "./features/quick-open/QuickOpe
 import type { NavigationKind } from "./features/navigation/code-navigation.ts"
 import type { CommandAction } from "./workspace/commands.ts"
 import { ReportProblemDialog } from "./features/diagnostics/ReportProblemDialog.tsx"
-import { ReviewURLDialog } from "./features/review/ReviewURLDialog.tsx"
-import { useDesktopReviewURL } from "./features/review/use-desktop-review-url.ts"
+import { BrowserTab } from "./features/review/BrowserTab.tsx"
+import { browserTabName, currentPage } from "./features/review/browser-model.ts"
+import { focusBrowserLater, useDesktopBrowserFocus, useProjectBrowser } from "./features/review/use-project-browser.ts"
 import type { SourceChanges } from "./features/documents/SourceDocument.tsx"
 import { NavigationProvider, NavigationStatus, type NavigationCaret } from "./features/navigation/NavigationProvider.tsx"
 import { useSettings } from "./settings/SettingsProvider.tsx"
@@ -95,6 +96,7 @@ import { TabBar } from "./workspace/TabBar.tsx"
 import { NavigationButtons } from "./workspace/NavigationButtons.tsx"
 import { RecentLocations } from "./workspace/RecentLocations.tsx"
 import { entryKey, useNavigationHistory } from "./workspace/navigation-history-store.ts"
+import { projectName } from "./workspace/navigation-history.ts"
 import { useNavigationKeys } from "./workspace/use-navigation-keys.ts"
 import { useSelectAllGuard } from "./workspace/use-select-all-guard.ts"
 import { useDocumentFormats } from "./features/documents/use-document-format.ts"
@@ -137,12 +139,15 @@ import { useSourceFeedback } from "./features/feedback/use-source-feedback.tsx"
 import { useSourceBlame } from "./features/blame/use-source-blame.tsx"
 
 // routeTab is the tab a route shows: a review, a document (a snapshot with
-// at), a walkthrough's own tab, or Welcome, else none.
-function routeTab(review: WorkspaceTab | null, documentPath: string, at: string, walkthrough: string, welcome: boolean): WorkspaceTab | null {
+// at), a walkthrough's own tab, Welcome, or the Browser tab, else none.
+function routeTab(
+  review: WorkspaceTab | null, documentPath: string, at: string, walkthrough: string, welcome: boolean, browser: boolean,
+): WorkspaceTab | null {
   if (review) return review
   if (documentPath) return documentTab(documentPath, at)
   if (walkthrough) return walkthroughTab(walkthrough)
-  return welcome ? welcomeTab() : null
+  if (welcome) return welcomeTab()
+  return browser ? browserTab() : null
 }
 
 // reviewStatusBar describes the file holding selected lines, else the
@@ -219,6 +224,9 @@ export function App({ project }: AppProps) {
   // welcome=1 alone routes the Welcome tab (decision 0052).
   const searchWelcome = useSearch({ strict: false, select: (search) => search.welcome === 1 })
   const welcomeRoute = !searchPath && !reviewRoute && !walkthroughRoute && searchWelcome
+  // browser=1 alone routes the project's Browser tab (decision 0181).
+  const searchBrowser = useSearch({ strict: false, select: (search) => search.browser === 1 })
+  const browserRoute = !searchPath && !reviewRoute && !walkthroughRoute && !welcomeRoute && searchBrowser
   const openSearch = useRef<() => void>(() => {})
   const searchCommands = useRef<SearchCommands | null>(null)
   const openFiles = useRef<() => void>(() => {})
@@ -229,7 +237,7 @@ export function App({ project }: AppProps) {
   const openColorTheme = useRef<() => void>(() => {})
   const openRecent = useRef<() => void>(() => {})
   const openReport = useRef<() => void>(() => {})
-  const openReviewURL = useRef<() => void>(() => {})
+  const openBrowserCommand = useRef<(focus: boolean) => void>(() => {})
   const stepHunk = useRef<HunkStep>(() => {})
   const [lastPage, setLastPage] = useState<PageData | null>(() => result ? initialPage(result) : null)
   useEffect(() => {
@@ -284,11 +292,8 @@ export function App({ project }: AppProps) {
   }, [])
   const reportProblem = useCallback(() => openReport.current(), [])
   useDesktopReportProblem(reportProblem)
-  const registerReviewURL = useCallback((open: (() => void) | null) => {
-    openReviewURL.current = open ?? (() => {})
-  }, [])
-  const reviewURL = useCallback(() => openReviewURL.current(), [])
-  useDesktopReviewURL(reviewURL)
+  // The project's Browser tab steers its guest window (decision 0181).
+  const projectBrowser = useProjectBrowser(project)
   const runNavigation = useRef<(kind: NavigationKind) => void>(() => {})
   const registerNavigation = useCallback((command: ((kind: NavigationKind) => void) | null) => {
     runNavigation.current = command ?? (() => {})
@@ -366,12 +371,12 @@ export function App({ project }: AppProps) {
   const routedPage = !documentPending && result?.kind === "page" ? result.page : null
   const routedDocument = searchPath
   const routedAt = searchAt
-  const routedTab = useMemo(() => routeTab(reviewRoute, routedDocument, routedAt, walkthroughRoute, welcomeRoute),
-    [reviewRoute, routedAt, routedDocument, walkthroughRoute, welcomeRoute])
+  const routedTab = useMemo(() => routeTab(reviewRoute, routedDocument, routedAt, walkthroughRoute, welcomeRoute, browserRoute),
+    [browserRoute, reviewRoute, routedAt, routedDocument, walkthroughRoute, welcomeRoute])
   const activeDocument = pendingDocument?.path ?? routedDocument
   const activeAt = pendingDocument?.at ?? routedAt
-  const activeTab = useMemo(() => routeTab(pendingFile ? null : reviewRoute, activeDocument, activeAt, walkthroughRoute, welcomeRoute),
-    [activeAt, activeDocument, pendingFile, reviewRoute, walkthroughRoute, welcomeRoute])
+  const activeTab = useMemo(() => routeTab(pendingFile ? null : reviewRoute, activeDocument, activeAt, walkthroughRoute, welcomeRoute, browserRoute),
+    [activeAt, activeDocument, browserRoute, pendingFile, reviewRoute, walkthroughRoute, welcomeRoute])
   // pageKey keys the document's mode, format, and scroll.
   const pageKey = documentKey(page.selected, page.at)
   // A walkthrough step opens its document or review as the preview tab
@@ -418,7 +423,7 @@ export function App({ project }: AppProps) {
     else if (action.kind === "recent-locations") openRecent.current()
     else if (action.kind === "select-color-theme") openColorTheme.current()
     else if (action.kind === "report-problem") openReport.current()
-    else if (action.kind === "review-url") openReviewURL.current()
+    else if (action.kind === "review-url") openBrowserCommand.current(true)
     else if (action.kind === "toggle-word-wrap") {
       if (wordWrap !== null) toggleWordWrap(pageKey, defaultWordWrap)
     } else if (action.kind === "find") findCommands.current?.open()
@@ -650,8 +655,10 @@ export function App({ project }: AppProps) {
     subject: (hash) => listed?.find((commit) => commit.hash === hash)?.subject ?? "",
   }), [defaultBase, listed])
   const listedWalkthroughs = walkthroughs.list.result
+  const browserPage = currentPage(projectBrowser.state, projectBrowser.recent[0] ?? "")
   const nameTab = useCallback((tab: WorkspaceTab) => tabName(tab, compareContext,
-    (id) => listedWalkthroughs?.find((entry) => entry.id === id)?.title ?? ""), [compareContext, listedWalkthroughs])
+    (id) => listedWalkthroughs?.find((entry) => entry.id === id)?.title ?? "",
+    () => browserTabName(browserPage)), [browserPage, compareContext, listedWalkthroughs])
   // The history entry on screen takes the name its tab shows.
   const historyKey = useRouterState({ select: (state) => entryKey(state.location) })
   useEffect(() => {
@@ -666,8 +673,28 @@ export function App({ project }: AppProps) {
     prepareDocumentNavigation()
     void navigate({ to: "/view", search: tabSearch(project, welcomeTab()), hash: "" })
   }, [navigate, prepareDocumentNavigation, project, welcomeRoute])
+  // openBrowser shows the Browser tab; with focus its address field takes
+  // the keyboard, once the tab has mounted.
+  const { requestFocus: focusBrowser } = projectBrowser
+  const openBrowser = useCallback((focus: boolean) => {
+    if (focus) focusBrowser()
+    if (browserRoute) return
+    prepareDocumentNavigation()
+    void navigate({ to: "/view", search: tabSearch(project, browserTab()), hash: "" })
+  }, [browserRoute, focusBrowser, navigate, prepareDocumentNavigation, project])
+  // Review URL… asks for this project's address; a guest window's Open
+  // Location… for its own project's, switching to it first.
+  useDesktopBrowserFocus(useCallback((target: string | null) => {
+    if (target === null || target === project) {
+      openBrowser(true)
+      return
+    }
+    focusBrowserLater(target)
+    void navigate({ to: "/view", search: tabSearch(target, browserTab()), hash: "" })
+  }, [navigate, openBrowser, project]))
   useLayoutEffect(() => {
     openWelcomeCommand.current = openWelcome
+    openBrowserCommand.current = openBrowser
     // The palette command acts on the working-tree file in view; without one
     // it focuses the filter field.
     fileHistoryCommand.current = () => {
@@ -683,8 +710,9 @@ export function App({ project }: AppProps) {
     if (tab.kind === "document") navigateToDocument(tab.path, tab.at)
     else if (tab.kind === "walkthrough") openWalkthrough(tab.id)
     else if (tab.kind === "welcome") openWelcome()
+    else if (tab.kind === "browser") openBrowser(false)
     else openReview(tab.compare, true)
-  }, [navigateToDocument, openReview, openWalkthrough, openWelcome])
+  }, [navigateToDocument, openBrowser, openReview, openWalkthrough, openWelcome])
 
   const selectLines = useCallback((range: LineRange | null) => {
     if (!page.selected) return
@@ -697,7 +725,7 @@ export function App({ project }: AppProps) {
   // or a walkthrough or Welcome tab (decision 0120).
   const clearLines = useCallback(() => selectLines(null), [selectLines])
   const sourceComments = useSourceFeedback({
-    project, path: page.selected, enabled: showSource && !page.at && !reviewCompare && !walkthroughRoute && !welcomeRoute,
+    project, path: page.selected, enabled: showSource && !page.at && !reviewCompare && !walkthroughRoute && !welcomeRoute && !browserRoute,
     version: feedbackVersion, showResolved: diffOptions.options.showResolved, navigate: navigateToHref, onChanged: rereadFeedback,
     onSubmitted: clearLines,
   })
@@ -838,6 +866,8 @@ export function App({ project }: AppProps) {
     const closed = workspace.closeTabs(tabs, activeTab)
     if (!closed) return
     for (const tab of closed.tabs) if (tab.kind === "document") forgetDocumentScroll(documentKey(tab.path, tab.at))
+    // The Browser tab owns its guest window (decision 0181).
+    if (closed.tabs.some((tab) => tab.kind === "browser")) projectBrowser.act("close")
     if (!activeTab || !includesTab(closed.tabs, activeTab)) return
     if (closed.replacement) {
       selectTab(closed.replacement)
@@ -1039,6 +1069,8 @@ export function App({ project }: AppProps) {
               }}
               onAction={runWelcomeAction} onOpenProject={switchProject}
               onStartupSetting={() => openSettings.current("showWelcome")} /> : undefined}
+            browser={browserRoute ? <BrowserTab browser={projectBrowser}
+              name={projectName(project)} branch={page.branch} folder={page.projectKind === "folder"} /> : undefined}
             empty={<WorkspaceEmptyState input={emptyInput} viewName={sidebarViewName(sidebar.view)}
               onAction={runEmptyAction} onWelcome={openWelcome} />}
             sourceAnnotation={sourceAnnotation}
@@ -1094,7 +1126,6 @@ export function App({ project }: AppProps) {
       <ColorThemePicker registerOpen={registerColorTheme} />
       <RecentLocations log={historyLog} project={project} registerOpen={registerRecent} onOpen={navigateToHref} />
       <ReportProblemDialog registerOpen={registerReport} />
-      <ReviewURLDialog project={project} registerOpen={registerReviewURL} />
       <ScreenCommentDialog composer={feedbackView.composer} actions={feedbackView.session.actions}
         onSource={openComposer} onClose={feedbackView.closeComposer} onSent={feedbackView.closeComposer} />
       <OverlayScrollbars />
