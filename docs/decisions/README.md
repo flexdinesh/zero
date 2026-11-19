@@ -174,3 +174,4 @@ rewriting history; update `Status` on the old record.
 | [0172](0172-find-in-file.md) | Find in file | Accepted; extends 0020, 0029, 0035, 0140 |
 | [0173](0173-document-word-wrap.md) | Document word wrap | Accepted; extends 0014, 0139 |
 | [0174](0174-scoped-select-all.md) | Scoped Select All | Accepted; extends 0033, 0172 |
+| [0175](0175-guest-browser-host-window.md) | Guest browser host window | Accepted; extends 0067, 0081, 0094, 0095 |
