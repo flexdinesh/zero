@@ -1,0 +1,24 @@
+{
+  "project": "/home/user/markdown",
+  "id": "fb-3k2q8m",
+  "visual": {
+    "attachment": "at-7hq2mx4kpa",
+    "rect": {"x": 96, "y": 96, "width": 420, "height": 96},
+    "page": {
+      "url": "http://admin:hunter2@localhost:5173/settings?tab=billing&session=8f2c1e9a7b#plan",
+      "title": "Settings · Acme",
+      "viewport": {"width": 1440, "height": 900, "deviceScaleFactor": 2},
+      "scroll": {"x": 0, "y": 1320},
+      "clip": {"x": 1114, "y": 544, "width": 612, "height": 288}
+    },
+    "element": {
+      "selector": "main form > button[data-testid=\"save\"]",
+      "tag": "button",
+      "role": "button",
+      "name": "Save changes",
+      "text": "Save changes",
+      "box": {"x": 96, "y": 96, "width": 420, "height": 96}
+    }
+  },
+  "body": "Save overlaps the card edge at 1440 px. Keep it inside the card padding."
+}
