@@ -39,7 +39,6 @@ const preloadScript = `(() => {
     diagnostics() { return call("Diagnostics") },
     openReview(project, url) { return call("OpenReview", project, url) },
     screenCapture() { return call("ScreenCapture") },
-    screenElement(id, x, y) { return call("ScreenElement", id, x, y) },
   } : { version: 2, ...window_ })
 })()`
 
@@ -181,20 +180,6 @@ func (b *bridgeService) ScreenCapture(ctx context.Context) (*review.Capture, err
 		return nil, errRefused
 	}
 	return b.host.reviews.takeCapture(), nil
-}
-
-// ScreenElement answers the page's word on the element at a point of a
-// capture, in CSS pixels, while its guest page still shows what was
-// captured; null otherwise (decision 0176).
-func (b *bridgeService) ScreenElement(ctx context.Context, id, x, y any) (*review.Element, error) {
-	if _, ok := callerWindow(ctx, isLocal); !ok {
-		return nil, errRefused
-	}
-	request, ok := bridge.ParseScreenElement(id, x, y)
-	if !ok {
-		return nil, errRefused
-	}
-	return b.host.reviews.element(ctx, request), nil
 }
 
 // ShowContextMenu pops a native menu at a point in the page and answers the

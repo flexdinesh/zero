@@ -332,7 +332,8 @@ func selected(group, name string) bool {
 		return true
 	}
 	// browser takes the desktop app's guest page script, which its tests run
-	// in a stand-in page (decision 0177).
+	// in a stand-in page (decision 0177); desktop takes the guest fixture its
+	// end-to-end tests serve (decision 0180).
 	prefixes := map[string][]string{
 		"repo":           {"apps/zero/", "apps/desktop/", "tools/", "packages/contracts/"},
 		"web-static":     {"apps/web/", "packages/contracts/"},
@@ -343,7 +344,7 @@ func selected(group, name string) bool {
 		"tooling":        {"scripts/", "tests/", "tools/validate/", "testdata/"},
 		"docs":           {"apps/site/"},
 		"browser":        {"apps/zero/", "testdata/", "apps/web/", "tests/", "scripts/", "packages/contracts/", "apps/desktop/internal/review/guest.js"},
-		"desktop":        {"apps/desktop/", "apps/zero/", "apps/web/", "packages/contracts/"},
+		"desktop":        {"apps/desktop/", "apps/zero/", "apps/web/", "packages/contracts/", "testdata/review/"},
 	}
 	for _, prefix := range prefixes[group] {
 		if strings.HasPrefix(name, prefix) {

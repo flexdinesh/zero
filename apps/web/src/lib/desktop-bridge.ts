@@ -58,26 +58,43 @@ export interface ScreenPage {
   scroll: { x: number; y: number }
 }
 
-// ScreenCapture is a capture waiting for this window's composer: its id (for
-// screenElement), the project it comments on, the full frame as base64 PNG,
-// and the page.
+// ScreenCapture is a capture waiting for this window's composer: its id, the
+// project it comments on, the full frame as base64 PNG, the page, and its
+// hit map (null when the page gave none that holds). drift says the page's
+// layout moved while it was captured: the hit map may not match the frame.
 export interface ScreenCapture {
   id: string
   project: string
   png: string
   page: ScreenPage
+  hits: ScreenHits | null
+  drift: boolean
 }
 
-// ScreenElement is the page's own word on the element at a capture's CSS
-// point: advisory, never trusted. box is its border box in CSS pixels,
-// relative to the viewport.
-export interface ScreenElement {
-  selector: string
-  tag: string
+// ScreenHits is a capture's hit map (decision 0180), recorded with the frame:
+// grid holds, row by row, the element (an index into elements, -1 for none)
+// topmost at the center of each step-pixel cell of the viewport.
+export interface ScreenHits {
+  step: number
+  columns: number
+  rows: number
+  grid: readonly number[]
+  elements: readonly ScreenHitElement[]
+}
+
+// ScreenHitElement is one element of a hit map, the page's own word:
+// advisory, never trusted. parent is the nearest ancestor the map holds
+// (earlier) or -1; box is the part the page showed, in CSS pixels of the
+// viewport. Metadata is present while the page had time to describe it.
+export interface ScreenHitElement {
+  parent: number
+  tag?: string
+  selector?: string
   role?: string
   name?: string
   text?: string
   box?: { x: number; y: number; width: number; height: number }
+  meaningful: boolean
 }
 
 function finite(value: unknown): value is number {
@@ -97,28 +114,56 @@ export function readScreenCapture(value: unknown): ScreenCapture | null {
   if (typeof url !== "string" || typeof title !== "string" || !isRecord(viewport) || !isRecord(scroll)) return null
   const { width, height, deviceScaleFactor } = viewport
   if (!positive(width) || !positive(height) || !positive(deviceScaleFactor) || !finite(scroll.x) || !finite(scroll.y)) return null
-  return { id, project, png, page: { url, title, viewport: { width, height, deviceScaleFactor }, scroll: { x: scroll.x, y: scroll.y } } }
+  return {
+    id, project, png,
+    page: { url, title, viewport: { width, height, deviceScaleFactor }, scroll: { x: scroll.x, y: scroll.y } },
+    hits: readScreenHits(value.hits, width, height),
+    drift: value.drift === true,
+  }
 }
 
-function optionalString(value: unknown): value is string | undefined {
-  return value === undefined || typeof value === "string"
+function whole(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value)
 }
 
-// readScreenElement accepts the page's element hint, or null.
-export function readScreenElement(value: unknown): ScreenElement | null {
-  if (!isRecord(value)) return null
-  const { selector, tag, role, name, text, box } = value
-  if (typeof selector !== "string" || selector === "" || typeof tag !== "string" || tag === "") return null
-  if (!optionalString(role) || !optionalString(name) || !optionalString(text)) return null
-  const element: ScreenElement = { selector, tag }
-  if (role) element.role = role
-  if (name) element.name = name
-  if (text) element.text = text
-  if (box !== undefined && box !== null) {
+// readScreenHitElement accepts one element of a hit map at index, or null.
+function readScreenHitElement(value: unknown, index: number): ScreenHitElement | null {
+  if (!isRecord(value) || !whole(value.parent) || value.parent < -1 || value.parent >= index) return null
+  const element: ScreenHitElement = { parent: value.parent, meaningful: value.meaningful === true }
+  for (const key of ["tag", "selector", "role", "name", "text"] as const) {
+    const field = value[key]
+    if (field === undefined) continue
+    if (typeof field !== "string") return null
+    if (field) element[key] = field
+  }
+  const { box } = value
+  if (box !== undefined) {
     if (!isRecord(box) || !finite(box.x) || !finite(box.y) || !positive(box.width) || !positive(box.height)) return null
     element.box = { x: box.x, y: box.y, width: box.width, height: box.height }
   }
   return element
+}
+
+// readScreenHits accepts a hit map for a width × height viewport, or null:
+// a grid that covers the viewport in step-pixel cells, whose cells name an
+// element or none, and elements whose parents come first.
+export function readScreenHits(value: unknown, width: number, height: number): ScreenHits | null {
+  if (!isRecord(value)) return null
+  const { step, columns, rows, grid, elements } = value
+  if (!whole(step) || step < 1 || columns !== Math.ceil(width / step) || rows !== Math.ceil(height / step)) return null
+  if (!Array.isArray(grid) || !Array.isArray(elements) || grid.length !== columns * rows) return null
+  const read: ScreenHitElement[] = []
+  for (const [index, element] of elements.entries()) {
+    const parsed = readScreenHitElement(element, index)
+    if (!parsed) return null
+    read.push(parsed)
+  }
+  const cells: number[] = []
+  for (const cell of grid) {
+    if (!whole(cell) || cell < -1 || cell >= read.length) return null
+    cells.push(cell)
+  }
+  return { step, columns, rows, grid: cells, elements: read }
 }
 
 // NotificationStatus is whether notices can reach the user.
@@ -141,8 +186,7 @@ export interface NotificationStatus {
 // app's part of a problem report, or null when it refuses (decision 0152).
 // openReview shows a page of the developer's app in the project's review
 // window; screenCapture resolves the capture waiting for this window's
-// composer, or null, and screenElement the page's element at a CSS point of
-// that capture, or null when the page moved (decision 0176). A
+// composer, with its hit map, or null (decisions 0177, 0180). A
 // window on a remote server has no revealPath or diagnostics: its files are
 // not on this computer, and its server is not trusted with this computer's
 // logs (decision 0098).
@@ -157,7 +201,6 @@ export interface DesktopBridge {
   diagnostics: (() => Promise<DesktopDiagnostics | null>) | null
   openReview: ((project: string, url: string) => void) | null
   screenCapture: (() => Promise<ScreenCapture | null>) | null
-  screenElement: ((id: string, x: number, y: number) => Promise<ScreenElement | null>) | null
 }
 
 // DesktopAppearance is the polarity native surfaces take: the OS's, or one.
@@ -168,7 +211,7 @@ export type DesktopAppearance = "system" | "light" | "dark"
 export function readDesktopBridge(value: unknown): DesktopBridge | null {
   if (!isRecord(value) || typeof value.version !== "number" || !Number.isInteger(value.version) || value.version < 1) return null
   const { closeWindow, showAppMenu, revealPath, showContextMenu, configureNotifications, setAppearance, diagnostics } = value
-  const { openReview, screenCapture, screenElement } = value
+  const { openReview, screenCapture } = value
   return {
     version: value.version,
     closeWindow: typeof closeWindow === "function"
@@ -233,15 +276,6 @@ export function readDesktopBridge(value: unknown): DesktopBridge | null {
       ? async () => {
         try {
           return readScreenCapture(await screenCapture.call(value))
-        } catch {
-          return null
-        }
-      }
-      : null,
-    screenElement: typeof screenElement === "function"
-      ? async (id, x, y) => {
-        try {
-          return readScreenElement(await screenElement.call(value, id, x, y))
         } catch {
           return null
         }

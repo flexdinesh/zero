@@ -293,14 +293,66 @@
   pointer-events: none;
 }
 
-.screen-readout {
-  margin: 0;
-  padding: var(--space-2) var(--space-4);
+/* The element a click would select (decision 0180): a thinner ring than
+   the selection's, gliding from element to element as the pointer moves. */
+.screen-hover-box {
+  position: absolute;
+  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+  box-shadow: 0 0 0 1px var(--color-surface);
+  outline: 1px solid var(--color-accent);
+  pointer-events: none;
+  transition-duration: var(--duration-fast);
+  transition-property: left, top, width, height;
+  transition-timing-function: ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .screen-hover-box {
+    transition: none;
+  }
+}
+
+.screen-stage-foot {
+  display: grid;
   border-top: 1px solid var(--color-border);
+}
+
+.screen-readout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--control-lg);
+  column-gap: var(--space-3);
+  padding: var(--space-1) var(--space-4);
   color: var(--color-text-muted);
   background: var(--color-surface);
   font-size: var(--text-xs);
   line-height: var(--text-xs--line-height);
+}
+
+.screen-readout-text {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.screen-readout-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-inline-start: auto;
+}
+
+.screen-readout-keys {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  white-space: nowrap;
+}
+
+.screen-drift {
+  border-width: 0 0 1px;
 }
 
 .screen-figure {

@@ -249,22 +249,3 @@ func TestParseOpenReview(t *testing.T) {
 		}
 	}
 }
-
-func TestParseScreenElement(t *testing.T) {
-	got, ok := ParseScreenElement("0123456789ab", 12.5, 40.0)
-	if !ok || got != (ScreenElement{ID: "0123456789ab", X: 12.5, Y: 40}) {
-		t.Errorf("ParseScreenElement = %+v, %v", got, ok)
-	}
-	for name, args := range map[string][3]any{
-		"bad id":    {"../x", 1.0, 1.0},
-		"short id":  {"0123", 1.0, 1.0},
-		"negative":  {"0123456789ab", -1.0, 1.0},
-		"infinite":  {"0123456789ab", math.Inf(1), 1.0},
-		"not a num": {"0123456789ab", "1", 1.0},
-		"huge":      {"0123456789ab", 1e9, 1.0},
-	} {
-		if got, ok := ParseScreenElement(args[0], args[1], args[2]); ok {
-			t.Errorf("%s: accepted %+v", name, got)
-		}
-	}
-}

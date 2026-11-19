@@ -2,9 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
-	"encoding/hex"
 	"errors"
 	"net/url"
 	"strconv"
@@ -20,38 +17,27 @@ import (
 	"github.com/flexdinesh/zero/pkg/contract"
 )
 
-// Screen comments (decisions 0175, 0176, 0177). A project's guest window
-// shows a page of the developer's app as an untrusted page: it calls nothing
-// of the app's, and the app reads it only through Page.Eval and
+// Screen comments (decisions 0175, 0176, 0177, 0180). A project's guest
+// window shows a page of the developer's app as an untrusted page: it calls
+// nothing of the app's, and the app reads it only through Page.Eval and
 // window.__zeroReview, which guest.js defines before the page's own scripts.
-// Comment on Screen captures the frame and the page's facts and hands them
-// to Zero's local window, whose composer asks for an element hint while the
-// page still shows what was captured. Nothing is drawn over the page, and the
-// page never sees the comment.
+// Comment on Screen captures the page's facts, its hit map, and the frame
+// while the page still has focus, and hands them to Zero's local window,
+// whose composer selects against that hit map. Nothing is drawn over the
+// page, and the page never sees the comment.
 
 // captureCountdown is how long Comment on Screen in 3 Seconds waits.
 const captureCountdown = 3
 
-// keptCaptures bounds the captures screenElement can still ask about.
-const keptCaptures = 4
-
-// reviews holds the guest windows, one per project, and the screen captures
-// waiting for their comments.
+// reviews holds the guest windows, one per project, and the screen capture
+// waiting for its comment.
 type reviews struct {
 	host *host
 
 	mu       sync.Mutex
 	sessions map[string]*reviewSession
-	// pending is the capture the local window has not taken yet; captures
-	// are the latest few, by ID, for element hints.
-	pending  *review.Capture
-	captures []capturedScreen
-}
-
-// capturedScreen is a capture and the guest window it came from.
-type capturedScreen struct {
-	capture review.Capture
-	session *reviewSession
+	// pending is the capture the local window has not taken yet.
+	pending *review.Capture
 }
 
 // reviewSession is one project's guest window.
@@ -131,13 +117,6 @@ func (r *reviews) open(request bridge.OpenReview) {
 		if r.sessions[request.Project] == session {
 			delete(r.sessions, request.Project)
 		}
-		kept := r.captures[:0]
-		for _, screen := range r.captures {
-			if screen.session != session {
-				kept = append(kept, screen)
-			}
-		}
-		r.captures = kept
 		r.mu.Unlock()
 	})
 	if err := page.LoadURL(request.URL); err != nil {
@@ -197,49 +176,22 @@ func (r *reviews) takeCapture() *review.Capture {
 	return capture
 }
 
-// element asks the guest page of capture id for the element at a point in
-// CSS pixels, while it still shows what was captured; nil otherwise.
-func (r *reviews) element(ctx context.Context, request bridge.ScreenElement) *review.Element {
-	r.mu.Lock()
-	var screen *capturedScreen
-	for index := range r.captures {
-		if r.captures[index].capture.ID == request.ID {
-			found := r.captures[index]
-			screen = &found
-		}
-	}
-	r.mu.Unlock()
-	if screen == nil || screen.session.ctx.Err() != nil {
-		return nil
-	}
-	captured := screen.capture.Page
-	if request.X >= float64(captured.Viewport.Width) || request.Y >= float64(captured.Viewport.Height) {
-		return nil
-	}
-	now, err := screen.session.facts(ctx)
-	if err != nil || !review.SameView(captured, now) {
-		return nil
-	}
-	code := "return window.__zeroReview.elementAt(" + strconv.FormatFloat(request.X, 'f', -1, 64) + ", " + strconv.FormatFloat(request.Y, 'f', -1, 64) + ")"
-	raw, err := screen.session.evalString(ctx, code, 5*time.Second)
-	if err != nil {
-		return nil
-	}
-	element, ok := review.ParseElement(raw, captured.Viewport)
-	if !ok {
-		return nil
-	}
-	return element
-}
+// guestPage is a review window's page as review.CaptureFrom reads it; its
+// evaluations end with the window.
+type guestPage struct{ session *reviewSession }
 
-// evalString runs code in the guest page, bounded by timeout, and answers
-// the string it returns.
-func (s *reviewSession) evalString(ctx context.Context, code string, timeout time.Duration) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+func (g guestPage) URL() string                  { return g.session.window.Page().URL() }
+func (g guestPage) ZoomFactor() float64          { return g.session.window.Page().ZoomFactor() }
+func (g guestPage) CapturePage() ([]byte, error) { return g.session.window.CapturePage() }
+
+// Eval runs code in the guest page, for at most 5 seconds, and answers the
+// string it returns.
+func (g guestPage) Eval(ctx context.Context, code string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	stop := context.AfterFunc(s.ctx, cancel)
+	stop := context.AfterFunc(g.session.ctx, cancel)
 	defer stop()
-	value, err := s.window.Page().EvalContext(ctx, code)
+	value, err := g.session.window.Page().EvalContext(ctx, code)
 	if err != nil {
 		return "", err
 	}
@@ -250,18 +202,8 @@ func (s *reviewSession) evalString(ctx context.Context, code string, timeout tim
 	return text, nil
 }
 
-// facts reads what a capture records of the page now.
-func (s *reviewSession) facts(ctx context.Context) (review.Page, error) {
-	raw, err := s.evalString(ctx, "return window.__zeroReview.facts()", 5*time.Second)
-	if err != nil {
-		return review.Page{}, err
-	}
-	page := s.window.Page()
-	return review.ParseFacts(raw, page.URL(), page.ZoomFactor())
-}
-
-// capture takes the guest page's frame and facts and hands them to the
-// local window's composer.
+// capture takes the guest page's facts, hit map, and frame and hands them
+// to the local window's composer.
 func (s *reviewSession) capture(delay bool) {
 	s.mu.Lock()
 	if s.capturing {
@@ -287,26 +229,16 @@ func (s *reviewSession) capture(delay bool) {
 		}
 		s.showTitle()
 	}
-	page, err := s.facts(s.ctx)
+	// The page keeps focus until the capture is taken: menus and hovers
+	// that close on blur stay in both the hit map and the frame.
+	capture, err := review.CaptureFrom(s.ctx, guestPage{session: s}, s.project)
 	if err != nil {
 		s.reviews.host.report("Could not capture the page", err.Error())
 		return
 	}
-	frame, err := s.window.CapturePage()
-	if err != nil {
-		s.reviews.host.report("Could not capture the page", err.Error())
-		return
-	}
-	id := make([]byte, 6)
-	_, _ = rand.Read(id)
-	capture := review.Capture{ID: hex.EncodeToString(id), Project: s.project, PNG: base64.StdEncoding.EncodeToString(frame), Page: page}
 	r := s.reviews
 	r.mu.Lock()
 	r.pending = &capture
-	r.captures = append(r.captures, capturedScreen{capture: capture, session: s})
-	if len(r.captures) > keptCaptures {
-		r.captures = r.captures[len(r.captures)-keptCaptures:]
-	}
 	r.mu.Unlock()
 	r.host.showScreenComment(s.project)
 }

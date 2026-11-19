@@ -145,7 +145,7 @@ const capture = {
 }
 
 test("screenCapture resolves a valid capture and null for junk, refusals, or none", async () => {
-  assert.deepEqual(await readDesktopBridge({ version: 2, screenCapture: () => Promise.resolve(capture) })?.screenCapture?.(), capture)
+  assert.deepEqual(await readDesktopBridge({ version: 2, screenCapture: () => Promise.resolve(capture) })?.screenCapture?.(), { ...capture, hits: null, drift: false })
   assert.equal(await readDesktopBridge({ version: 2, screenCapture: () => Promise.resolve(null) })?.screenCapture?.(), null)
   const junk = { ...capture, page: { ...capture.page, viewport: { width: 1440, height: 900, deviceScaleFactor: 0 } } }
   assert.equal(await readDesktopBridge({ version: 2, screenCapture: () => Promise.resolve(junk) })?.screenCapture?.(), null)
@@ -154,16 +154,35 @@ test("screenCapture resolves a valid capture and null for junk, refusals, or non
   assert.equal(readDesktopBridge({ version: 2 })?.screenCapture, null)
 })
 
-test("screenElement passes the capture and point, keeps the known fields, and refuses junk", async () => {
-  const calls: unknown[][] = []
-  const hint = { selector: "main > button", tag: "button", role: "button", name: "Save changes", box: { x: 605, y: 320, width: 210, height: 48 }, extra: "dropped" }
-  const bridge = readDesktopBridge({ version: 2, screenElement(...args: unknown[]) { calls.push(args); return Promise.resolve(hint) } })
-  assert.deepEqual(await bridge?.screenElement?.("cap-1", 710, 344), {
-    selector: "main > button", tag: "button", role: "button", name: "Save changes", box: { x: 605, y: 320, width: 210, height: 48 },
+test("screenCapture keeps a sound hit map and the drift mark, and drops a broken map alone", async () => {
+  // A 16 × 8 viewport in 8 px cells: 2 × 1.
+  const hits = {
+    step: 8, columns: 2, rows: 1, grid: [1, -1],
+    elements: [
+      { parent: -1, tag: "body", box: { x: 0, y: 0, width: 16, height: 8 } },
+      { parent: 0, tag: "button", selector: "#save", role: "button", name: "Save", meaningful: true, box: { x: 0, y: 0, width: 8, height: 8 }, extra: "dropped" },
+    ],
+  }
+  const small = { ...capture, page: { ...capture.page, viewport: { width: 16, height: 8, deviceScaleFactor: 1 } }, hits, drift: true }
+  const read = await readDesktopBridge({ version: 2, screenCapture: () => Promise.resolve(small) })?.screenCapture?.()
+  assert.deepEqual(read?.hits, {
+    step: 8, columns: 2, rows: 1, grid: [1, -1],
+    elements: [
+      { parent: -1, tag: "body", meaningful: false, box: { x: 0, y: 0, width: 16, height: 8 } },
+      { parent: 0, tag: "button", selector: "#save", role: "button", name: "Save", meaningful: true, box: { x: 0, y: 0, width: 8, height: 8 } },
+    ],
   })
-  assert.deepEqual(calls, [["cap-1", 710, 344]])
-  assert.equal(await readDesktopBridge({ version: 2, screenElement: () => Promise.resolve({ selector: "a", tag: 1 }) })?.screenElement?.("c", 0, 0), null)
-  assert.equal(await readDesktopBridge({ version: 2, screenElement: () => Promise.resolve({ ...hint, box: { x: 0, y: 0, width: 0, height: 4 } }) })?.screenElement?.("c", 0, 0), null)
-  assert.equal(await readDesktopBridge({ version: 2, screenElement: () => Promise.resolve(null) })?.screenElement?.("c", 0, 0), null)
-  assert.equal(readDesktopBridge({ version: 2 })?.screenElement, null)
+  assert.equal(read?.drift, true)
+  for (const broken of [
+    { ...hits, columns: 3 },
+    { ...hits, grid: [1] },
+    { ...hits, grid: [2, -1] },
+    { ...hits, elements: [{ parent: 0, tag: "body" }] },
+    { ...hits, elements: [hits.elements[0], { parent: 0, tag: 1 }] },
+    { ...hits, elements: [hits.elements[0], { parent: 0, box: { x: 0, y: 0, width: 0, height: 1 } }] },
+  ]) {
+    const capture = await readDesktopBridge({ version: 2, screenCapture: () => Promise.resolve({ ...small, hits: broken }) })?.screenCapture?.()
+    assert.notEqual(capture, null)
+    assert.equal(capture?.hits, null)
+  }
 })

@@ -1,0 +1,107 @@
+<!doctype html>
+<!--
+  The controlled guest page for screen captures (decision 0180): a page of
+  "the developer's app" whose layout is fixed in CSS pixels, each part a
+  solid color, so a test can check that a capture's hit map and its pixels
+  agree. It holds a menu that closes when the window loses focus, a gap
+  between flex items, a dropdown its card clips, a canvas, an inner
+  scroller, a password field, and a button far down the page. Its state is
+  window.__fixture. Colors are listed in data-color as r,g,b.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Review fixture</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; height: 2400px; font: 14px/20px sans-serif; background: rgb(250, 250, 250); color: rgb(20, 20, 20); }
+  .at { position: absolute; margin: 0; }
+  nav { position: fixed; top: 0; left: 0; width: 100%; height: 48px; padding: 8px; background: rgb(30, 40, 60); z-index: 10; }
+  nav button { position: absolute; left: 8px; top: 8px; width: 120px; height: 32px; padding: 0 0 0 16px; border: 0; color: white; background: rgb(60, 90, 200); font: inherit; text-align: left; }
+  [role="menu"] { position: fixed; left: 8px; top: 44px; width: 220px; padding: 4px; margin: 0; list-style: none; background: rgb(255, 255, 255); z-index: 20; display: none; }
+  [role="menu"][data-open] { display: block; }
+  [role="menuitem"] { height: 32px; padding: 6px 0 0 24px; }
+  [data-testid="menu-rename"] { background: rgb(230, 230, 240); }
+  [data-testid="menu-delete"] { background: rgb(200, 30, 90); color: white; }
+  [data-testid="cards"] { left: 40px; top: 120px; width: 700px; height: 120px; display: flex; gap: 60px; background: rgb(235, 238, 245); }
+  .card { width: 200px; height: 120px; padding: 12px 0 0 24px; background: rgb(90, 170, 110); }
+  [data-testid="clip"] { left: 40px; top: 280px; width: 300px; height: 100px; overflow: hidden; background: rgb(255, 240, 200); }
+  [data-testid="clipped-dropdown"] { left: 20px; top: 60px; width: 200px; height: 120px; padding: 8px 0 0 24px; background: rgb(120, 60, 180); color: white; }
+  [data-testid="list"] { left: 400px; top: 280px; width: 260px; height: 160px; overflow: auto; padding: 0; list-style: none; background: rgb(250, 250, 250); }
+  [data-testid="list"] li { height: 40px; padding: 10px 0 0 24px; }
+  [data-testid="list"] li:nth-child(odd) { background: rgb(210, 225, 250); }
+  [data-testid="list"] li:nth-child(even) { background: rgb(250, 220, 210); }
+  canvas { left: 800px; top: 120px; }
+  label.at { left: 40px; top: 460px; width: 300px; height: 32px; }
+  [data-testid="far"] { left: 40px; top: 1000px; width: 160px; height: 40px; padding: 0 0 0 24px; border: 0; background: rgb(240, 120, 20); font: inherit; text-align: left; }
+</style>
+</head>
+<body>
+<nav aria-label="App">
+  <button type="button" data-testid="project-menu" aria-haspopup="menu" data-color="60,90,200">Project</button>
+</nav>
+<ul role="menu" aria-label="Project" data-testid="menu">
+  <li role="menuitem" data-testid="menu-rename" data-color="230,230,240">Rename project</li>
+  <li role="menuitem" data-testid="menu-delete" data-color="200,30,90">Delete project</li>
+</ul>
+<main>
+  <div class="at" role="group" aria-label="Cards" data-testid="cards" data-color="235,238,245">
+    <section class="card" data-testid="card-a" data-color="90,170,110">Card A</section>
+    <section class="card" data-testid="card-b" data-color="90,170,110">Card B</section>
+  </div>
+  <div class="at" data-testid="clip" data-color="255,240,200">
+    <div class="at" role="listbox" aria-label="Region" data-testid="clipped-dropdown" data-color="120,60,180">Sydney</div>
+  </div>
+  <ul class="at" data-testid="list">
+    <li>Item 1</li><li>Item 2</li><li>Item 3</li><li>Item 4</li><li>Item 5</li>
+    <li>Item 6</li><li>Item 7</li><li>Item 8</li><li>Item 9</li><li>Item 10</li>
+  </ul>
+  <canvas class="at" width="320" height="200" data-testid="chart" data-color="20,150,160"></canvas>
+  <label class="at">Password <input type="password" value="hunter2" autocomplete="current-password"></label>
+  <button class="at" type="button" data-testid="far" data-color="240,120,20">Far away</button>
+</main>
+<script>
+  (() => {
+    const canvas = document.querySelector("canvas")
+    const context = canvas.getContext("2d")
+    context.fillStyle = "rgb(20, 150, 160)"
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    context.strokeStyle = "rgb(255, 255, 255)"
+    context.lineWidth = 4
+    context.beginPath()
+    context.moveTo(20, 180)
+    context.lineTo(120, 80)
+    context.lineTo(200, 120)
+    context.lineTo(300, 30)
+    context.stroke()
+
+    const button = document.querySelector("[data-testid=project-menu]")
+    const menu = document.querySelector("[role=menu]")
+    // The menu is transient: it opens on hover or click and closes as soon
+    // as the window loses focus, as many apps' menus do.
+    const state = {
+      menuOpen: false,
+      blurs: 0,
+      openMenu() {
+        menu.setAttribute("data-open", "")
+        state.menuOpen = true
+      },
+      closeMenu() {
+        menu.removeAttribute("data-open")
+        state.menuOpen = false
+      },
+    }
+    button.addEventListener("mouseenter", state.openMenu)
+    button.addEventListener("click", state.openMenu)
+    addEventListener("blur", () => {
+      state.blurs++
+      state.closeMenu()
+    })
+    addEventListener("keydown", (event) => {
+      if (event.key === "Escape") state.closeMenu()
+    })
+    window.__fixture = state
+  })()
+</script>
+</body>
+</html>
