@@ -41,43 +41,6 @@
 }
 
 /* Where a screen comment goes: the project, then its branch. */
-.project-browser-target {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  margin: 0;
-  gap: var(--space-1) var(--space-3);
-  color: var(--color-text-secondary);
-  font-size: var(--text-label);
-}
-
-.project-browser-target-label {
-  color: var(--color-text-muted);
-}
-
-.project-browser-target-part {
-  display: inline-flex;
-  min-width: 0;
-  align-items: center;
-  gap: var(--space-1);
-  color: var(--color-text-primary);
-  font-weight: 500;
-  overflow-wrap: anywhere;
-}
-
-.project-browser-target-part svg {
-  width: var(--icon-sm);
-  height: var(--icon-sm);
-  flex: none;
-  color: var(--color-text-muted);
-}
-
-.project-browser-target-part[data-detached] {
-  color: var(--color-text-secondary);
-  font-style: italic;
-  font-weight: 400;
-}
-
 .project-browser-state:empty {
   display: none;
 }

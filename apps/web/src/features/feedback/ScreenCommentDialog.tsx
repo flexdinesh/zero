@@ -11,6 +11,7 @@ import { SegmentedControl, SegmentedItem } from "../../components/ui/segmented-c
 import { TextArea, TextField } from "../../components/ui/text-field.tsx"
 import { ViewHeader } from "../../components/ui/view-header.tsx"
 import type { ScreenHits } from "../../lib/desktop-bridge.ts"
+import { CommentTarget, type CommentTargetProps } from "./CommentTarget.tsx"
 import { isSendKey, sendKeys } from "./FeedbackThreadZone.tsx"
 import { boxOf, hintOf, hitLabel, parentOf, pickAt } from "./hit-map.ts"
 import { cropPNG, hasImage, imageFile, imageSize, pngOf } from "./screen-image.ts"
@@ -55,6 +56,8 @@ export interface ScreenComposerState {
 
 interface ScreenCommentDialogProps {
   composer: ScreenComposerState | null
+  // target is the project the comment joins, shown beside Send.
+  target: CommentTargetProps
   actions: FeedbackActions
   onSource(source: ScreenSource): void
   onClose(): void
@@ -65,7 +68,7 @@ interface ScreenCommentDialogProps {
 // frozen image takes a rectangle, then the comment. A modal, because the
 // rectangle needs the room and the keys, and nothing behind it should
 // change while the image is frozen.
-export function ScreenCommentDialog({ actions, composer, onClose, onSent, onSource }: ScreenCommentDialogProps) {
+export function ScreenCommentDialog({ actions, composer, onClose, onSent, onSource, target }: ScreenCommentDialogProps) {
   const dialog = useRef<HTMLDialogElement>(null)
   const discard = useRef<() => boolean>(() => true)
   const registerDiscard = useCallback((next: () => boolean) => { discard.current = next }, [])
@@ -86,7 +89,7 @@ export function ScreenCommentDialog({ actions, composer, onClose, onSent, onSour
       }}
       onClose={() => { if (open) onClose() }}>
       {composer && (
-        <ScreenComposer key={composer.key} source={composer.source} actions={actions} registerDiscard={registerDiscard}
+        <ScreenComposer key={composer.key} source={composer.source} target={target} actions={actions} registerDiscard={registerDiscard}
           onSource={onSource} onClose={onClose} onSent={onSent} />
       )}
     </DialogShell>
@@ -95,6 +98,7 @@ export function ScreenCommentDialog({ actions, composer, onClose, onSent, onSour
 
 interface ComposerProps {
   source: ScreenSource | null
+  target: CommentTargetProps
   actions: FeedbackActions
   // registerDiscard sets what closing does: true closes, false asks first.
   registerDiscard(discard: () => boolean): void
@@ -103,7 +107,7 @@ interface ComposerProps {
   onSent(thread: FeedbackThread): void
 }
 
-function ScreenComposer({ actions, onClose, onSent, onSource, registerDiscard, source }: ComposerProps) {
+function ScreenComposer({ actions, onClose, onSent, onSource, registerDiscard, source, target }: ComposerProps) {
   const [image, setImage] = useState<{ url: string; size: Size } | null>(null)
   const [unreadable, setUnreadable] = useState(false)
   const [selection, setSelection] = useState<Selection | null>(null)
@@ -352,6 +356,7 @@ function ScreenComposer({ actions, onClose, onSent, onSource, registerDiscard, s
               </span>
             </Notice>
             : <div className="screen-actions screen-footer">
+              <CommentTarget {...target} />
               <Button variant="ghost" disabled={busy} onClick={() => { if (discard()) onClose() }}>Cancel</Button>
               <Button disabled={!ready} title={!rect ? "Mark a region first" : !body.trim() ? "Write a comment first" : undefined} onClick={send}>
                 {busy ? "Sending…" : "Send"}

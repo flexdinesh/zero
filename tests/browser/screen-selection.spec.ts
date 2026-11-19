@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process"
 import { existsSync, readFileSync } from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -93,7 +94,8 @@ test("a click selects the element under it, Alt+Up walks out, and Escape clears 
   await page.mouse.down()
   await page.mouse.up()
   await expect(readout).toContainText("menuitem \"Delete project\" 212 × 32 px")
-  await expect(dialog.getByText("li \"Delete project\"")).toBeVisible()
+  // The page's element hint reads as the readout does: by its role.
+  await expect(dialog.locator(".screen-facts .screen-element")).toHaveText("menuitem \"Delete project\"")
   await expect(dialog.getByRole("button", { name: "Clear" })).toBeVisible()
 
   await page.keyboard.press("Alt+ArrowUp")
@@ -112,6 +114,31 @@ test("a click selects the element under it, Alt+Up walks out, and Escape clears 
   await expect(dialog.getByRole("button", { name: "Clear" })).toHaveCount(0)
   await page.keyboard.press("Escape")
   await expect(dialog).toBeHidden()
+})
+
+test("a capture of another project switches to it, on its startup tab, without an error", async ({ page, context, live }) => {
+  // A linked worktree on its own branch is a project of its own.
+  const worktree = path.join(live.root, "menu-worktree")
+  execFileSync("git", ["-C", live.root, "worktree", "add", "-q", "-b", "menu-review", worktree])
+  const capture = await guestCapture(context, worktree, async () => undefined)
+  await page.addInitScript((pending: unknown) => {
+    let waiting = pending
+    Reflect.set(window, "zeroDesktop", {
+      version: 2,
+      screenCapture() {
+        const taken = waiting
+        waiting = null
+        return Promise.resolve(taken)
+      },
+    })
+  }, capture)
+  await page.goto(`${live.origin}/view?project=${encodeURIComponent(live.root)}&path=README.md`)
+  const dialog = page.getByRole("dialog", { name: "New screen comment" })
+  await expect(dialog).toBeVisible({ timeout: 20_000 })
+  await expect.poll(() => new URL(page.url()).searchParams.get("project")).toBe(worktree)
+  await expect(page.locator(".status-state")).toHaveText("Ready")
+  // The composer says where the comment goes: the worktree and its branch.
+  await expect(dialog.locator(".comment-target")).toHaveText(/Comments go to\s*menu-worktree\s*menu-review/)
 })
 
 test("a drag over a canvas marks a free region, sent with the element the page showed there", async ({ page, context, live, request }) => {

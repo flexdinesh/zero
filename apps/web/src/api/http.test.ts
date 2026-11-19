@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { failureReason, fetchJSON, isAbort, isRecord, postJSON, RequestError, type RequestFailure } from "./http.ts"
+import { failureReason, fetchJSON, isAbort, isRecord, postBytes, postJSON, RequestError, type RequestFailure } from "./http.ts"
 
 interface Greeting {
   greeting: string
@@ -45,6 +45,18 @@ test("postJSON sends JSON and fails as reads do", async (t) => {
   t.mock.method(globalThis, "fetch", respond('{"error":"body: is empty","code":"invalidFeedback"}', 400))
   assert.deepEqual((await failure(postJSON("/api/greeting", {}, {}, isGreeting, describe))).failure,
     { kind: "rejected", status: 400, error: "body: is empty", code: "invalidFeedback" })
+})
+
+test("postBytes sends the bytes as an ArrayBuffer, never the Blob the desktop app's WebKitGTK cannot read", async (t) => {
+  const fetchMock = t.mock.method(globalThis, "fetch", respond('{"greeting":"hi"}'))
+  const png = new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], { type: "image/png" })
+  assert.deepEqual(await postBytes("/api/upload", png, "image/png", {}, isGreeting, describe), { greeting: "hi" })
+  const init = fetchMock.mock.calls[0]?.arguments[1]
+  assert.equal(init?.method, "POST")
+  assert.deepEqual(init?.headers, { Accept: "application/json", "Content-Type": "image/png" })
+  const body = init?.body
+  assert.ok(body instanceof ArrayBuffer, "the body is an ArrayBuffer")
+  assert.deepEqual([...new Uint8Array(body)], [0x89, 0x50, 0x4e, 0x47])
 })
 
 test("a network failure becomes an unreachable message, never the browser's text", async (t) => {

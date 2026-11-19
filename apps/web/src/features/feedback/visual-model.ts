@@ -66,11 +66,13 @@ export function pageWhere(page: FeedbackPage): string {
   return page.localhost === "viewer" ? "localhost on your machine" : ""
 }
 
-// elementLabel names an element hint as the composer shows it:
-// `button "Save changes"`, or the tag alone.
-export function elementLabel(element: Pick<FeedbackElement, "tag" | "name" | "text">): string {
+// elementLabel names an element hint as the composer's readout does
+// (hitLabel): by its role, else its tag, with its name or text:
+// `menuitem "Export data"`, `button "Save changes"`, or the kind alone.
+export function elementLabel(element: Pick<FeedbackElement, "tag" | "role" | "name" | "text">): string {
+  const kind = element.role || element.tag
   const name = element.name || element.text
-  return name ? `${element.tag} "${name}"` : element.tag
+  return name ? `${kind} "${name}"` : kind
 }
 
 // attachmentURL is where a visual thread's screenshot is read.

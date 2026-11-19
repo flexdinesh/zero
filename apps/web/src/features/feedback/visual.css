@@ -567,6 +567,11 @@
   justify-content: space-between;
 }
 
+/* Where the comment goes leads the row; Cancel and Send keep the end. */
+.screen-footer .comment-target {
+  margin-right: auto;
+}
+
 @media (max-width: 48rem) {
   /* Phones stack the image over the form and scroll them together. */
   .screen-body {
