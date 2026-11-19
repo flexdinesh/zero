@@ -105,6 +105,11 @@ export function createReviewDiffs() {
   return {
     get: cache.get,
     subscribe: cache.subscribe,
+    // peek is source's diff read at its revision, null when not yet read.
+    peek(source: ReviewDiffSource): ReviewDiff | null {
+      const cached = cache.get(diffUrl(source.project, source.compare, source.file, false))
+      return cached?.revision === diffRevision(source.version, source.ignoreWhitespace) ? cached.diff : null
+    },
     async load(source: ReviewDiffSource, signal: AbortSignal): Promise<ReviewDiff> {
       signal.throwIfAborted()
       const key = diffUrl(source.project, source.compare, source.file, false)

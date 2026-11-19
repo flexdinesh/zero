@@ -97,6 +97,12 @@
   --color-lane-1: var(--color-syntax-function);
   --color-lane-2: var(--color-syntax-keyword);
   --color-lane-3: var(--color-success);
+  /* Find in file (decision 0172): every match takes the search-match tint,
+     the current one a stronger warning mix. Scrollbar marks are warning;
+     the current mark is accent. */
+  --color-find-match: var(--color-warning-subtle);
+  --color-find-current: color-mix(in srgb, var(--color-warning) 55%, var(--color-surface));
+  --color-find-mark: color-mix(in srgb, var(--color-warning) 75%, transparent);
   /* Scrollbar thumbs are translucent ink too (decision 0055). */
   --color-scrollbar-thumb: color-mix(in srgb, var(--color-text-primary) 22%, transparent);
   --color-scrollbar-thumb-hover: color-mix(in srgb, var(--color-text-primary) 35%, transparent);

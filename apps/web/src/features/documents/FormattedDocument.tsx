@@ -8,5 +8,5 @@ interface FormattedDocumentProps {
 
 // FormattedDocument shows the server's formatted text, highlighted as Source.
 export function FormattedDocument({ text, language, label }: FormattedDocumentProps) {
-  return <SourceDocument source={text} language={language} label={label} />
+  return <SourceDocument source={text} language={language} label={label} findable />
 }

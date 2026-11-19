@@ -63,8 +63,12 @@ import { useSourceControlCommands, useSourceControlQuery } from "./features/sour
 import { filePaths } from "./api/page-data.ts"
 import { isCommitHash } from "./lib/commit-hash.ts"
 import {
-  documentKey, documentTab, includesTab, reviewTab, tabName, tabSearch, walkthroughTab, welcomeTab, type WorkspaceTab,
+  documentKey, documentTab, includesTab, reviewTab, tabKey, tabName, tabSearch, walkthroughTab, welcomeTab, type WorkspaceTab,
 } from "./workspace/workspace-tabs.ts"
+import { FindBar } from "./features/find/FindBar.tsx"
+import { FindButton } from "./features/find/FindButton.tsx"
+import { FindProvider, type FindCommands } from "./features/find/FindProvider.tsx"
+import { FindRuler } from "./features/find/FindRuler.tsx"
 import { WorkspaceEmptyState } from "./workspace/EmptyWorkspace.tsx"
 import type { EmptyWorkspaceAction, EmptyWorkspaceInput } from "./workspace/empty-workspace.ts"
 import { WelcomeTab } from "./features/welcome/WelcomeTab.tsx"
@@ -230,6 +234,10 @@ export function App({ project }: AppProps) {
     searchCommands.current = commands
     openSearch.current = commands?.open ?? (() => {})
   }, [])
+  const findCommands = useRef<FindCommands | null>(null)
+  const registerFind = useCallback((commands: FindCommands | null) => {
+    findCommands.current = commands
+  }, [])
   const registerHunkStep = useCallback((step: HunkStep | null) => {
     stepHunk.current = step ?? (() => {})
   }, [])
@@ -292,6 +300,8 @@ export function App({ project }: AppProps) {
     else if (action.kind === "recent-locations") openRecent.current()
     else if (action.kind === "select-color-theme") openColorTheme.current()
     else if (action.kind === "report-problem") openReport.current()
+    else if (action.kind === "find") findCommands.current?.open()
+    else if (action.kind === "find-step") findCommands.current?.step(action.direction)
     else openSettings.current(action.kind === "open-setting" ? action.setting : undefined)
   }, [historyStore])
   const sidebar = useSidebar()
@@ -897,6 +907,7 @@ export function App({ project }: AppProps) {
       mode={documentMode} isLoading={isLoading} caret={caret} openLocation={openLocation} registerCommand={registerNavigation}>
     <SearchProvider documentPane={main} openMatch={openSearchMatch} project={project} registerCommands={registerSearch} reveal={revealSearch}
       visible={searchShown}>
+    <FindProvider scope={activeTab ? tabKey(activeTab) : ""} pane={main} registerCommands={registerFind}>
       <div className={`navigation-progress${isLoading ? " active" : ""}`} aria-hidden="true" />
       <div className="visually-hidden" role="status" aria-live="polite">
         {isLoading ? "Loading document…" : documentTitle ? `${documentTitle} loaded.` : ""}
@@ -967,8 +978,10 @@ export function App({ project }: AppProps) {
                 onChange={changeDocumentMode} />
               {showImage && <ImageZoomControls viewer={image} />}
             </>}
+            <FindButton />
           </div>
           {narrationPanel}
+          <FindBar />
           <div className="workspace-body">
           <DocumentPane
             diff={shownReview ? <DeferredReview key={`${project}\n${compareKey(shownReview)}`} project={project} compare={shownReview}
@@ -1020,6 +1033,7 @@ export function App({ project }: AppProps) {
               itemHeight={treeRowHeight(false, uiScale(settings))}
               onOpen={(path, focusDocument) => openReview(shownReview, focusDocument, path)} />
           )}
+          <FindRuler pane={main} />
           </div>
           {reviewRail && reviewCompare && sidebar.mobile && (
             <ReviewSheet data={reviewData} marked={markedPaths} activePath={currentFile} viewed={railViewed} threads={reviewFeedback.counts}
@@ -1049,6 +1063,7 @@ export function App({ project }: AppProps) {
       <RecentLocations log={historyLog} project={project} registerOpen={registerRecent} onOpen={navigateToHref} />
       <ReportProblemDialog registerOpen={registerReport} />
       <OverlayScrollbars />
+    </FindProvider>
     </SearchProvider>
     </NavigationProvider>
   )

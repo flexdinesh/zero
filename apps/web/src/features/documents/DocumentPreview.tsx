@@ -1,6 +1,7 @@
 import { type MouseEvent, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
 
+import { usePreviewFind } from "../find/use-preview-find.ts"
 import { CodeBlockControls } from "./CodeBlockControls.tsx"
 import { MermaidBlock } from "./MermaidBlock.tsx"
 import { createPreviewFence, previewScrollRoot, schedulePreviewFences, type PreviewFence } from "./preview-fences.ts"
@@ -20,6 +21,8 @@ interface CodeBlockPortal {
 interface DocumentPreviewProps {
   html: string
   navigate(href: string): void
+  // findable offers the rendered text to find in file (decision 0172).
+  findable?: boolean
 }
 
 function internalDocumentHref(event: MouseEvent<HTMLElement>): string | null {
@@ -46,7 +49,7 @@ function PreviewCodeControls({ fence }: { fence: PreviewFence }) {
   return <CodeBlockControls language={language} source={fence.source} />
 }
 
-export function DocumentPreview({ html, navigate }: DocumentPreviewProps) {
+export function DocumentPreview({ html, navigate, findable = false }: DocumentPreviewProps) {
   const article = useRef<HTMLElement>(null)
   const [codeBlocks, setCodeBlocks] = useState<CodeBlockPortal[]>([])
   const [diagrams, setDiagrams] = useState<DiagramPortal[]>([])
@@ -86,6 +89,8 @@ export function DocumentPreview({ html, navigate }: DocumentPreviewProps) {
       for (const restore of restoreBlocks) restore()
     }
   }, [html])
+  // After the code blocks and diagrams move into place.
+  usePreviewFind(findable, article, html)
 
   return (
     <>

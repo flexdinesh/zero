@@ -171,3 +171,4 @@ rewriting history; update `Status` on the old record.
 | [0169](0169-deferred-review-and-dialogs.md) | Deferred review and dialog assets | Accepted; extends 0048, 0157, 0168 |
 | [0170](0170-window-sidebar-result-lists.md) | Window sidebar result lists | Accepted; extends 0020, 0040, 0168 |
 | [0171](0171-review-remeasure-survives-cache-reads.md) | Review re-measure survives cache reads | Accepted; extends 0157, 0163 |
+| [0172](0172-find-in-file.md) | Find in file | Accepted; extends 0020, 0029, 0035, 0140 |
