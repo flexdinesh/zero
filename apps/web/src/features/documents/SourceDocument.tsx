@@ -8,6 +8,7 @@ import type { ColumnRange, NavigationKind } from "../navigation/code-navigation.
 import { clampLineRange, lineReference, spanLines, splitSourceLines, startLineSelection, type LineRange } from "../../lib/line-selection.ts"
 import { showLink, targetAt, wordRange, type SourceTarget } from "../navigation/source-position.ts"
 import { useHighlightedLines } from "../../highlighting/use-highlighted-lines.ts"
+import { useSourceFind } from "../find/use-source-find.ts"
 import { markerLabel, markerRows, type ChangeMarker, type RowMarkers } from "../source-control/change-markers.ts"
 
 // LineSelection connects gutter selection to its owner (the URL fragment).
@@ -89,6 +90,8 @@ interface SourceDocumentProps {
   changes?: SourceChanges
   comments?: SourceComments
   blame?: SourceBlame
+  // findable offers the lines to find in file (decision 0172).
+  findable?: boolean
 }
 
 // LineCopyButton copies a line reference from the gutter. Its presses stay
@@ -245,7 +248,7 @@ function gutterLine(event: MouseEvent | PointerEvent): number | null {
   return lineFromRow(gutter?.parentElement, event.currentTarget)
 }
 
-export function SourceDocument({ source, language, label, selection, navigation, annotation, changes, comments, blame }: SourceDocumentProps) {
+export function SourceDocument({ source, language, label, selection, navigation, annotation, changes, comments, blame, findable = false }: SourceDocumentProps) {
   const lines = useMemo(() => splitSourceLines(source), [source])
   // Rows show plain text until highlighting arrives.
   const highlightedLines = useHighlightedLines(source, language)
@@ -269,6 +272,7 @@ export function SourceDocument({ source, language, label, selection, navigation,
     if (range && rangeKey(range) !== ownRange) setActiveLine(range.start)
   }
   const shown = drag?.range ?? range
+  useSourceFind(findable, container, lines, selection ? range : undefined)
   const pointer = useRef<{ x: number; y: number } | null>(null)
   const markers = changes?.markers
   const marks = useMemo(() => markerRows(markers ?? [], lineCount), [lineCount, markers])

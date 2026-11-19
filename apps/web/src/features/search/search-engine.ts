@@ -56,10 +56,37 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")
 }
 
-function buildPattern(source: string, query: SearchQuery, unicode: boolean): RegExp {
+function buildPattern(source: string, query: Pick<SearchQuery, "matchCase" | "wholeWord">, unicode: boolean): RegExp {
   const word = unicode ? unicodeWord : asciiWord
   const body = query.wholeWord ? `(?<!${word})(?:${source})(?!${word})` : source
   return new RegExp(body, `g${unicode ? "u" : ""}${query.matchCase ? "" : "i"}`)
+}
+
+// PatternQuery is what a text pattern matches with: content search and find
+// in file share it.
+export type PatternQuery = Pick<SearchQuery, "pattern" | "matchCase" | "wholeWord" | "regex">
+
+export type CompiledPattern = { kind: "ok"; pattern: RegExp | null } | { kind: "invalid"; message: string }
+
+// compilePattern builds a global pattern, null for an empty query.
+export function compilePattern(query: PatternQuery): CompiledPattern {
+  if (!query.pattern) return { kind: "ok", pattern: null }
+  const source = query.regex ? query.pattern : escapeRegExp(query.pattern)
+  try {
+    return { kind: "ok", pattern: buildPattern(source, query, true) }
+  } catch {
+    // Unicode mode rejects some escapes other engines accept, such as "\-".
+    try {
+      return { kind: "ok", pattern: buildPattern(source, query, false) }
+    } catch {
+      return { kind: "invalid", message: "Invalid regular expression." }
+    }
+  }
+}
+
+// escapePattern quotes literal text for a regular-expression query.
+export function escapePattern(value: string): string {
+  return escapeRegExp(value)
 }
 
 function compile(query: SearchQuery): Compiled {
@@ -67,18 +94,9 @@ function compile(query: SearchQuery): Compiled {
   if (!include.valid) return { kind: "invalid", field: "include", message: `Invalid pattern: ${include.pattern}` }
   const exclude = parsePathScope(query.exclude)
   if (!exclude.valid) return { kind: "invalid", field: "exclude", message: `Invalid pattern: ${exclude.pattern}` }
-  if (!query.pattern) return { kind: "ok", include: include.matcher, exclude: exclude.matcher, pattern: null }
-  const source = query.regex ? query.pattern : escapeRegExp(query.pattern)
-  try {
-    return { kind: "ok", include: include.matcher, exclude: exclude.matcher, pattern: buildPattern(source, query, true) }
-  } catch {
-    // Unicode mode rejects some escapes other engines accept, such as "\-".
-    try {
-      return { kind: "ok", include: include.matcher, exclude: exclude.matcher, pattern: buildPattern(source, query, false) }
-    } catch {
-      return { kind: "invalid", field: "pattern", message: "Invalid regular expression." }
-    }
-  }
+  const compiled = compilePattern(query)
+  if (compiled.kind === "invalid") return { kind: "invalid", field: "pattern", message: compiled.message }
+  return { kind: "ok", include: include.matcher, exclude: exclude.matcher, pattern: compiled.pattern }
 }
 
 // linePreview trims leading indentation and, for a match deep in a long line,

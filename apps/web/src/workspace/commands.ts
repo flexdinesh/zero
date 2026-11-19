@@ -21,6 +21,8 @@ export type CommandAction =
   | { kind: "show-file-history" }
   | { kind: "show-line-blame" }
   | { kind: "report-problem" }
+  | { kind: "find" }
+  | { kind: "find-step"; direction: 1 | -1 }
 
 export interface Command {
   id: string
@@ -40,6 +42,7 @@ export interface CommandMatch {
 // Open Settings and the Color Theme pick come first; then each setting is a
 // command that opens Settings at that setting; then code navigation, which
 // acts on the name last clicked in Source, and history (decision 0131); then
+// find in file, which acts on the view shown (decision 0172); then
 // walkthrough stepping, which
 // acts on the walkthrough last opened; then Source Control's file history,
 // which acts on the working-tree file in view, and line blame, which acts on
@@ -59,6 +62,9 @@ export const commands: readonly Command[] = [
   { id: "navigation.goBack", category: "Navigation", title: "Go Back", action: { kind: "go-back" }, shortcut: shortcutLabel(-1, mac) },
   { id: "navigation.goForward", category: "Navigation", title: "Go Forward", action: { kind: "go-forward" }, shortcut: shortcutLabel(1, mac) },
   { id: "navigation.recentLocations", category: "Navigation", title: "Recent Locations", action: { kind: "recent-locations" } },
+  { id: "editor.find", category: "Editor", title: "Find", action: { kind: "find" }, shortcut: mac ? "⌘F" : "Ctrl+F" },
+  { id: "editor.findNext", category: "Editor", title: "Find Next", action: { kind: "find-step", direction: 1 }, shortcut: mac ? "⌘G" : "F3" },
+  { id: "editor.findPrevious", category: "Editor", title: "Find Previous", action: { kind: "find-step", direction: -1 }, shortcut: mac ? "⇧⌘G" : "Shift+F3" },
   { id: "walkthrough.next", category: "Walkthrough", title: "Next Step", action: { kind: "walkthrough-step", direction: 1 }, shortcut: mac ? "⌘→" : "Ctrl+Right" },
   { id: "walkthrough.previous", category: "Walkthrough", title: "Previous Step", action: { kind: "walkthrough-step", direction: -1 }, shortcut: mac ? "⌘←" : "Ctrl+Left" },
   { id: "walkthrough.present", category: "Walkthrough", title: "Present", action: { kind: "walkthrough-present" } },

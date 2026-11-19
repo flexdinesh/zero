@@ -51,6 +51,7 @@ import { adjacentFile, nextUnviewed, reviewKeyCommand, reviewKeyShortcuts, type 
 import type { ViewedState } from "./review-viewed.ts"
 import type { CompareData } from "./use-compare-data.ts"
 import { statsLabel, totals } from "./use-compare-stats.ts"
+import { createRenderListeners, useReviewFind } from "./use-review-find.ts"
 
 export { releaseDiffResources } from "./diff-resources.ts"
 
@@ -69,9 +70,12 @@ const poolOptions: WorkerPoolOptions = {
 // corners over Pierre's own radii (decision 0102), the selection, and wide
 // code's square, inset scrollbar thumb (decision 0055). Wide code keeps this
 // native bar, not the overlay: hiding it changes Pierre's row layout in
-// WebKit, and reveals then miss their lines (decision 0140).
+// WebKit, and reveals then miss their lines (decision 0140). Find in file's
+// matches paint here too (decision 0172).
 const diffCSS = `*, ::before, ::after { border-radius: 0 !important; }
 ::selection { color: var(--color-text-primary); background: var(--color-accent-subtle); }
+::highlight(zero-find-match) { background-color: var(--color-find-match); }
+::highlight(zero-find-current) { color: var(--color-text-primary); background-color: var(--color-find-current); }
 [data-code]::-webkit-scrollbar-thumb { border: 2px solid transparent; }
 :is([data-diff], [data-file]):hover [data-code]::-webkit-scrollbar-thumb { background-color: var(--color-scrollbar-thumb); }
 @supports not selector(::-webkit-scrollbar) { [data-code] { scrollbar-color: var(--color-scrollbar-thumb) transparent; } }`
@@ -206,12 +210,14 @@ export interface ReviewScope {
 export type HunkStep = (direction: 1 | -1) => void
 
 // A ShownDiff is a rendered file diff, which places and expands its rows.
-interface ShownDiff {
+export interface ShownDiff {
   rendered: RenderedDiff
   // lineBox is a line's box in the pane's scroll content, null when unplaced.
   lineBox(side: SelectionSide, line: number): { top: number; height: number } | null
   // expandTo opens the collapsed gap holding a line, whole.
   expandTo(side: SelectionSide, line: number): void
+  // lineShown is whether a new-side line shows, outside collapsed gaps.
+  lineShown(line: number): boolean
 }
 
 // ShownContext reports resident diffs and completed row renders.
@@ -369,11 +375,14 @@ function ReviewBody({
   // Rendered diffs, by path; a pin repins when the pinned file's diff shows.
   const shown = useRef(new Map<string, ShownDiff>())
   const repin = useRef<{ path: string; pin(): void } | null>(null)
+  // Find in file follows every diff's renders (decision 0172).
+  const [rendersOf] = useState(createRenderListeners)
   const registerShown = useCallback<ReportShown>((event) => {
     if (event.kind === "register") shown.current.set(event.path, event.view)
     else if (event.kind === "remove") shown.current.delete(event.path)
     if (event.kind !== "remove" && repin.current?.path === event.path) repin.current.pin()
-  }, [])
+    rendersOf.notify(event.path)
+  }, [rendersOf])
 
   // A review hidden behind another tab keeps its scroll; the pane scrolls
   // other documents meanwhile, so showing it again restores it (decision
@@ -602,6 +611,12 @@ function ReviewBody({
     onRegisterHunkStep(stepHunk)
     return () => onRegisterHunkStep(null)
   }, [onRegisterHunkStep, stepHunk])
+
+  useReviewFind({
+    project, compare, files, version: data?.version ?? "", ignoreWhitespace: options.ignoreWhitespace,
+    expandUnchanged: options.expandUnchanged, diffs, selection, shown, container, scrollRoot, scrollPane, isOpen, setFileOpen,
+    renders: rendersOf,
+  })
 
   // goToFile shows a file at the pane's top, as the fragment does. The
   // fragment's own file, already revealed, scrolls there directly.
@@ -1063,6 +1078,9 @@ function DiffView({ annotation, rendered, lines, narrow, options, path, referenc
       expandTo(side, line) {
         const gap = gapForLine(rendered.lineDiff, side, line)
         if (gap && !instance.isLineRenderable(gap.newLine)) instance.expandHunk(gap.hunkIndex, "up", gap.lines)
+      },
+      lineShown(line) {
+        return instance.isLineRenderable(line)
       },
     } })
     return () => register({ kind: "remove", path })

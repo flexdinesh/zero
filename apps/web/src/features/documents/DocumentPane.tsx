@@ -159,7 +159,7 @@ function PageView({
             <p>Could not render this preview: {page.previewError}</p>
             <p>Switch to Source to read the original file.</p>
           </div>
-        ) : <DocumentPreview key={page.selected} html={page.content} navigate={navigate} />
+        ) : <DocumentPreview key={page.selected} html={page.content} navigate={navigate} findable />
       ) : view.kind === "format" ? (
         page.at ? (
           <div className="source-stack">
@@ -174,7 +174,7 @@ function PageView({
           {view.formatError && <FormatErrorNotice reason={view.formatError} />}
           <SourceDocument key={page.selected} source={page.source} language={language} label={`${label} source`}
             selection={lineSelection} navigation={sourceNavigation} annotation={sourceAnnotation} changes={sourceChanges}
-            comments={page.at ? undefined : sourceComments} blame={sourceBlame} />
+            comments={page.at ? undefined : sourceComments} blame={sourceBlame} findable />
         </div>
       ) : null
 }

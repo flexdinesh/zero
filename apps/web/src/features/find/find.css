@@ -1,0 +1,133 @@
+/* Find in file (decision 0172): a flat band under the document toolbar, on
+   the toolbar's hairline and its own, as Zed's buffer search. It pushes the
+   document down rather than covering it. */
+.workspace:has(> .find-bar) {
+  grid-template-rows: var(--chrome-height) auto minmax(0, 1fr);
+}
+
+.workspace:has(> .narration-panel):has(> .find-bar) {
+  grid-template-rows: var(--chrome-height) auto auto minmax(0, 1fr);
+}
+
+.layout[data-presenting] > .workspace:has(> .find-bar) {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.layout[data-presenting] > .workspace:has(> .narration-panel):has(> .find-bar) {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.find-bar {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+  font-size: var(--text-label);
+}
+
+.find-field {
+  min-width: 0;
+  flex: 0 1 24rem;
+}
+
+/* The count keeps its width; on phones only long messages truncate, once
+   the field is down to room for a few characters. */
+.find-count {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: var(--text-metadata);
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.find-count[data-tone="error"] {
+  color: var(--color-destructive);
+}
+
+.find-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Find in Selection is an icon toggle beside the steps, sized as they are. */
+.find-in-selection.ui-toggle {
+  width: var(--control-sm);
+  height: var(--control-sm);
+}
+
+.find-in-selection svg {
+  width: var(--icon-md);
+  height: var(--icon-md);
+}
+
+.find-in-selection[aria-disabled="true"] {
+  opacity: 0.5;
+}
+
+.find-close {
+  margin-left: auto;
+}
+
+/* Matches paint through the CSS Custom Highlight API, leaving the rendered
+   text untouched; Pierre's diffs repeat these rules in their shadow root. */
+::highlight(zero-find-match) {
+  background-color: var(--color-find-match);
+}
+
+::highlight(zero-find-current) {
+  color: var(--color-text-primary);
+  background-color: var(--color-find-current);
+}
+
+/* Scrollbar marks: the pane's right edge, under the overlay scrollbar. */
+.find-ruler {
+  position: absolute;
+  z-index: var(--z-raised);
+  width: var(--scrollbar-size);
+  pointer-events: none;
+}
+
+.find-ruler-tick {
+  position: absolute;
+  right: 2px;
+  left: 2px;
+  height: 2px;
+  background: var(--color-find-mark);
+}
+
+.find-ruler-tick[data-current] {
+  background: var(--color-accent);
+}
+
+/* Phones open find from the toolbar; wider layouts use Ctrl/Cmd+F. */
+.find-toggle {
+  display: none;
+}
+
+@media (max-width: 48rem) {
+  .find-toggle {
+    display: inline-grid;
+  }
+
+  .find-bar {
+    gap: var(--space-1);
+  }
+
+  .find-field {
+    min-width: 11rem;
+    flex: 1 1 0;
+  }
+
+  .find-in-selection.ui-toggle {
+    width: var(--control-touch);
+    height: var(--control-touch);
+  }
+}

@@ -44,7 +44,8 @@ when the app is not installed.
 
 Every file in a folder, one command away. Markdown and images render, JSON and
 YAML format on demand, and everything else opens as highlighted source. Search
-names and content; go to definition through your language servers.
+names and content, find within a file or review with Cmd/Ctrl+F, and go to
+definition through your language servers.
 [Browsing →](https://zero.hoplabs.dev/docs/browsing/)
 
 ### Review like a pull request
