@@ -213,7 +213,7 @@ func TestFeedbackCommandErrors(t *testing.T) {
 	if !errors.Is(err, errFeedbackRejected) || stderr != "invalid feedback:\n  thread: feedback "+shown.ID+" has no thread 9\n" {
 		t.Errorf("reply to a missing thread = %v\n%s", err, stderr)
 	}
-	if _, _, err := runFeedback(t, replyFeedback, reply, "", "fb-zzzzzz", "1"); err == nil || err.Error() != "no feedback fb-zzzzzz for this repository" {
+	if _, _, err := runFeedback(t, replyFeedback, reply, "", "fb-zzzzzz", "1"); err == nil || !strings.HasPrefix(err.Error(), "no feedback fb-zzzzzz for this repository\n") {
 		t.Errorf("reply to a missing feedback = %v", err)
 	}
 	if _, _, err := runFeedback(t, replyFeedback, opts, "", shown.ID, "1"); err == nil || !strings.Contains(err.Error(), "-m TEXT") {

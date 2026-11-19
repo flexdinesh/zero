@@ -174,7 +174,7 @@ func TestFeedbackAttachmentCommand(t *testing.T) {
 	}{
 		"crop without -o":    {feedbackOptions{feedbackDir: opts.feedbackDir, cropSet: true, crop: 24}, []string{shown.ID, attachment}, "--crop needs -o <file|->"},
 		"bad attachment":     {opts, []string{shown.ID, "shot"}, `attachment must be at- and ten lowercase letters or digits, such as at-7hq2mx4kpa, not "shot"`},
-		"unknown feedback":   {opts, []string{"fb-zzzzzz", attachment}, "no feedback fb-zzzzzz in " + opts.feedbackDir},
+		"unknown feedback":   {opts, []string{"fb-zzzzzz", attachment}, "no feedback fb-zzzzzz in " + opts.feedbackDir + "\n  Feedback is stored on the machine that serves the project. Served remotely: run this there. In a sandbox, run it inside:\n    docker exec <container> /tmp/.zero/zero feedback attachment fb-zzzzzz " + attachment + " -o - > shot.png"},
 		"not its screenshot": {opts, []string{shown.ID, "at-zzzzzzzzzz"}, "feedback " + shown.ID + " has no screenshot at-zzzzzzzzzz"},
 	} {
 		if _, _, err := runFeedback(t, attachmentFeedback, test.opts, "", test.args...); err == nil || err.Error() != test.want {
@@ -191,7 +191,7 @@ func TestFeedbackAttachmentCommand(t *testing.T) {
 	if err := os.Remove(file); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := runFeedback(t, attachmentFeedback, opts, "", shown.ID, attachment); err == nil || err.Error() != "screenshot "+attachment+" of "+shown.ID+" was removed to stay within the storage budget" {
+	if _, _, err := runFeedback(t, attachmentFeedback, opts, "", shown.ID, attachment); err == nil || err.Error() != "screenshot "+attachment+" of "+shown.ID+" is not stored: zero dropped it for the storage budget, or its file is missing. The thread's region and page facts remain: zero feedback show "+shown.ID+" --all" {
 		t.Errorf("attachment of a removed screenshot = %v", err)
 	}
 }

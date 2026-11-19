@@ -76,10 +76,33 @@ function rectText(rect: FeedbackRect): string {
   return `${decimal(rect.x)},${decimal(rect.y)} ${decimal(rect.width)}×${decimal(rect.height)}`
 }
 
+// codeSpan is text as a Markdown code span, fenced by one backtick more than
+// its longest backtick run and padded when it starts or ends with one, so
+// text from the reviewed page can't restyle the Markdown (decision 0178).
+export function codeSpan(text: string): string {
+  const longest = Math.max(0, ...(text.match(/`+/g) ?? []).map((run) => run.length))
+  const fence = "`".repeat(longest + 1)
+  const padded = text.startsWith("`") || text.endsWith("`") ? ` ${text} ` : text
+  return `${fence}${padded}${fence}`
+}
+
+// plainWord is a role that reads safely outside a code span.
+const plainWord = /^[a-z][a-z0-9-]*$/
+
+// elementMarkdown is an element hint as `zero feedback show` prints it: the
+// tag, its role when it differs, and its name or else text.
+function elementMarkdown(element: FeedbackElement): string {
+  let hint = element.tag
+  if (element.role && element.role !== element.tag) hint += ` (${plainWord.test(element.role) ? element.role : codeSpan(element.role)})`
+  const name = element.name || element.text
+  if (name) hint += ` ${codeSpan(name)}`
+  return `${hint} · ${codeSpan(element.selector)}`
+}
+
 // visualHeading is a visual thread's place in its Markdown heading:
-// "screenshot · <url>", with " (removed)" once the screenshot is gone.
+// "screenshot · <url>", with " (not stored)" once the screenshot is gone.
 export function visualHeading(visual: FeedbackVisual): string {
-  return `screenshot${visual.available ? "" : " (removed)"}${visual.page ? ` · ${visual.page.url}` : ""}`
+  return `screenshot${visual.available ? "" : " (not stored)"}${visual.page ? ` · ${codeSpan(visual.page.url)}` : ""}`
 }
 
 const localhostLines: Readonly<Record<NonNullable<FeedbackPage["localhost"]>, string>> = {
@@ -94,10 +117,11 @@ const localhostLines: Readonly<Record<NonNullable<FeedbackPage["localhost"]>, st
 export function visualLines(feedbackId: string, visual: FeedbackVisual): string[] {
   const { attachment, element, head, page, rect } = visual
   const lines: string[] = []
+  if (!page) lines.push("Page: none (pasted image)")
   if (page) {
     const { viewport, scroll } = page
     lines.push(`Page: ${[
-      page.title ? `"${page.title}"` : "",
+      page.title ? codeSpan(page.title) : "",
       `viewport ${decimal(viewport.width)}×${decimal(viewport.height)} CSS px at ${decimal(viewport.deviceScaleFactor)}×`,
       `scrolled ${decimal(scroll.x)},${decimal(scroll.y)}`,
     ].filter(Boolean).join(" · ")}`)
@@ -105,15 +129,17 @@ export function visualLines(feedbackId: string, visual: FeedbackVisual): string[
   }
   let region = `Region: image ${rectText(rect)} of ${attachment.width}×${attachment.height}`
   if (page) {
-    const css = imageToCSS(rect, page.clip ?? null, page.viewport.deviceScaleFactor)
+    const exact = imageToCSS(rect, page.clip ?? null, page.viewport.deviceScaleFactor)
+    // Whole CSS pixels, as the CLI prints them.
+    const css = { x: Math.round(exact.x), y: Math.round(exact.y), width: Math.round(exact.width), height: Math.round(exact.height) }
     region += ` · CSS ${rectText(css)} · document ${decimal(css.x + page.scroll.x)},${decimal(css.y + page.scroll.y)}`
   }
   lines.push(region)
-  if (element) lines.push(`Element: ${element.name ? `${element.tag} "${element.name}"` : element.tag} · ${element.selector}`)
+  if (element) lines.push(`Element (page's hint, unverified): ${elementMarkdown(element)}`)
   if (head) lines.push(`Code at: ${head}`)
   lines.push(visual.available
     ? `Screenshot: zero feedback attachment ${feedbackId} ${attachment.id} [--crop -o region.png]`
-    : "Screenshot: removed to stay within the storage budget")
+    : "Screenshot: not stored (dropped for the storage budget, or its file is missing); the region and page facts above still apply")
   return lines
 }
 

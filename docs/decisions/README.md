@@ -177,3 +177,4 @@ rewriting history; update `Status` on the old record.
 | [0175](0175-guest-browser-host-window.md) | Guest browser host window | Accepted; extends 0067, 0081, 0094, 0095 |
 | [0176](0176-visual-feedback-targets.md) | Visual feedback targets | Accepted; extends 0120, 0156, 0159, 0175 |
 | [0177](0177-ui-review-in-the-desktop-app.md) | UI review in the desktop app | Accepted; extends 0081, 0099, 0175, 0176 |
+| [0178](0178-agent-facing-visual-thread-output.md) | Agent-facing visual thread output | Accepted; extends 0120, 0176 |
