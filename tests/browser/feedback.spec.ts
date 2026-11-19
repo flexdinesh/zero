@@ -633,8 +633,11 @@ test("a branch review holds code and screen comments, and the screenshot outlive
   const rows = view.getByRole("listbox", { name: "Threads" })
   await expect(rows.getByRole("group", { name: "docs/history.md" }).getByRole("option", { name: /^Thread 1, Open: / })).toBeVisible()
   await expect(rows.getByRole("group", { name: "Screenshots" }).getByRole("option", { name: /^Thread 2, Open: / })).toBeVisible()
-  // The review places the code thread and leaves the screenshot out.
+  // Send opened the screen thread's tab (decision 0182); back in the
+  // review, the code thread is placed and the screenshot left out.
   const main = page.getByRole("main")
+  await expect(page.locator('[data-tab^="screen:"]')).toHaveAttribute("aria-selected", "true")
+  await page.locator('[data-tab^="review:"]').click()
   await expect(main.getByRole("region", { name: /^Thread 1: / })).toBeVisible()
   await expect(main.getByRole("region", { name: /^Thread 2: / })).toHaveCount(0)
 
@@ -655,7 +658,7 @@ test("a branch review holds code and screen comments, and the screenshot outlive
     await fresh.goto(`${live.origin}/?project=${project}`)
     await fresh.getByRole("navigation", { name: "Views" }).getByRole("button", { name: /^Feedback/ }).click()
     await fresh.getByRole("option", { name: /^Thread 2, Open: / }).click()
-    const image = fresh.locator(".feedback-inline img.visual-image")
+    const image = fresh.getByRole("main").getByRole("region", { name: "Screenshot" }).locator("img.visual-image")
     await expect(image).toBeVisible()
     await expect.poll(() => image.evaluate((element) => element instanceof HTMLImageElement && element.complete ? element.naturalWidth : 0)).toBe(320)
     const served = await request.get(`${live.origin}/api/feedback-attachment?project=${project}&id=${stored.id}&attachment=${shot.attachment.id}`)

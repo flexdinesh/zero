@@ -2,7 +2,10 @@ import assert from "node:assert/strict"
 import test from "node:test"
 
 import type { CompareContext } from "../features/source-control/compare.ts"
-import { browserTab, documentKey, documentTab, includesTab, parseStoredTab, placeTab, reviewTab, routeAt, sameTab, storedTab, tabKey, tabName, tabSearch, walkthroughTab, welcomeTab } from "./workspace-tabs.ts"
+import {
+  browserTab, documentKey, documentTab, includesTab, parseStoredTab, placeTab, reviewTab, routeAt, sameTab, screenTab, storedTab, tabKey, tabName,
+  tabSearch, walkthroughTab, welcomeTab,
+} from "./workspace-tabs.ts"
 
 const hash = "3577ec6a1b2c3d4e5f60718293a4b5c6d7e8f901"
 const other = "4f76e9a1b2c3d4e5f60718293a4b5c6d7e8f9012"
@@ -150,4 +153,41 @@ test("a walkthrough step's tab is the preview tab the next step replaces", () =>
   // A pinned or closed preview tab is not replaced.
   assert.deepEqual(placeTab({ tabs: [welcome], preview: a }, b, true), { tabs: [welcome, b], preview: b })
   assert.deepEqual(placeTab({ tabs: [welcome], preview: null }, a, true), { tabs: [welcome, a], preview: a })
+})
+
+test("a visual thread's screen tab is one per feedback and thread, routed by fb and thread, and remembered", () => {
+  const five = screenTab("fb-3k2q8m", 5)
+  assert.equal(sameTab(five, screenTab("fb-3k2q8m", 5)), true)
+  assert.equal(sameTab(five, screenTab("fb-3k2q8m", 6)), false)
+  assert.equal(sameTab(five, screenTab("fb-7hq2mx", 5)), false)
+  assert.equal(tabKey(five), "screen:fb-3k2q8m:5")
+  assert.deepEqual(tabSearch("p", five), { project: "p", fb: "fb-3k2q8m", thread: 5 })
+  assert.deepEqual(storedTab(five), { screen: "fb-3k2q8m", thread: 5 })
+  assert.deepEqual(parseStoredTab(storedTab(five)), five)
+  for (const malformed of [{ screen: "fb-3k2q8m" }, { screen: "fb-3k2q8m", thread: 0 }, { screen: "fb-3k2q8m", thread: 1.5 },
+    { screen: "fb-3K2Q8M", thread: 5 }, { screen: "", thread: 5 }, { screen: "fb-3k2q8m", thread: "5x" }]) {
+    assert.equal(parseStoredTab(malformed), null, JSON.stringify(malformed))
+  }
+})
+
+test("screen tabs name the thread and its page once read, and the thread alone before", () => {
+  const five = screenTab("fb-3k2q8m", 5)
+  assert.deepEqual(tabName(five, context), { label: "Thread #5", title: "Thread 5 of fb-3k2q8m" })
+  const named = tabName(five, context, () => "", undefined, (feedback, thread) => feedback === "fb-3k2q8m" && thread === 5
+    ? { place: "localhost:5173/settings", title: "Save overlaps the card edge" }
+    : null)
+  assert.deepEqual(named, { label: "#5 · localhost:5173/settings", title: "Thread 5: Save overlaps the card edge\nlocalhost:5173/settings" })
+})
+
+test("a screen tab opened as preview replaces the preview tab, as walkthrough steps do", () => {
+  const welcome = welcomeTab()
+  const five = screenTab("fb-3k2q8m", 5)
+  const six = screenTab("fb-3k2q8m", 6)
+  let placed = placeTab({ tabs: [welcome], preview: null }, five, true)
+  assert.deepEqual(placed, { tabs: [welcome, five], preview: five })
+  placed = placeTab(placed, six, true)
+  assert.deepEqual(placed, { tabs: [welcome, six], preview: six })
+  // Once pinned, the next thread joins the end as the new preview.
+  placed = placeTab({ ...placed, preview: null }, five, true)
+  assert.deepEqual(placed, { tabs: [welcome, six, five], preview: five })
 })

@@ -181,3 +181,4 @@ rewriting history; update `Status` on the old record.
 | [0179](0179-sweep-interrupted-uploads.md) | Sweep interrupted uploads | Accepted; extends 0176 |
 | [0180](0180-hit-map-at-capture.md) | Hit map at capture | Accepted; supersedes 0177's element hint; extends 0175, 0176 |
 | [0181](0181-project-browser-tab.md) | Project browser tab | Accepted; extends 0052, 0081, 0175, 0177 |
+| [0182](0182-screen-tabs-for-visual-threads.md) | Screen tabs for visual threads | Accepted; extends 0113, 0120, 0176, 0177, 0178 |

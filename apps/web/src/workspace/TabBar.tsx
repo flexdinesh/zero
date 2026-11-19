@@ -1,5 +1,5 @@
 import { ContextMenu } from "@base-ui/react/context-menu"
-import { AppWindowIcon, GitCompareArrowsIcon, HouseIcon, RouteIcon, XIcon } from "lucide-react"
+import { AppWindowIcon, GitCompareArrowsIcon, HouseIcon, ImageIcon, RouteIcon, XIcon } from "lucide-react"
 import { useEffect, useRef, type KeyboardEvent, type MouseEvent } from "react"
 
 import { FileIcon } from "../components/FileIcon.tsx"
@@ -13,8 +13,9 @@ import { includesTab, sameTab, tabKey, type TabName, type WorkspaceTab } from ".
 interface TabBarProps {
   active: WorkspaceTab | null
   tabs: readonly WorkspaceTab[]
-  // preview is the walkthrough step's tab the next step replaces (decision
-  // 0113): its name is italic, and a double-click or Keep Open pins it.
+  // preview is the walkthrough step's or visual thread's tab the next one
+  // replaces (decisions 0113, 0182): its name is italic, and a double-click
+  // or Keep Open pins it.
   preview: WorkspaceTab | null
   // name labels a tab; review tabs say what they compare.
   name(tab: WorkspaceTab): TabName
@@ -148,7 +149,7 @@ export function TabBar({ active, name: tabName, onClose, onCloseMany, onPin, onS
               aria-haspopup="menu"
               aria-controls="document-pane"
               aria-selected={selected}
-              title={previewing ? `${title}\nPreview: the next step replaces it. Double-click to keep it open.` : title}
+              title={previewing ? `${title}\nPreview: the next one opened replaces it. Double-click to keep it open.` : title}
               data-preview={previewing || undefined}
               onClick={() => onSelect(tab)}
               onDoubleClick={previewing ? () => onPin(tab) : undefined}
@@ -158,6 +159,7 @@ export function TabBar({ active, name: tabName, onClose, onCloseMany, onPin, onS
                 : tab.kind === "walkthrough" ? <RouteIcon className="file-icon" aria-hidden="true" />
                 : tab.kind === "welcome" ? <HouseIcon className="file-icon" aria-hidden="true" />
                 : tab.kind === "browser" ? <AppWindowIcon className="file-icon" aria-hidden="true" />
+                : tab.kind === "screen" ? <ImageIcon className="file-icon" aria-hidden="true" />
                 : <FileIcon path={tab.path} />}
               <span>{name}</span>
             </Button>

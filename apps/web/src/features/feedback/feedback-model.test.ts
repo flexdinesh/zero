@@ -6,7 +6,7 @@ import { isFeedback, type Feedback, type FeedbackThread } from "@zero/contracts"
 import { indexFeedback } from "./feedback-index.ts"
 import {
   activity, anchorKey, anchorLabel, authorLabel, feedbackCompare, feedbackMarkdown, feedbackMeta, feedbackPrompt, groupByFile, isCodeThread, isUnseen,
-  locationLabel, markSeen, plainLine, matchesFilter, parseSeen, placeLabel, reviewCompareOf, routeFeedback, statusChange,
+  locationLabel, markSeen, plainLine, matchesFilter, parseSeen, placeLabel, reviewCompareOf, routeFeedback, routeThread, screenRoute, statusChange,
   threadPrompt, threadRoute, threadTitle, unseenCount, utcTime, type CodeThread,
 } from "./feedback-model.ts"
 
@@ -194,6 +194,13 @@ test("route ids are fb- and six lowercase letters or digits", () => {
   assert.equal(routeFeedback("fb-3k2q8m"), "fb-3k2q8m")
   assert.equal(routeFeedback("fb-018abc"), "fb-018abc")
   for (const value of ["fb-3K2Q8M", "fb-3k2q8", "fb-3k2q8m1", "fb-3k2q8_", "fb-3k2q8m\n", 3, undefined]) assert.equal(routeFeedback(value), undefined)
+})
+
+test("thread routes are positive integers, and a visual thread routes its screen tab", () => {
+  assert.equal(routeThread(5), 5)
+  assert.equal(routeThread("12"), 12)
+  for (const value of [0, -1, 1.5, "0", "05", "5x", "", Number.MAX_SAFE_INTEGER + 1, null, undefined]) assert.equal(routeThread(value), undefined, String(value))
+  assert.deepEqual(screenRoute("/home/user/markdown", "fb-3k2q8m", 5), { search: { project: "/home/user/markdown", fb: "fb-3k2q8m", thread: 5 }, hash: "" })
 })
 
 test("Copy Prompt names the CLI's commands and flags, and HTTP only for http origins", () => {

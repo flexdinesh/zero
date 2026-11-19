@@ -1,8 +1,8 @@
-/* Visual feedback targets (decision 0176): screenshot rows and their
-   thread's image in the Feedback view, the zoom viewer, and New screen
-   comment's composer. Images sit on canvas inside a hairline; the
-   rectangle is a 2px accent ring outside a 1px surface halo, with a light
-   accent fill; the element hint is a dashed accent box. */
+/* Visual feedback targets (decisions 0176, 0182): screenshot rows in the
+   Feedback view, a visual thread's screen tab, and New screen comment's
+   composer. Images sit on canvas inside a hairline; the rectangle is a 2px
+   accent ring between surface hairlines over a scrim that dims the rest;
+   the element hint is a dashed accent box. */
 
 .feedback-view {
   position: relative;
@@ -74,28 +74,13 @@
   height: var(--icon-sm);
 }
 
-/* The thread's screenshot, at the view's width, zooms on click. */
-.visual-target {
-  display: grid;
-  min-width: 0;
-  gap: var(--space-2);
-  margin-block-end: var(--space-2);
-}
-
-.visual-frame.ui-button {
-  display: block;
-  width: 100%;
-  height: auto;
-  padding: 0;
-  border: 1px solid var(--color-border);
-  background: var(--color-canvas);
-  cursor: zoom-in;
-}
-
+/* The screenshot with its rectangle marked; its box comes from the
+   container, and it clips the mark's scrim. */
 .visual-shot {
   position: relative;
   display: block;
   width: 100%;
+  overflow: clip;
 }
 
 .visual-image {
@@ -106,13 +91,15 @@
   inset: 0;
 }
 
-/* The rectangle rings its pixels from outside, a surface hairline then
-   the accent, so it reads on any screenshot and hides none of it. */
+/* The rectangle keeps its pixels bright and dims the rest with a scrim
+   spread from its edge; a 2px accent ring between surface hairlines reads
+   on any screenshot and covers none of the region. */
 .visual-mark,
 .screen-mark {
   position: absolute;
-  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-  box-shadow: 0 0 0 1px var(--color-surface);
+  box-shadow:
+    0 0 0 var(--space-1) var(--color-surface),
+    0 0 0 100vmax color-mix(in srgb, var(--color-overlay) 60%, transparent);
   outline: 2px solid var(--color-accent);
   outline-offset: 1px;
   pointer-events: none;
@@ -125,107 +112,199 @@
   pointer-events: none;
 }
 
-.visual-missing {
-  display: flex;
-  align-items: center;
-  margin: 0;
-  padding: var(--space-3);
-  border: 1px solid var(--color-border);
-  color: var(--color-text-muted);
-  background: var(--color-canvas);
-  font-size: var(--text-xs);
-  gap: var(--space-2);
-  line-height: var(--text-xs--line-height);
-}
-
-.visual-missing svg {
-  width: var(--icon-md);
-  height: var(--icon-md);
-  flex: none;
-}
-
-/* The page and element lines: mono address and tag, muted context that
-   wraps under them when the view is narrow. */
-.visual-line {
-  display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
-  align-items: center;
-  margin: 0;
-  color: var(--color-text-muted);
-  font-size: var(--text-xs);
-  gap: 0 var(--space-1);
-  line-height: var(--text-xs--line-height);
-}
-
-.visual-line-icon {
-  width: var(--icon-sm);
-  height: var(--icon-sm);
-  flex: none;
-}
-
-.visual-url,
-.visual-element-name {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--color-text-primary);
-  font-family: var(--font-mono);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* The address keeps to its icon's line; its note wraps first. */
-.visual-url {
-  max-width: calc(100% - var(--icon-sm) - var(--space-1));
-}
-
-.visual-where {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.visual-element .visual-where {
-  font-family: var(--font-mono);
-}
-
 .visual-actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-1);
 }
 
-/* Zoom: fitted to the window or at the page's size, on canvas. */
-.visual-zoom[open] {
+/* A visual thread's screen tab (decision 0182): the screenshot on canvas,
+   beside a column with the page it came from and the conversation. They
+   stack when the pane is narrow. */
+.screen-tab {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  container-type: inline-size;
+}
+
+.screen-tab-layout {
   display: grid;
+  height: 100%;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, 26rem);
+}
+
+.screen-tab-stage {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  border-inline-end: 1px solid var(--color-border);
+  background: var(--color-canvas);
   grid-template-rows: auto minmax(0, 1fr);
 }
 
-.visual-zoom-title {
+.screen-tab-bar {
+  display: flex;
+  min-height: var(--field-height);
+  flex-wrap: wrap;
+  align-items: center;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+  gap: var(--space-2) var(--space-3);
+}
+
+.screen-tab-readout {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  line-height: var(--text-xs--line-height);
+}
+
+.screen-tab-canvas {
+  display: flex;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-5);
+  container-type: size;
+}
+
+.screen-tab-canvas[data-scale="actual"] {
+  container-type: normal;
+}
+
+.screen-tab-canvas:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+
+.screen-tab-frame {
+  flex: none;
+  margin: auto;
+  outline: 1px solid var(--color-border);
+}
+
+.screen-tab-missing {
+  display: flex;
+  align-items: center;
+  align-self: start;
+  margin: var(--space-5);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  font-size: var(--text-xs);
+  gap: var(--space-2);
+  line-height: var(--text-xs--line-height);
+}
+
+.screen-tab-missing svg {
+  width: var(--icon-md);
+  height: var(--icon-md);
+  flex: none;
+}
+
+.screen-tab-side {
+  display: flex;
   min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: auto;
+}
+
+/* The page and its actions lead; the conversation follows as a band. */
+.screen-tab-summary {
+  display: grid;
+  padding: var(--space-4);
+  gap: var(--space-3);
+}
+
+.screen-tab-side > .feedback-thread {
+  padding-inline: var(--space-4);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* The facts above already name the page. */
+.screen-tab-side .feedback-thread-place {
+  display: none;
+}
+
+.screen-tab-side .feedback-thread-header {
+  flex-wrap: wrap;
+  row-gap: 0;
+}
+
+.screen-tab-facts {
+  display: grid;
+  margin: 0;
+  font-size: var(--text-xs);
+  gap: var(--space-2) var(--space-3);
+  grid-template-columns: max-content minmax(0, 1fr);
+  line-height: var(--text-xs--line-height);
+}
+
+.screen-tab-facts dt {
+  color: var(--color-text-muted);
+}
+
+.screen-tab-facts dd {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+}
+
+.screen-tab-url {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+  gap: var(--space-1);
+  overflow-wrap: anywhere;
+}
+
+.screen-tab-url svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  flex: none;
+  color: var(--color-text-muted);
+}
+
+.screen-tab-facts dd.screen-tab-text {
+  display: block;
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.screen-tab-selector {
   overflow: hidden;
+  font-family: var(--font-mono);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.visual-zoom-stage {
-  display: flex;
-  min-height: 0;
-  overflow: auto;
-  padding: var(--space-4);
-  background: var(--color-canvas);
-  container-type: size;
+.screen-tab-hash {
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
 }
 
-.visual-zoom-stage[data-scale="actual"] {
-  container-type: normal;
-}
+@container (max-width: 45rem) {
+  /* Narrow panes and phones put the screenshot over the thread, and the
+     tab scrolls them together. */
+  .screen-tab-layout {
+    height: auto;
+    grid-template-columns: minmax(0, 1fr);
+  }
 
-.visual-zoom-frame {
-  flex: none;
-  margin: auto;
-  outline: 1px solid var(--color-border);
+  .screen-tab-stage {
+    border-inline-end: 0;
+    border-bottom: 1px solid var(--color-border);
+    grid-template-rows: auto minmax(14rem, 55dvh);
+  }
+
+  .screen-tab-side {
+    overflow: visible;
+  }
 }
 
 /* New screen comment: the frozen image beside the form. */
@@ -425,6 +504,11 @@
 
 .screen-label {
   min-height: 0;
+}
+
+/* The comment starts five lines tall; the field still grows with it. */
+.screen-body-field.ui-textarea {
+  min-height: calc(5lh + var(--space-3));
 }
 
 .screen-facts dd {

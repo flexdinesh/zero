@@ -24,7 +24,7 @@ import { documentView, resolveDocumentMode } from "./features/documents/document
 import { FileTree } from "./features/explorer/FileTree.tsx"
 import { ImageZoomControls } from "./features/documents/ImageZoomControls.tsx"
 import { clampLineRange, lineAnchor, parseLineAnchor, splitSourceLines, type LineRange } from "./lib/line-selection.ts"
-import type { NavigationLocation, PageData } from "@zero/contracts"
+import type { FeedbackThread, NavigationLocation, PageData } from "@zero/contracts"
 import {
   emptyPage,
   isPageLoadResult,
@@ -63,7 +63,7 @@ import { useSourceControlCommands, useSourceControlQuery } from "./features/sour
 import { filePaths } from "./api/page-data.ts"
 import { isCommitHash } from "./lib/commit-hash.ts"
 import {
-  browserTab, documentKey, documentTab, includesTab, reviewTab, tabKey, tabName, tabSearch, walkthroughTab, welcomeTab, type WorkspaceTab,
+  browserTab, documentKey, documentTab, includesTab, reviewTab, screenTab, tabKey, tabName, tabSearch, walkthroughTab, welcomeTab, type WorkspaceTab,
 } from "./workspace/workspace-tabs.ts"
 import { FindBar } from "./features/find/FindBar.tsx"
 import { FindButton } from "./features/find/FindButton.tsx"
@@ -130,22 +130,34 @@ import { stepPrompt } from "./features/walkthrough/agent-instructions.ts"
 import { shareableOrigin } from "./lib/shareable-origin.ts"
 import type { SourceAnnotation } from "./features/documents/SourceDocument.tsx"
 import { FeedbackSidebarView } from "./features/feedback/FeedbackView.tsx"
-import { routeFeedback, type ThreadRoute } from "./features/feedback/feedback-model.ts"
+import { routeFeedback, routeThread, screenRoute, threadTitle, type ThreadRoute } from "./features/feedback/feedback-model.ts"
+import { useFeedback } from "./features/feedback/use-feedback.ts"
 import { useFeedbackView } from "./features/feedback/use-feedback-view.ts"
 import { ScreenCommentDialog } from "./features/feedback/ScreenCommentDialog.tsx"
+import { ScreenThreadTab } from "./features/feedback/ScreenThreadTab.tsx"
+import { isVisualThread, visualPlace } from "./features/feedback/visual-model.ts"
 import { useDesktopScreenComment, type ScreenSource } from "./features/feedback/use-screen-comment.ts"
 import { useReviewFeedback } from "./features/feedback/use-review-feedback.tsx"
 import { useSourceFeedback } from "./features/feedback/use-source-feedback.tsx"
 import { useSourceBlame } from "./features/blame/use-source-blame.tsx"
 
+// ScreenRoute is a routed visual thread: thread of feedback.
+interface ScreenRoute {
+  feedback: string
+  thread: number
+}
+
 // routeTab is the tab a route shows: a review, a document (a snapshot with
-// at), a walkthrough's own tab, Welcome, or the Browser tab, else none.
+// at), a walkthrough's own tab, a visual thread's screen tab, Welcome, or
+// the Browser tab, else none.
 function routeTab(
-  review: WorkspaceTab | null, documentPath: string, at: string, walkthrough: string, welcome: boolean, browser: boolean,
+  review: WorkspaceTab | null, documentPath: string, at: string, walkthrough: string, screen: ScreenRoute | null, welcome: boolean,
+  browser: boolean,
 ): WorkspaceTab | null {
   if (review) return review
   if (documentPath) return documentTab(documentPath, at)
   if (walkthrough) return walkthroughTab(walkthrough)
+  if (screen) return screenTab(screen.feedback, screen.thread)
   if (welcome) return welcomeTab()
   return browser ? browserTab() : null
 }
@@ -221,12 +233,20 @@ export function App({ project }: AppProps) {
   const searchWalkthrough = useSearch({ strict: false, select: (search) => routeWalkthrough(search.wt) ?? "" })
   const searchStep = useSearch({ strict: false, select: (search) => routeStep(search.step) })
   const walkthroughRoute = !searchPath && !reviewRoute ? searchWalkthrough : ""
+  // fb=<id> reveals the Feedback view at that feedback; with thread=<n> and
+  // without a path, review, or walkthrough, the route is that visual
+  // thread's screen tab (decision 0182).
+  const searchFeedback = useSearch({ strict: false, select: (search) => routeFeedback(search.fb) ?? "" })
+  const searchThread = useSearch({ strict: false, select: (search) => routeThread(search.thread) ?? 0 })
+  const screenRouted = useMemo((): ScreenRoute | null => !searchPath && !reviewRoute && !walkthroughRoute && searchFeedback && searchThread
+    ? { feedback: searchFeedback, thread: searchThread }
+    : null, [reviewRoute, searchFeedback, searchPath, searchThread, walkthroughRoute])
   // welcome=1 alone routes the Welcome tab (decision 0052).
   const searchWelcome = useSearch({ strict: false, select: (search) => search.welcome === 1 })
-  const welcomeRoute = !searchPath && !reviewRoute && !walkthroughRoute && searchWelcome
+  const welcomeRoute = !searchPath && !reviewRoute && !walkthroughRoute && !screenRouted && searchWelcome
   // browser=1 alone routes the project's Browser tab (decision 0181).
   const searchBrowser = useSearch({ strict: false, select: (search) => search.browser === 1 })
-  const browserRoute = !searchPath && !reviewRoute && !walkthroughRoute && !welcomeRoute && searchBrowser
+  const browserRoute = !searchPath && !reviewRoute && !walkthroughRoute && !screenRouted && !welcomeRoute && searchBrowser
   const openSearch = useRef<() => void>(() => {})
   const searchCommands = useRef<SearchCommands | null>(null)
   const openFiles = useRef<() => void>(() => {})
@@ -308,19 +328,21 @@ export function App({ project }: AppProps) {
   // (locations move), or a write on this page (decision 0120).
   const [feedbackVersion, setFeedbackVersion] = useState(0)
   const rereadFeedback = useCallback(() => setFeedbackVersion((version) => version + 1), [])
-  // fb=<id> reveals the Feedback view at that feedback.
-  const searchFeedback = useSearch({ strict: false, select: (search) => routeFeedback(search.fb) ?? "" })
   const feedbackView = useFeedbackView({
     project, version: feedbackVersion, shown: sidebar.visibleView === "feedback", onChanged: rereadFeedback,
   })
   const { show: showFeedback } = feedbackView
+  const listedFeedback = feedbackView.session.feedback?.id ?? ""
   const revealedFeedback = useRef("")
   useEffect(() => {
     if (!searchFeedback || searchFeedback === revealedFeedback.current) return
     revealedFeedback.current = searchFeedback
+    // A screen tab opened from the list keeps the view as it is; on phones
+    // the view would cover the tab.
+    if (searchThread && listedFeedback === searchFeedback) return
     showFeedback(searchFeedback)
-    revealSidebar("feedback")
-  }, [revealSidebar, searchFeedback, showFeedback])
+    if (!searchThread || !sidebar.mobile) revealSidebar("feedback")
+  }, [listedFeedback, revealSidebar, searchFeedback, searchThread, showFeedback, sidebar.mobile])
   const showOutdatedFeedback = useCallback((id: string, path: string) => {
     showFeedback(id, path)
     revealSidebar("feedback")
@@ -371,18 +393,28 @@ export function App({ project }: AppProps) {
   const routedPage = !documentPending && result?.kind === "page" ? result.page : null
   const routedDocument = searchPath
   const routedAt = searchAt
-  const routedTab = useMemo(() => routeTab(reviewRoute, routedDocument, routedAt, walkthroughRoute, welcomeRoute, browserRoute),
-    [browserRoute, reviewRoute, routedAt, routedDocument, walkthroughRoute, welcomeRoute])
+  const routedTab = useMemo(() => routeTab(reviewRoute, routedDocument, routedAt, walkthroughRoute, screenRouted, welcomeRoute, browserRoute),
+    [browserRoute, reviewRoute, routedAt, routedDocument, screenRouted, walkthroughRoute, welcomeRoute])
   const activeDocument = pendingDocument?.path ?? routedDocument
   const activeAt = pendingDocument?.at ?? routedAt
-  const activeTab = useMemo(() => routeTab(pendingFile ? null : reviewRoute, activeDocument, activeAt, walkthroughRoute, welcomeRoute, browserRoute),
-    [activeAt, activeDocument, browserRoute, pendingFile, reviewRoute, walkthroughRoute, welcomeRoute])
+  const activeTab = useMemo(() => routeTab(pendingFile ? null : reviewRoute, activeDocument, activeAt, walkthroughRoute, screenRouted, welcomeRoute,
+    browserRoute), [activeAt, activeDocument, browserRoute, pendingFile, reviewRoute, screenRouted, walkthroughRoute, welcomeRoute])
   // pageKey keys the document's mode, format, and scroll.
   const pageKey = documentKey(page.selected, page.at)
   // A walkthrough step opens its document or review as the preview tab
-  // (decision 0113).
+  // (decision 0113), and a visual thread its screen tab (decision 0182).
   const workspace = useDocumentWorkspace(activeTab, pendingDocument?.preview
-    ?? (searchWalkthrough !== "" && searchStep !== undefined && !walkthroughRoute))
+    ?? ((searchWalkthrough !== "" && searchStep !== undefined && !walkthroughRoute) || (screenRouted !== null && !pendingFile)))
+  // A screen tab reads its feedback with the Feedback view when the view
+  // shows it, else on its own.
+  const screenFeedback = screenRouted?.feedback ?? ""
+  const listedScreen = screenFeedback !== "" && listedFeedback === screenFeedback
+  const ownScreenSession = useFeedback({
+    project, id: screenFeedback, compare: null, version: feedbackVersion, enabled: screenFeedback !== "" && !listedScreen, onChanged: rereadFeedback,
+  })
+  const screenSession = listedScreen ? feedbackView.session : ownScreenSession
+  const listedThreads = feedbackView.session.feedback
+  const screenThreads = ownScreenSession.feedback
   const { setDocumentMode, toggleWordWrap } = workspace
   const previewPreference = usePreviewPreference(project)
   const { settings } = useSettings()
@@ -636,6 +668,24 @@ export function App({ project }: AppProps) {
     prepareDocumentNavigation()
     void navigate({ to: "/view", search: { ...route.search }, hash: route.hash })
   }, [navigate, prepareDocumentNavigation])
+  // A sent screen comment opens its screen tab once its feedback names it:
+  // a branch's first thread creates the feedback (decision 0182). The
+  // Resolved filter would hide the new open thread, so Open shows it.
+  const sentScreen = useRef<number | null>(null)
+  const { closeComposer, filter: feedbackFilter, setFilter: setFeedbackFilter } = feedbackView
+  const openSentScreen = useCallback(() => {
+    const number = sentScreen.current
+    if (number === null || !listedThreads?.id || !listedThreads.threads.some((thread) => thread.number === number)) return
+    sentScreen.current = null
+    openThread(screenRoute(project, listedThreads.id, number))
+  }, [listedThreads, openThread, project])
+  const screenSent = useCallback((thread: FeedbackThread) => {
+    closeComposer()
+    if (feedbackFilter === "resolved") setFeedbackFilter("open")
+    sentScreen.current = thread.number
+    openSentScreen()
+  }, [closeComposer, feedbackFilter, openSentScreen, setFeedbackFilter])
+  useEffect(openSentScreen, [openSentScreen])
   const hasReviewTabs = workspace.tabs.some((tab) => tab.kind === "review")
   // Closing the last review tab frees its workers and caches until the next one.
   useEffect(() => {
@@ -656,9 +706,17 @@ export function App({ project }: AppProps) {
   }), [defaultBase, listed])
   const listedWalkthroughs = walkthroughs.list.result
   const browserPage = currentPage(projectBrowser.state, projectBrowser.recent[0] ?? "")
+  const nameScreen = useCallback((id: string, number: number) => {
+    for (const feedback of [listedThreads, screenThreads]) {
+      if (feedback?.id !== id) continue
+      const thread = feedback.threads.find((entry) => entry.number === number)
+      if (thread && isVisualThread(thread)) return { place: visualPlace(thread.visual), title: threadTitle(thread) }
+    }
+    return null
+  }, [listedThreads, screenThreads])
   const nameTab = useCallback((tab: WorkspaceTab) => tabName(tab, compareContext,
     (id) => listedWalkthroughs?.find((entry) => entry.id === id)?.title ?? "",
-    () => browserTabName(browserPage)), [browserPage, compareContext, listedWalkthroughs])
+    () => browserTabName(browserPage), nameScreen), [browserPage, compareContext, listedWalkthroughs, nameScreen])
   // The history entry on screen takes the name its tab shows.
   const historyKey = useRouterState({ select: (state) => entryKey(state.location) })
   useEffect(() => {
@@ -711,8 +769,9 @@ export function App({ project }: AppProps) {
     else if (tab.kind === "walkthrough") openWalkthrough(tab.id)
     else if (tab.kind === "welcome") openWelcome()
     else if (tab.kind === "browser") openBrowser(false)
+    else if (tab.kind === "screen") openThread(screenRoute(project, tab.feedback, tab.thread))
     else openReview(tab.compare, true)
-  }, [navigateToDocument, openBrowser, openReview, openWalkthrough, openWelcome])
+  }, [navigateToDocument, openBrowser, openReview, openThread, openWalkthrough, openWelcome, project])
 
   const selectLines = useCallback((range: LineRange | null) => {
     if (!page.selected) return
@@ -1071,6 +1130,10 @@ export function App({ project }: AppProps) {
               onStartupSetting={() => openSettings.current("showWelcome")} /> : undefined}
             browser={browserRoute ? <BrowserTab browser={projectBrowser}
               name={projectName(project)} branch={page.branch} folder={page.projectKind === "folder"} /> : undefined}
+            screen={screenRouted ? <ScreenThreadTab project={project} feedbackId={screenRouted.feedback} number={screenRouted.thread}
+              session={screenSession} navigate={navigateToHref} onOpenThread={openThread}
+              onPin={() => workspace.pin(screenTab(screenRouted.feedback, screenRouted.thread))}
+              onClose={() => closeTab(screenTab(screenRouted.feedback, screenRouted.thread))} /> : undefined}
             empty={<WorkspaceEmptyState input={emptyInput} viewName={sidebarViewName(sidebar.view)}
               onAction={runEmptyAction} onWelcome={openWelcome} />}
             sourceAnnotation={sourceAnnotation}
@@ -1127,7 +1190,7 @@ export function App({ project }: AppProps) {
       <RecentLocations log={historyLog} project={project} registerOpen={registerRecent} onOpen={navigateToHref} />
       <ReportProblemDialog registerOpen={registerReport} />
       <ScreenCommentDialog composer={feedbackView.composer} actions={feedbackView.session.actions}
-        onSource={openComposer} onClose={feedbackView.closeComposer} onSent={feedbackView.closeComposer} />
+        onSource={openComposer} onClose={closeComposer} onSent={screenSent} />
       <OverlayScrollbars />
     </FindProvider>
     </SearchProvider>

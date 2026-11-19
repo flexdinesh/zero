@@ -285,7 +285,7 @@ Design the UI with the `impeccable` skill and Zero's primitives (0033).
 Feedback view, any surface: "New screen comment" takes a pasted or dropped
 image, then the same composer without URL or element. A
 visual thread row shows a crop thumbnail, `#5 · open`, and the URL's host
-and path; the detail shows the image with the rectangle drawn, zoomable,
+and path; the detail (a screen tab since [0182](0182-screen-tabs-for-visual-threads.md)) shows the image with the rectangle drawn, zoomable,
 "Copy crop", and, when `localhost` is `project` or the host is not
 loopback, "Open URL". A `viewer` loopback URL reads "localhost on your
 machine".

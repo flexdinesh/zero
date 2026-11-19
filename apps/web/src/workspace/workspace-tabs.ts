@@ -4,13 +4,16 @@ import {
 } from "../features/source-control/compare.ts"
 import { isCommitHash, shortHash } from "../lib/commit-hash.ts"
 import { isRecord } from "../api/http.ts"
+import { routeFeedback, routeThread } from "../features/feedback/feedback-model.ts"
 
 // Open tabs are documents of a project-relative path, read from the working
 // tree or, with at, from a commit (a snapshot), or review tabs of one
 // compare: uncommitted changes, the branch, a commit, or a commit range
 // (decision 0035), a walkthrough's own tab: its cover and notes (decision
-// 0047), the Welcome tab (decision 0052), or the project's Browser tab
-// (decision 0181). Pure helpers; components and memory share them.
+// 0047), the Welcome tab (decision 0052), the project's Browser tab
+// (decision 0181), or a visual feedback thread's screen tab: its screenshot
+// and conversation (decision 0182). Pure helpers; components and memory
+// share them.
 
 export type WorkspaceTab =
   | { kind: "document"; path: string; at?: string }
@@ -18,6 +21,7 @@ export type WorkspaceTab =
   | { kind: "walkthrough"; id: string }
   | { kind: "welcome" }
   | { kind: "browser" }
+  | { kind: "screen"; feedback: string; thread: number }
 
 // StoredSnapshot is a remembered commit document.
 export interface StoredSnapshot {
@@ -40,10 +44,16 @@ export interface StoredBrowser {
   browser: true
 }
 
+// StoredScreen is a remembered screen tab: its feedback and thread number.
+export interface StoredScreen {
+  screen: string
+  thread: number
+}
+
 // StoredTab is a remembered tab: a plain path for a document, as earlier
-// versions stored it, a stored snapshot, a stored compare, a walkthrough, or
-// Welcome, or the Browser tab.
-export type StoredTab = string | StoredSnapshot | StoredCompare | StoredWalkthrough | StoredWelcome | StoredBrowser
+// versions stored it, a stored snapshot, a stored compare, a walkthrough,
+// Welcome, the Browser tab, or a screen tab.
+export type StoredTab = string | StoredSnapshot | StoredCompare | StoredWalkthrough | StoredWelcome | StoredBrowser | StoredScreen
 
 // documentTab is a working-tree document, or with at (a full commit hash)
 // that commit's version of it.
@@ -78,11 +88,17 @@ export function browserTab(): WorkspaceTab {
   return { kind: "browser" }
 }
 
+// screenTab is a visual thread's tab: thread number of feedback id.
+export function screenTab(feedback: string, thread: number): WorkspaceTab {
+  return { kind: "screen", feedback, thread }
+}
+
 // tabKey identifies a tab uniquely across kinds.
 export function tabKey(tab: WorkspaceTab): string {
   if (tab.kind === "welcome") return "welcome"
   if (tab.kind === "browser") return "browser"
   if (tab.kind === "walkthrough") return `walkthrough:${tab.id}`
+  if (tab.kind === "screen") return `screen:${tab.feedback}:${tab.thread}`
   return tab.kind === "review" ? `review:${compareKey(tab.compare)}` : `document:${documentKey(tab.path, tab.at)}`
 }
 
@@ -101,12 +117,13 @@ export interface PlacedTabs {
 }
 
 // placeTab opens the routed tab (decision 0113). A walkthrough step opens a
-// document or review as the preview tab, which the next step's tab replaces
-// in place, as VS Code's preview editors are; a tab already open stays as
-// it is. Other tabs join the end and leave the preview tab alone.
+// document or review as the preview tab, and a visual thread its screen tab
+// (decision 0182); the next one replaces it in place, as VS Code's preview
+// editors are; a tab already open stays as it is. Other tabs join the end
+// and leave the preview tab alone.
 export function placeTab(current: PlacedTabs, active: WorkspaceTab, asPreview: boolean): PlacedTabs {
   if (includesTab(current.tabs, active)) return current
-  if (!asPreview || (active.kind !== "document" && active.kind !== "review")) {
+  if (!asPreview || (active.kind !== "document" && active.kind !== "review" && active.kind !== "screen")) {
     return { ...current, tabs: [...current.tabs, active] }
   }
   const { preview } = current
@@ -126,15 +143,30 @@ export interface TabName {
   title: string
 }
 
+// ScreenName is a screen tab's thread as its feedback reads, once read.
+export interface ScreenName {
+  // place is the page's address, or "Screenshot" for a pasted image.
+  place: string
+  title: string
+}
+
 // tabName names a tab as VS Code does: documents by file name, reviews by
-// what they compare, walkthroughs by their title once read, and the Browser
-// tab as browserName names its page.
+// what they compare, walkthroughs by their title once read, the Browser
+// tab as browserName names its page, and screen tabs by thread number and
+// page once read.
 export function tabName(
   tab: WorkspaceTab, context: CompareContext, walkthroughTitle: (id: string) => string = () => "",
   browserName: () => TabName = () => ({ label: "Browser", title: "Browser" }),
+  screenName: (feedback: string, thread: number) => ScreenName | null = () => null,
 ): TabName {
   if (tab.kind === "welcome") return { label: "Welcome", title: "Welcome" }
   if (tab.kind === "browser") return browserName()
+  if (tab.kind === "screen") {
+    const name = screenName(tab.feedback, tab.thread)
+    return name
+      ? { label: `#${tab.thread} · ${name.place}`, title: `Thread ${tab.thread}: ${name.title}\n${name.place}` }
+      : { label: `Thread #${tab.thread}`, title: `Thread ${tab.thread} of ${tab.feedback}` }
+  }
   if (tab.kind === "walkthrough") {
     const title = walkthroughTitle(tab.id)
     return { label: title || "Walkthrough", title: title ? `Walkthrough: ${title}` : `Walkthrough ${tab.id}` }
@@ -151,6 +183,7 @@ export function storedTab(tab: WorkspaceTab): StoredTab {
   if (tab.kind === "welcome") return { welcome: true }
   if (tab.kind === "browser") return { browser: true }
   if (tab.kind === "walkthrough") return { walkthrough: tab.id }
+  if (tab.kind === "screen") return { screen: tab.feedback, thread: tab.thread }
   if (tab.kind === "review") return storedCompare(tab.compare)
   return tab.at ? { path: tab.path, at: tab.at } : tab.path
 }
@@ -163,6 +196,11 @@ export function parseStoredTab(value: unknown): WorkspaceTab | null {
   if (isRecord(value) && "browser" in value) return value.browser === true ? browserTab() : null
   if (isRecord(value) && "walkthrough" in value) {
     return typeof value.walkthrough === "string" && value.walkthrough ? walkthroughTab(value.walkthrough) : null
+  }
+  if (isRecord(value) && "screen" in value) {
+    const feedback = routeFeedback(value.screen)
+    const thread = routeThread(value.thread)
+    return feedback && thread !== undefined ? screenTab(feedback, thread) : null
   }
   // A snapshot has at; earlier per-file commit diffs stored commit instead.
   if (isRecord(value) && "at" in value) {
@@ -180,6 +218,7 @@ export function tabSearch(project: string, tab: WorkspaceTab) {
   if (tab.kind === "welcome") return { project, ...welcomeSearch }
   if (tab.kind === "browser") return { project, ...browserSearch }
   if (tab.kind === "walkthrough") return { project, wt: tab.id }
+  if (tab.kind === "screen") return { project, fb: tab.feedback, thread: tab.thread }
   if (tab.kind === "review") return { project, ...compareSearch(tab.compare) }
   return tab.at ? { project, path: tab.path, at: tab.at } : { project, path: tab.path }
 }

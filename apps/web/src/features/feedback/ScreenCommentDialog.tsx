@@ -117,6 +117,7 @@ function ScreenComposer({ actions, onClose, onSent, onSource, registerDiscard, s
   const [asking, setAsking] = useState(false)
   const [urlTouched, setURLTouched] = useState(false)
   const keep = useRef<HTMLButtonElement>(null)
+  const bodyField = useRef<HTMLTextAreaElement>(null)
   const stageRef = useRef<HTMLDivElement>(null)
   const dropRef = useRef<HTMLDivElement>(null)
   const ids = useId()
@@ -264,6 +265,7 @@ function ScreenComposer({ actions, onClose, onSent, onSource, registerDiscard, s
                     return true
                   }}
                   onWalk={walk}
+                  onDrawn={() => bodyField.current?.focus({ preventScroll: true })}
                   hoverBox={hoverBox ? cssToImage(hoverBox, null, dsf, image.size) : null}
                   elementBox={selection?.element === null && hint?.box ? cssToImage(hint.box, null, dsf, image.size) : null} />
                 : <div className="screen-drop"><StatusMessage>Reading the image…</StatusMessage></div>}
@@ -330,7 +332,7 @@ function ScreenComposer({ actions, onClose, onSent, onSource, registerDiscard, s
           )}
           {!page && source && <p className="screen-muted screen-source">A pasted image is attached whole.</p>}
           <label className="screen-label" htmlFor={`${ids}-body`}>Comment</label>
-          <TextArea id={`${ids}-body`} className="screen-body-field" rows={5} value={body} disabled={busy}
+          <TextArea ref={bodyField} id={`${ids}-body`} className="screen-body-field" rows={5} value={body} disabled={busy}
             placeholder="What should change here?" aria-keyshortcuts="Control+Enter Meta+Enter"
             onChange={(event) => setBody(event.target.value)}
             onKeyDown={(event) => {
@@ -386,6 +388,8 @@ interface StageProps {
   // onWalk moves an element selection outward or back, reporting whether
   // there was one to move.
   onWalk(outward: boolean): boolean
+  // onDrawn follows a rectangle drawn with the pointer: the comment is next.
+  onDrawn(): void
 }
 
 // Stage is the frozen image under the pointer (decision 0180). With a hit
@@ -394,8 +398,9 @@ interface StageProps {
 // rectangle anywhere, gaps and canvases included; arrow keys draw and move
 // one, and Shift with them resizes it. Escape clears the selection before
 // it closes anything. What a region keeps shows bright; the rest, which
-// never leaves this page, dims.
-function Stage({ clip, elementBox, hoverBox, image, onClear, onHover, onPick, onRect, onWalk, picking, rect, selected, stageRef }: StageProps) {
+// never leaves this page, dims. A drawn rectangle moves focus to the
+// comment; clicks and keys keep it on the image.
+function Stage({ clip, elementBox, hoverBox, image, onClear, onDrawn, onHover, onPick, onRect, onWalk, picking, rect, selected, stageRef }: StageProps) {
   const [drawing, setDrawing] = useState<FeedbackRect | null>(null)
   const start = useRef<{ point: Point; x: number; y: number } | null>(null)
   const { size } = image
@@ -469,7 +474,10 @@ function Stage({ clip, elementBox, hoverBox, image, onClear, onHover, onPick, on
           const pressed = start.current
           if (pressed && moved(event)) {
             const next = dragRect(pressed.point, pointAt(event), size)
-            if (next) onRect(next)
+            if (next) {
+              onRect(next)
+              onDrawn()
+            }
           } else if (pressed) {
             onPick(pressed.point)
           }
@@ -482,9 +490,9 @@ function Stage({ clip, elementBox, hoverBox, image, onClear, onHover, onPick, on
         }}>
         <img className="screen-image" src={image.url} alt="" draggable={false} />
         {clip && !drawing && <div className="screen-keep" style={placed(fraction(clip, size))} aria-hidden="true" />}
+        {shown && <div className="screen-mark" style={placed(fraction(shown, size))} aria-hidden="true" />}
         {elementBox && !drawing && <div className="screen-element-box" style={placed(fraction(elementBox, size))} aria-hidden="true" />}
         {hoverBox && !drawing && <div className="screen-hover-box" style={placed(fraction(hoverBox, size))} aria-hidden="true" />}
-        {shown && <div className="screen-mark" style={placed(fraction(shown, size))} aria-hidden="true" />}
         <span className="visually-hidden" role="status">{drawing ? "" : label}</span>
       </div>
     </div>

@@ -32,6 +32,9 @@ interface DocumentPaneProps {
   welcome?: ReactNode
   // browser is the Browser tab's content, shown without a file (decision 0181).
   browser?: ReactNode
+  // screen is a visual thread's screen tab, shown without a file (decision
+  // 0182); it fills the pane.
+  screen?: ReactNode
   // empty fills the pane while no tab is open.
   empty?: ReactNode
   // sourceAnnotation is a zone in Source, e.g. a walkthrough's narration.
@@ -77,15 +80,15 @@ function fileName(path: string): string {
 
 export function DocumentPane({
   diff, diffShown = true, empty, hasData, image, isLoading, lineSelection, loadError, main, navigate, onChooseProject, onLeaveProject, page, retry, sourceAnnotation,
-  sourceBlame, sourceChanges, sourceComments, view, walkthrough, welcome, browser, documentPending, wordWrap,
+  sourceBlame, sourceChanges, sourceComments, view, walkthrough, welcome, browser, screen, documentPending, wordWrap,
 }: DocumentPaneProps) {
   const showLoading = useDelayedFlag(documentPending, 150)
   const showDiff = !documentPending && Boolean(diff) && diffShown && !loadError && !page.projectUnavailable && !page.error
-  const viewKind = documentPending || loadError || page.error ? "none" : showDiff ? "diff" : walkthrough ? "walkthrough" : welcome ? "welcome" : browser ? "browser" : view.kind
+  const viewKind = documentPending || loadError || page.error ? "none" : showDiff ? "diff" : walkthrough ? "walkthrough" : screen ? "screen" : welcome ? "welcome" : browser ? "browser" : view.kind
 
   return (
     <main
-      className={viewKind === "source" || viewKind === "format" || viewKind === "diff" ? "source-mode" : viewKind === "image" ? "image-mode" : undefined}
+      className={viewKind === "source" || viewKind === "format" || viewKind === "diff" ? "source-mode" : viewKind === "image" ? "image-mode" : viewKind === "screen" ? "screen-mode" : undefined}
       id="document-pane"
       ref={main}
       tabIndex={-1}
@@ -121,6 +124,8 @@ export function DocumentPane({
         <div className="error" role="alert">{page.error}</div>
       ) : walkthrough ? (
         walkthrough
+      ) : screen ? (
+        screen
       ) : welcome ? (
         welcome
       ) : browser ? (
