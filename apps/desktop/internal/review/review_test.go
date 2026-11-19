@@ -1,6 +1,10 @@
 package review
 
 import (
+	"context"
+	"encoding/base64"
+	"errors"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -77,72 +81,139 @@ func TestParseFacts(t *testing.T) {
 	}
 }
 
-func TestSameView(t *testing.T) {
-	captured := Page{URL: "http://a.test/", Viewport: Viewport{Width: 800, Height: 600, DeviceScaleFactor: 2}, Scroll: Scroll{Y: 40}}
-	now := captured
-	now.Title = "Renamed"
-	if !SameView(captured, now) {
-		t.Error("a new title is still the same view")
-	}
-	for name, change := range map[string]func(*Page){
-		"url":    func(p *Page) { p.URL = "http://a.test/b" },
-		"scroll": func(p *Page) { p.Scroll.Y = 41 },
-		"size":   func(p *Page) { p.Viewport.Width = 801 },
-	} {
-		moved := captured
-		change(&moved)
-		if SameView(captured, moved) {
-			t.Errorf("%s changed, but SameView", name)
-		}
-	}
+// hitsAnswer is a capture() answer for an 800×600 viewport holding hits.
+func hitsAnswer(hits string) string {
+	return `{"title":"t","width":800,"height":600,"devicePixelRatio":1,"scrollX":0,"scrollY":0,"hits":` + hits + `}`
 }
 
-func TestParseElement(t *testing.T) {
+// grid is a grid of cells cells, all value.
+func grid(cells, value int) string {
+	parts := make([]string, cells)
+	for index := range parts {
+		parts[index] = strconv.Itoa(value)
+	}
+	return "[" + strings.Join(parts, ",") + "]"
+}
+
+func TestParseHits(t *testing.T) {
 	viewport := Viewport{Width: 800, Height: 600, DeviceScaleFactor: 1}
-	raw := `{"selector":"main form > button[data-testid=\"save\"]","tag":"button","role":"button","name":"Save\n  changes","text":"` + strings.Repeat("x", 300) + `","box":{"x":-10.2,"y":580,"width":210.4,"height":48}}`
-	element, ok := ParseElement(raw, viewport)
-	if !ok || element == nil {
-		t.Fatalf("ParseElement = %+v, %v", element, ok)
+	// 8 px cells: 100 × 75.
+	elements := `[{"parent":-1,"tag":"body","box":{"x":0,"y":0,"width":800,"height":600}},
+		{"parent":0,"tag":"button","selector":"[data-testid=\"save\"]","role":"button","name":"Save\n  changes","text":"` + strings.Repeat("x", 300) + `","meaningful":true,"box":{"x":-10.2,"y":580.5,"width":210.4,"height":48}},
+		{"parent":0,"tag":"linearGradient","selector":"p\u0000","role":"` + strings.Repeat("r", 65) + `","box":{"x":900,"y":0,"width":10,"height":10}}]`
+	hits := ParseHits(hitsAnswer(`{"step":8,"columns":100,"rows":75,"grid":`+grid(7500, 1)+`,"elements":`+elements+`}`), viewport)
+	if hits == nil {
+		t.Fatal("ParseHits refused a sound map")
 	}
-	if element.Selector != `main form > button[data-testid="save"]` || element.Tag != "button" || element.Role != "button" || element.Name != "Save changes" {
-		t.Errorf("element = %+v", element)
+	save := hits.Elements[1]
+	if save.Parent != 0 || save.Tag != "button" || save.Selector != `[data-testid="save"]` || save.Role != "button" || save.Name != "Save changes" || !save.Meaningful {
+		t.Errorf("button = %+v", save)
 	}
-	if n := len([]rune(element.Text)); n != 256 {
+	if n := len([]rune(save.Text)); n != 256 {
 		t.Errorf("text: %d characters, want 256", n)
 	}
-	if element.Box == nil || *element.Box != (Rect{X: 0, Y: 580, Width: 200, Height: 20}) {
-		t.Errorf("box = %+v, want clipped to the viewport", element.Box)
+	if save.Box == nil || *save.Box != (Rect{X: 0, Y: 580, Width: 201, Height: 20}) {
+		t.Errorf("box = %+v, want rounded outward and clipped to the viewport", save.Box)
 	}
-	if element, ok := ParseElement("null", viewport); !ok || element != nil {
-		t.Errorf("null = %+v, %v", element, ok)
+	// The page's word on one element drops that word, not the map.
+	if odd := hits.Elements[2]; odd.Tag != "" || odd.Selector != "" || odd.Role != "" || odd.Box != nil {
+		t.Errorf("odd tag, control selector, long role, box outside = %+v, want each dropped", odd)
 	}
-	outside, ok := ParseElement(`{"selector":"p","tag":"p","role":"`+strings.Repeat("r", 65)+`","box":{"x":900,"y":0,"width":10,"height":10}}`, viewport)
-	if !ok || outside.Box != nil || outside.Role != "" {
-		t.Errorf("outside the viewport, long role = %+v, %v", outside, ok)
+
+	sound := func(step, columns, rows int, cells string, elements string) string {
+		return hitsAnswer(`{"step":` + strconv.Itoa(step) + `,"columns":` + strconv.Itoa(columns) + `,"rows":` + strconv.Itoa(rows) + `,"grid":` + cells + `,"elements":` + elements + `}`)
 	}
+	one := `[{"parent":-1,"tag":"body"}]`
 	for name, raw := range map[string]string{
-		"no selector":   `{"selector":"","tag":"p"}`,
-		"long selector": `{"selector":"` + strings.Repeat("a", 513) + `","tag":"p"}`,
-		"control":       `{"selector":"p\u0000","tag":"p"}`,
-		"upper tag":     `{"selector":"p","tag":"P"}`,
-		"odd tag":       `{"selector":"p","tag":"p q"}`,
-		"long tag":      `{"selector":"p","tag":"` + strings.Repeat("a", 33) + `"}`,
-		"not JSON":      `{`,
+		"no hits":         `{"width":800,"height":600}`,
+		"not JSON":        `{`,
+		"zero step":       sound(0, 100, 75, grid(7500, 0), one),
+		"wrong columns":   sound(8, 99, 75, grid(7425, 0), one),
+		"short grid":      sound(8, 100, 75, grid(7499, 0), one),
+		"too many cells":  sound(2, 400, 300, grid(120000, 0), one),
+		"cell past end":   sound(8, 100, 75, grid(7500, 1), one),
+		"cell below none": sound(8, 100, 75, grid(7500, -2), one),
+		"later parent":    sound(8, 100, 75, grid(7500, 0), `[{"parent":1,"tag":"a"},{"parent":-1,"tag":"b"}]`),
+		"own parent":      sound(8, 100, 75, grid(7500, 0), `[{"parent":0,"tag":"a"}]`),
+		"too many":        sound(8, 100, 75, grid(7500, 0), "["+strings.TrimSuffix(strings.Repeat(`{"parent":-1},`, MaxHitElements+1), ",")+"]"),
 	} {
-		if element, ok := ParseElement(raw, viewport); ok {
-			t.Errorf("%s: accepted %+v", name, element)
+		if got := ParseHits(raw, viewport); got != nil {
+			t.Errorf("%s: accepted a map of %d elements", name, len(got.Elements))
 		}
 	}
 }
 
-func TestIsCaptureID(t *testing.T) {
-	if !IsCaptureID("0123456789ab") || IsCaptureID("0123456789AB") || IsCaptureID("0123") || IsCaptureID("0123456789abc") {
-		t.Error("IsCaptureID accepts twelve lowercase hex digits only")
+// fakePage is a guest page whose capture() and signature() answer in turn.
+type fakePage struct {
+	answers []string
+	evals   []string
+	frames  int
+	failAt  string
+}
+
+func (f *fakePage) URL() string         { return "http://localhost:5173/settings" }
+func (f *fakePage) ZoomFactor() float64 { return 1.5 }
+func (f *fakePage) CapturePage() ([]byte, error) {
+	f.frames++
+	if f.failAt == "frame" {
+		return nil, errors.New("no frame")
+	}
+	return []byte("png" + strconv.Itoa(f.frames)), nil
+}
+func (f *fakePage) Eval(_ context.Context, code string) (string, error) {
+	f.evals = append(f.evals, code)
+	if f.failAt == "eval" || len(f.answers) == 0 {
+		return "", errors.New("no answer")
+	}
+	answer := f.answers[0]
+	f.answers = f.answers[1:]
+	return answer, nil
+}
+
+func TestCaptureFrom(t *testing.T) {
+	answer := func(signature string) string {
+		return `{"title":"Settings","width":800,"height":600,"devicePixelRatio":2,"scrollX":0,"scrollY":40,"signature":"` + signature + `",
+			"hits":{"step":8,"columns":100,"rows":75,"grid":` + grid(7500, 0) + `,"elements":[{"parent":-1,"tag":"body"}]}}`
+	}
+
+	still := &fakePage{answers: []string{answer("a"), "a"}}
+	capture, err := CaptureFrom(context.Background(), still, "/p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The facts and hit map come first, in one evaluation; the frame after.
+	if len(still.evals) != 2 || !strings.Contains(still.evals[0], "capture()") || !strings.Contains(still.evals[1], "signature()") || still.frames != 1 {
+		t.Errorf("evaluations %q, %d frames", still.evals, still.frames)
+	}
+	if capture.Drift || capture.Hits == nil || capture.Project != "/p" || capture.PNG != base64.StdEncoding.EncodeToString([]byte("png1")) ||
+		capture.Page.Viewport.DeviceScaleFactor != 3 || capture.Page.Scroll.Y != 40 || len(capture.ID) != 12 {
+		t.Errorf("capture = %+v", capture)
+	}
+
+	// A layout that moves once is captured again; the second capture holds.
+	once := &fakePage{answers: []string{answer("a"), "b", answer("c"), "c"}}
+	if capture, err := CaptureFrom(context.Background(), once, "/p"); err != nil || capture.Drift || capture.PNG != base64.StdEncoding.EncodeToString([]byte("png2")) {
+		t.Errorf("moved once: %+v, %v; want the second frame without drift", capture, err)
+	}
+	// A layout that keeps moving is captured twice, then marked.
+	moving := &fakePage{answers: []string{answer("a"), "b", answer("c"), "d"}}
+	if capture, err := CaptureFrom(context.Background(), moving, "/p"); err != nil || !capture.Drift || moving.frames != 2 {
+		t.Errorf("kept moving: drift %v, %d frames, %v", capture.Drift, moving.frames, err)
+	}
+	// A hit map that does not hold leaves the capture without one.
+	broken := &fakePage{answers: []string{strings.Replace(answer("a"), `"step":8`, `"step":9`, 1), "a"}}
+	if capture, err := CaptureFrom(context.Background(), broken, "/p"); err != nil || capture.Hits != nil {
+		t.Errorf("broken hits: %+v, %v; want a capture without hits", capture.Hits, err)
+	}
+	for _, fail := range []string{"eval", "frame"} {
+		if _, err := CaptureFrom(context.Background(), &fakePage{answers: []string{answer("a"), "a"}, failAt: fail}, "/p"); err == nil {
+			t.Errorf("failing %s: captured", fail)
+		}
 	}
 }
 
 func TestGuestScriptIsEmbedded(t *testing.T) {
-	if !strings.Contains(Guest, "__zeroReview") || !strings.Contains(Guest, "elementAt") || !strings.Contains(Guest, "facts") {
+	if !strings.Contains(Guest, "__zeroReview") || !strings.Contains(Guest, "capture") || !strings.Contains(Guest, "signature") {
 		t.Error("the guest script is missing its API")
 	}
 }

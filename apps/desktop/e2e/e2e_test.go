@@ -20,8 +20,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
+	"image"
 	"image/png"
-	"io"
 	"io/fs"
 	"math"
 	"net"
@@ -596,18 +596,18 @@ func TestWebViewApp(t *testing.T) {
 		app.waitEval("the folder's project", `return location.pathname !== "/api/projects" && location.search.includes("project=")`)
 	})
 
-	// Screen comments (decisions 0175, 0176, 0177): a page of the developer's
-	// app opens in a guest window of its own that reaches nothing of Zero's;
-	// Comment on Screen hands its frame and facts to the local window, which
-	// asks for element hints while the page still shows what was captured.
+	// Screen comments (decisions 0175, 0176, 0177, 0180): a page of the
+	// developer's app opens in a guest window of its own that reaches nothing
+	// of Zero's; Comment on Screen (F8) takes its facts, hit map, and frame
+	// while it still has focus and hands them to the local window.
 	run("Review URL opens a guest window whose screen reaches the local window", func(t *testing.T) {
+		fixture, err := os.ReadFile(filepath.Join("..", "..", "..", "testdata", "review", "guest", "index.html"))
+		if err != nil {
+			t.Fatal(err)
+		}
 		guest := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
-			response.Header().Set("Content-Type", "text/html")
-			_, _ = io.WriteString(response, `<!doctype html><title>Settings</title>
-				<body style="margin:0;height:3000px">
-				<button data-testid="save" style="position:absolute;left:100px;top:200px;width:120px;height:40px">Save changes</button>
-				<input type="password" value="hunter2" placeholder="Password" style="position:absolute;left:300px;top:200px;width:120px;height:40px">
-				</body>`)
+			response.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = response.Write(fixture)
 		}))
 		defer guest.Close()
 		local := app.windowOn(proxyOrigin("local"))
@@ -622,7 +622,7 @@ func TestWebViewApp(t *testing.T) {
 			t.Fatal("the page opened in the local window")
 		}
 		app.target = review
-		app.waitEval("the guest page and its script", `return document.title === "Settings" && typeof window.__zeroReview === "object"`)
+		app.waitEval("the guest page and its script", `return document.title === "Review fixture" && typeof window.__zeroReview === "object" && typeof window.__fixture === "object"`)
 		if got := app.eval(`return typeof window.zeroDesktop`); got != "undefined" {
 			t.Errorf("guest page: zeroDesktop is %v, want no bridge", got)
 		}
@@ -646,66 +646,141 @@ func TestWebViewApp(t *testing.T) {
 		app.eval(`window.__screenComment = 0
 			window.addEventListener("zero:screen-comment", (event) => { event.stopImmediatePropagation(); window.__screenComment++ }, { capture: true })
 			return true`)
-		if err := app.call("menu", map[string]any{"window": review, "path": []string{"Review", "Comment on Screen"}}, nil); err != nil {
-			t.Fatal(err)
+
+		// focusGuest gives the guest window the keyboard, as it has when the
+		// developer presses F8, so its menu is open until Zero comes forward.
+		focusGuest := func() {
+			t.Helper()
+			found, err := exec.Command("xdotool", "search", "--onlyvisible", "--name", regexp.QuoteMeta("/settings · "+filepath.Base(w.project)+" · ")).Output()
+			ids := strings.Fields(string(found))
+			if err != nil || len(ids) == 0 {
+				t.Fatalf("xdotool search for the guest window: %v %q", err, found)
+			}
+			if output, err := exec.Command("xdotool", "windowfocus", "--sync", ids[len(ids)-1]).CombinedOutput(); err != nil {
+				t.Fatalf("xdotool windowfocus: %v\n%s", err, output)
+			}
+			app.target = review
+			app.waitEval("the guest window's focus", `return document.hasFocus()`)
 		}
-		app.waitEval("the screen comment in the local window", `return window.__screenComment === 1`)
-		raw := app.eval(`return JSON.stringify(await window.zeroDesktop.screenCapture())`)
-		var capture struct {
-			ID      string `json:"id"`
-			Project string `json:"project"`
-			PNG     string `json:"png"`
-			Page    struct {
-				URL      string `json:"url"`
-				Title    string `json:"title"`
-				Viewport struct {
-					Width             int     `json:"width"`
-					Height            int     `json:"height"`
-					DeviceScaleFactor float64 `json:"deviceScaleFactor"`
-				} `json:"viewport"`
-				Scroll struct{ X, Y int } `json:"scroll"`
-			} `json:"page"`
+		comments := 0
+		// captureScreen chooses Comment on Screen in the focused guest window
+		// and takes the capture the local window receives, saving its frame
+		// as name.
+		captureScreen := func(name string) (screenCapture, image.Image) {
+			t.Helper()
+			focusGuest()
+			if err := app.call("menu", map[string]any{"window": review, "path": []string{"Review", "Comment on Screen"}}, nil); err != nil {
+				t.Fatal(err)
+			}
+			comments++
+			app.target = local
+			app.waitEval("the screen comment in the local window", `return window.__screenComment === `+strconv.Itoa(comments))
+			raw := app.eval(`return JSON.stringify(await window.zeroDesktop.screenCapture())`)
+			var capture screenCapture
+			text, _ := raw.(string)
+			if err := json.Unmarshal([]byte(text), &capture); err != nil {
+				t.Fatalf("screenCapture() = %.200v: %v", raw, err)
+			}
+			if strings.Contains(text, "hunter2") {
+				t.Error("the capture holds the password field's value")
+			}
+			frame, err := base64.StdEncoding.DecodeString(capture.PNG)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = os.WriteFile(filepath.Join(os.Getenv("ZERO_DESKTOP_E2E_OUT"), name), frame, 0o644)
+			decoded, err := png.Decode(bytes.NewReader(frame))
+			if err != nil {
+				t.Fatal(err)
+			}
+			page := capture.Page
+			scale := page.Viewport.DeviceScaleFactor
+			if size := decoded.Bounds().Size(); size.X != int(math.Round(float64(page.Viewport.Width)*scale)) || size.Y != int(math.Round(float64(page.Viewport.Height)*scale)) {
+				t.Errorf("capture is %dx%d, want the %dx%d viewport at %v", size.X, size.Y, page.Viewport.Width, page.Viewport.Height, scale)
+			}
+			if capture.Project != w.project || page.URL != guest.URL+"/settings" || page.Title != "Review fixture" || scale <= 0 {
+				t.Errorf("capture = %s %+v", capture.Project, page)
+			}
+			if capture.Hits == nil {
+				t.Fatal("the capture has no hit map")
+			}
+			return capture, decoded
 		}
-		text, _ := raw.(string)
-		if err := json.Unmarshal([]byte(text), &capture); err != nil {
-			t.Fatalf("screenCapture() = %.200v: %v", raw, err)
+
+		// A transient menu (decision 0180): it closes when the window loses
+		// focus, so the capture must hold it, in both the hit map and the
+		// pixels, before Zero's window takes focus.
+		app.target = review
+		app.eval(`window.__fixture.openMenu(); return true`)
+		capture, frame := captureScreen("screen-capture-menu.png")
+		if capture.Drift {
+			t.Error("the still fixture page drifted while it was captured")
 		}
-		page := capture.Page
-		if capture.Project != w.project || page.URL != guest.URL+"/settings" || page.Title != "Settings" || page.Scroll.X != 0 || page.Scroll.Y != 0 || page.Viewport.DeviceScaleFactor <= 0 {
-			t.Errorf("capture = %s %+v", capture.Project, page)
+		for selector, want := range map[string]screenRect{
+			`[data-testid="project-menu"]`:     {X: 8, Y: 8, Width: 120, Height: 32},
+			`[data-testid="menu-rename"]`:      {X: 12, Y: 48, Width: 212, Height: 32},
+			`[data-testid="menu-delete"]`:      {X: 12, Y: 80, Width: 212, Height: 32},
+			`[data-testid="card-a"]`:           {X: 40, Y: 120, Width: 200, Height: 120},
+			`[data-testid="clipped-dropdown"]`: {X: 60, Y: 340, Width: 200, Height: 40},
+			`[data-testid="chart"]`:            {X: 800, Y: 120, Width: 320, Height: 200},
+		} {
+			element := capture.Hits.bySelector(selector)
+			if element == nil || element.Box == nil || *element.Box != want {
+				t.Errorf("%s in the hit map = %+v, want its box %+v", selector, element, want)
+			}
 		}
-		frame, err := base64.StdEncoding.DecodeString(capture.PNG)
-		if err != nil {
-			t.Fatal(err)
+		if element := capture.Hits.bySelector(`[data-testid="menu-delete"]`); element == nil || element.Role != "menuitem" || element.Name != "Delete project" || !element.Meaningful {
+			t.Errorf("the menu item = %+v", element)
 		}
-		_ = os.WriteFile(filepath.Join(os.Getenv("ZERO_DESKTOP_E2E_OUT"), "screen-capture.png"), frame, 0o644)
-		size, err := png.DecodeConfig(bytes.NewReader(frame))
-		scale := page.Viewport.DeviceScaleFactor
-		if err != nil || size.Width != int(math.Round(float64(page.Viewport.Width)*scale)) || size.Height != int(math.Round(float64(page.Viewport.Height)*scale)) {
-			t.Errorf("capture is %dx%d (%v), want the %dx%d viewport at %v", size.Width, size.Height, err, page.Viewport.Width, page.Viewport.Height, scale)
+		// The gap between the cards answers the cards' row.
+		if element := capture.Hits.at(270, 180); element == nil || element.Selector != `[data-testid="cards"]` {
+			t.Errorf("the gap between the cards = %+v, want the row", element)
 		}
+		// Screenshot and hit map agree: each box shows its element's color.
+		scale := capture.Page.Viewport.DeviceScaleFactor
+		for selector, want := range map[string][3]uint8{
+			`[data-testid="project-menu"]`:     {60, 90, 200},
+			`[data-testid="menu-delete"]`:      {200, 30, 90},
+			`[data-testid="menu-rename"]`:      {230, 230, 240},
+			`[data-testid="card-a"]`:           {90, 170, 110},
+			`[data-testid="clipped-dropdown"]`: {120, 60, 180},
+			`[data-testid="chart"]`:            {20, 150, 160},
+		} {
+			if element := capture.Hits.bySelector(selector); element != nil && element.Box != nil {
+				checkPixel(t, frame, selector, float64(element.Box.X+3)*scale, float64(element.Box.Y+3)*scale, want)
+			}
+		}
+		checkPixel(t, frame, "the gap", 270*scale, 180*scale, [3]uint8{235, 238, 245})
+		// The guest loses focus only after the capture, and its menu closes
+		// then. Xvfb has no window manager to move X focus when Zero's window
+		// comes forward, so the test moves it.
+		if output, err := exec.Command("xdotool", "windowfocus", "0x0").CombinedOutput(); err != nil {
+			t.Fatalf("xdotool windowfocus: %v\n%s", err, output)
+		}
+		app.target = review
+		app.waitEval("the guest menu closed by the focus change", `return !window.__fixture.menuOpen && window.__fixture.blurs > 0`)
+		w.report["screenCapture"] = map[string]any{"elements": len(capture.Hits.Elements), "step": capture.Hits.Step, "deviceScaleFactor": scale}
+
+		app.target = local
 		if again := app.eval(`return await window.zeroDesktop.screenCapture()`); again != nil {
 			t.Errorf("a second screenCapture() = %.80v, want null: a capture is taken once", again)
 		}
+		if got := app.eval(`return typeof window.zeroDesktop.screenElement`); got != "undefined" {
+			t.Errorf("screenElement = %v, want none: the hit map answers", got)
+		}
 
-		element := func(x, y int) string {
-			t.Helper()
-			value := app.eval(`return JSON.stringify(await window.zeroDesktop.screenElement(` + strconv.Quote(capture.ID) + `, ` + strconv.Itoa(x) + `, ` + strconv.Itoa(y) + `))`)
-			text, _ := value.(string)
-			return text
-		}
-		if got := element(160, 220); got != `{"selector":"[data-testid=\"save\"]","tag":"button","role":"button","name":"Save changes","text":"Save changes","box":{"x":100,"y":200,"width":120,"height":40}}` {
-			t.Errorf("element at the button = %s", got)
-		}
-		if got := element(360, 220); strings.Contains(got, "hunter2") || !strings.Contains(got, `"tag":"input"`) || strings.Contains(got, `"text"`) {
-			t.Errorf("element at the password field = %s, want its tag and no value or text", got)
-		}
-		// Once the page scrolls it no longer shows what was captured.
+		// A scrolled page: boxes are in the viewport, and the scroll is the page's.
 		app.target = review
-		app.eval(`scrollTo(0, 50); return true`)
-		app.target = local
-		if got := element(160, 220); got != "null" {
-			t.Errorf("element after scrolling = %s, want null", got)
+		app.eval(`scrollTo(0, 700); return true`)
+		scrolled, scrolledFrame := captureScreen("screen-capture-scrolled.png")
+		if scrolled.Page.Scroll.Y != 700 {
+			t.Errorf("scroll = %+v, want 700 down", scrolled.Page.Scroll)
+		}
+		far := scrolled.Hits.bySelector(`[data-testid="far"]`)
+		if far == nil || far.Box == nil || *far.Box != (screenRect{X: 40, Y: 300, Width: 160, Height: 40}) {
+			t.Errorf("the far button = %+v, want its box in the viewport", far)
+		} else {
+			checkPixel(t, scrolledFrame, "the far button", float64(far.Box.X+3)*scale, float64(far.Box.Y+3)*scale, [3]uint8{240, 120, 20})
 		}
 
 		if err := app.call("menu", map[string]any{"window": review, "path": []string{"Page", "Close Window"}}, nil); err != nil {
@@ -1394,9 +1469,14 @@ func (w *world) killWebProcess(t *testing.T, appPid int) {
 	if err != nil {
 		t.Fatalf("finding the web process: %v", err)
 	}
-	for _, pid := range strings.Fields(string(data)) {
-		if output, err := exec.Command("kill", "-KILL", pid).CombinedOutput(); err != nil {
-			t.Fatalf("kill %s: %v\n%s", pid, err, output)
+	// A closed window's web process may exit between pgrep and the kill.
+	for _, field := range strings.Fields(string(data)) {
+		pid, err := strconv.Atoi(field)
+		if err != nil {
+			t.Fatalf("pgrep answered %q", field)
+		}
+		if err := syscall.Kill(pid, syscall.SIGKILL); err != nil && err != syscall.ESRCH {
+			t.Fatalf("kill %d: %v", pid, err)
 		}
 	}
 }
@@ -1768,4 +1848,81 @@ func adler32(data []byte) uint32 {
 		b = (b + a) % 65521
 	}
 	return b<<16 | a
+}
+
+// screenCapture is what screenCapture() hands the local window (decisions
+// 0177, 0180).
+type screenCapture struct {
+	ID      string `json:"id"`
+	Project string `json:"project"`
+	PNG     string `json:"png"`
+	Page    struct {
+		URL      string `json:"url"`
+		Title    string `json:"title"`
+		Viewport struct {
+			Width             int     `json:"width"`
+			Height            int     `json:"height"`
+			DeviceScaleFactor float64 `json:"deviceScaleFactor"`
+		} `json:"viewport"`
+		Scroll struct{ X, Y int } `json:"scroll"`
+	} `json:"page"`
+	Hits  *screenHits `json:"hits"`
+	Drift bool        `json:"drift"`
+}
+
+type screenRect struct{ X, Y, Width, Height int }
+
+type screenHits struct {
+	Step     int         `json:"step"`
+	Columns  int         `json:"columns"`
+	Rows     int         `json:"rows"`
+	Grid     []int       `json:"grid"`
+	Elements []screenHit `json:"elements"`
+}
+
+type screenHit struct {
+	Parent     int         `json:"parent"`
+	Tag        string      `json:"tag"`
+	Selector   string      `json:"selector"`
+	Role       string      `json:"role"`
+	Name       string      `json:"name"`
+	Box        *screenRect `json:"box"`
+	Meaningful bool        `json:"meaningful"`
+}
+
+// bySelector is the element the page described by selector, or nil.
+func (h *screenHits) bySelector(selector string) *screenHit {
+	for index := range h.Elements {
+		if h.Elements[index].Selector == selector {
+			return &h.Elements[index]
+		}
+	}
+	return nil
+}
+
+// at is the element the hit map shows at a CSS point: the topmost at its
+// cell, or the nearest ancestor holding the point.
+func (h *screenHits) at(x, y int) *screenHit {
+	cell := h.Grid[min(y/h.Step, h.Rows-1)*h.Columns+min(x/h.Step, h.Columns-1)]
+	for index := cell; index >= 0; index = h.Elements[index].Parent {
+		box := h.Elements[index].Box
+		if box != nil && x >= box.X && x < box.X+box.Width && y >= box.Y && y < box.Y+box.Height {
+			return &h.Elements[index]
+		}
+	}
+	return nil
+}
+
+// checkPixel reports the frame's color at a point that is not want, within
+// the rounding a compositor allows.
+func checkPixel(t *testing.T, frame image.Image, what string, x, y float64, want [3]uint8) {
+	t.Helper()
+	r, g, b, _ := frame.At(int(math.Round(x)), int(math.Round(y))).RGBA()
+	got := [3]uint8{uint8(r >> 8), uint8(g >> 8), uint8(b >> 8)}
+	for index := range got {
+		if diff := int(got[index]) - int(want[index]); diff > 8 || diff < -8 {
+			t.Errorf("%s at frame %.0f,%.0f is rgb%v, want rgb%v: the screenshot and the hit map disagree", what, x, y, got, want)
+			return
+		}
+	}
 }

@@ -23,6 +23,7 @@ import {
 } from "./feedback-model.ts"
 import { FeedbackStatusIcon, FeedbackThreadZone } from "./FeedbackThreadZone.tsx"
 import { hasImage, imageFile } from "./screen-image.ts"
+import { pastedSource } from "./use-screen-comment.ts"
 import { VisualTarget, VisualThumb } from "./VisualTarget.tsx"
 import { isVisualThread } from "./visual-model.ts"
 import type { FeedbackActions } from "./use-feedback.ts"
@@ -163,7 +164,7 @@ export function FeedbackView({ branch, mobile, navigate, onDismiss, onOpenThread
         const file = imageFile(event.clipboardData)
         if (!file) return
         event.preventDefault()
-        view.openComposer({ blob: file, page: null, capture: null })
+        view.openComposer(pastedSource(file))
       }}
       onDragOver={(event) => {
         if (!hasImage(event.dataTransfer)) return
@@ -179,7 +180,7 @@ export function FeedbackView({ branch, mobile, navigate, onDismiss, onOpenThread
         const file = imageFile(event.dataTransfer)
         if (!file) return
         event.preventDefault()
-        view.openComposer({ blob: file, page: null, capture: null })
+        view.openComposer(pastedSource(file))
       }}>
       {dropping && <p className="feedback-drop" aria-hidden="true"><ImagePlusIcon />Drop to comment on the screenshot</p>}
       <ViewHeader className="explorer-header sidebar-header" title="Feedback" actions={<>

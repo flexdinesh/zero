@@ -327,27 +327,3 @@ func ParseOpenReview(project, pageURL any) (OpenReview, bool) {
 	}
 	return OpenReview{Project: p, URL: checked}, true
 }
-
-// ScreenElement is screenElement's payload: a screen capture's ID and a
-// point in its page's viewport, in CSS pixels.
-type ScreenElement struct {
-	ID   string
-	X, Y float64
-}
-
-// ParseScreenElement validates screenElement's payload: an ID review.IsCaptureID
-// accepts and finite, non-negative coordinates.
-func ParseScreenElement(id, x, y any) (ScreenElement, bool) {
-	text, okID := id.(string)
-	fx, okX := x.(float64)
-	fy, okY := y.(float64)
-	if !okID || !okX || !okY || !review.IsCaptureID(text) {
-		return ScreenElement{}, false
-	}
-	for _, value := range []float64{fx, fy} {
-		if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > review.MaxViewportSide {
-			return ScreenElement{}, false
-		}
-	}
-	return ScreenElement{ID: text, X: fx, Y: fy}, true
-}

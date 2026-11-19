@@ -10,24 +10,41 @@ import { Notice, StatusMessage } from "../../components/ui/notice.tsx"
 import { SegmentedControl, SegmentedItem } from "../../components/ui/segmented-control.tsx"
 import { TextArea, TextField } from "../../components/ui/text-field.tsx"
 import { ViewHeader } from "../../components/ui/view-header.tsx"
-import { desktopBridge } from "../../lib/desktop-bridge.ts"
+import type { ScreenHits } from "../../lib/desktop-bridge.ts"
 import { isSendKey, sendKeys } from "./FeedbackThreadZone.tsx"
+import { boxOf, hintOf, hitLabel, parentOf, pickAt } from "./hit-map.ts"
 import { cropPNG, hasImage, imageFile, imageSize, pngOf } from "./screen-image.ts"
 import type { FeedbackActions } from "./use-feedback.ts"
-import type { ScreenSource } from "./use-screen-comment.ts"
+import { pastedSource, type ScreenSource } from "./use-screen-comment.ts"
 import {
-  centeredRect, cssCenter, dragRect, fraction, nudge, nudgeStep, regionMargin, type Fraction, type Point, type Size,
+  centeredRect, cssCenter, cssToImage, dragRect, fraction, nudge, nudgeStep, regionMargin, type Fraction, type Point, type Size,
 } from "./visual-geometry.ts"
 import { elementLabel, pageURLProblem, planVisual, type AttachMode, type ScreenHint } from "./visual-model.ts"
 
 const mac = typeof navigator !== "undefined" && navigator.platform.includes("Mac")
 const pasteKey = mac ? "⌘" : "Ctrl"
+const altKey = mac ? "⌥" : "Alt"
 
 // A press that moves less than this many screen pixels is a click, not a
-// drag, and keeps the rectangle drawn before it.
+// drag: with a hit map it selects the element under it (decision 0180).
 const dragThreshold = 4
-// The page is asked for its element once the rectangle settles.
-const hintDelay = 150
+
+// Selection is what the comment points at, in frame pixels: an element of
+// the hit map (its visible box), or a free region. trail holds the
+// elements Alt+Up walked out of, for Alt+Down to walk back.
+interface Selection {
+  rect: FeedbackRect
+  element: number | null
+  trail: readonly number[]
+}
+
+// selectElement selects a hit map element by its visible box, or null when
+// it showed nothing inside the image.
+function selectElement(hits: ScreenHits, index: number, dsf: number, image: Size, trail: readonly number[] = []): Selection | null {
+  const box = boxOf(hits, index)
+  const rect = box ? cssToImage(box, null, dsf, image) : null
+  return rect ? { rect, element: index, trail } : null
+}
 
 export interface ScreenComposerState {
   // source is what the comment is about; null waits for a paste or drop.
@@ -76,8 +93,6 @@ export function ScreenCommentDialog({ actions, composer, onClose, onSent, onSour
   )
 }
 
-type Hint = { rect: FeedbackRect; hint: ScreenHint | null }
-
 interface ComposerProps {
   source: ScreenSource | null
   actions: FeedbackActions
@@ -91,8 +106,8 @@ interface ComposerProps {
 function ScreenComposer({ actions, onClose, onSent, onSource, registerDiscard, source }: ComposerProps) {
   const [image, setImage] = useState<{ url: string; size: Size } | null>(null)
   const [unreadable, setUnreadable] = useState(false)
-  const [rect, setRect] = useState<FeedbackRect | null>(null)
-  const [found, setFound] = useState<Hint | null>(null)
+  const [selection, setSelection] = useState<Selection | null>(null)
+  const [hovered, setHovered] = useState<number | null>(null)
   const [url, setURL] = useState(source?.page?.url ?? "")
   const [title, setTitle] = useState(source?.page?.title ?? "")
   const [mode, setMode] = useState<AttachMode>("region")
@@ -128,25 +143,52 @@ function ScreenComposer({ actions, onClose, onSent, onSource, registerDiscard, s
   }, [image, source])
 
   const page = source?.page ?? null
-  const capture = source?.capture ?? null
-  const lookup = useMemo(() => desktopBridge()?.screenElement ?? null, [])
-  // Ask the page for its element at the rectangle's center, once it settles.
-  useEffect(() => {
-    if (!rect || !page || !capture || !lookup) return
-    let current = true
-    const center = cssCenter(rect, page.viewport.deviceScaleFactor)
-    const timer = window.setTimeout(() => {
-      void lookup(capture, center.x, center.y).then((element) => {
-        if (current) setFound({ rect, hint: element })
-      })
-    }, hintDelay)
-    return () => {
-      current = false
-      window.clearTimeout(timer)
+  // The hit map answers for the captured page only: a paste has none.
+  const hits = page ? source?.hits ?? null : null
+  const dsf = page?.viewport.deviceScaleFactor ?? 1
+  const rect = selection?.rect ?? null
+  // The element the comment names: the one selected, or for a region the
+  // one a click at its center would select (decision 0176).
+  const hint = useMemo<ScreenHint | null>(() => {
+    if (!hits || !selection) return null
+    const index = selection.element ?? pickAt(hits, cssCenter(selection.rect, dsf))
+    return index === null ? null : hintOf(hits, index)
+  }, [dsf, hits, selection])
+
+  const toCSS = (point: Point): Point => ({ x: point.x / dsf, y: point.y / dsf })
+  const pick = (point: Point) => {
+    if (!hits || !image) return
+    const index = pickAt(hits, toCSS(point))
+    const next = index === null ? null : selectElement(hits, index, dsf, image.size)
+    if (next) setSelection(next)
+  }
+  const hover = (point: Point | null) => {
+    setHovered(hits && point ? pickAt(hits, toCSS(point)) : null)
+  }
+  // walk moves an element selection out to its parent, or back in.
+  const walk = (outward: boolean): boolean => {
+    const element = selection?.element ?? null
+    if (!hits || !image || !selection || element === null) return false
+    const { trail } = selection
+    let next: Selection | null = null
+    if (outward) {
+      const parent = parentOf(hits, element)
+      if (parent !== null) next = selectElement(hits, parent, dsf, image.size, [...trail, element])
+    } else {
+      const child = trail.at(-1)
+      if (child !== undefined) next = selectElement(hits, child, dsf, image.size, trail.slice(0, -1))
     }
-  }, [capture, lookup, page, rect])
-  const hint = found && found.rect === rect ? found.hint : null
-  const looking = Boolean(rect && page && capture && lookup) && found?.rect !== rect
+    if (next) setSelection(next)
+    return true
+  }
+  const clear = () => {
+    setSelection(null)
+    stageRef.current?.focus({ preventScroll: true })
+  }
+  const selectedIndex = selection?.element ?? null
+  const selectedLabel = hits && selectedIndex !== null ? hitLabel(hits.elements[selectedIndex]) : ""
+  const hoverLabel = hits && hovered !== null && hovered !== selection?.element ? hitLabel(hits.elements[hovered]) : ""
+  const hoverBox = hits && hovered !== null && hovered !== selection?.element ? boxOf(hits, hovered) : null
 
   const edited = useMemo(() => page ? { ...page, url, title } : null, [page, title, url])
   const plan = useMemo(() => rect && image ? planVisual(rect, image.size, edited, mode, hint) : null, [edited, hint, image, mode, rect])
@@ -185,7 +227,7 @@ function ScreenComposer({ actions, onClose, onSent, onSource, registerDiscard, s
   const takeTransfer = (transfer: DataTransfer | null) => {
     const file = imageFile(transfer)
     if (!file) return false
-    onSource({ blob: file, page: null, capture: null })
+    onSource(pastedSource(file))
     return true
   }
 
@@ -214,26 +256,56 @@ function ScreenComposer({ actions, onClose, onSent, onSource, registerDiscard, s
             : unreadable
               ? <div className="screen-drop"><StatusMessage tone="error" role="alert">This image can't be read. Paste a PNG, JPEG, or WebP image.</StatusMessage></div>
               : image
-                ? <Stage stageRef={stageRef} image={image} rect={rect} onRect={setRect} clip={plan?.clip ?? null}
-                  elementBox={hint?.box && page ? frameBox(hint.box, page.viewport.deviceScaleFactor) : null} />
+                ? <Stage stageRef={stageRef} image={image} rect={rect} selected={selectedLabel} clip={plan?.clip ?? null} picking={hits !== null}
+                  onRect={(next) => setSelection({ rect: next, element: null, trail: [] })} onPick={pick} onHover={hover}
+                  onClear={() => {
+                    if (!selection) return false
+                    clear()
+                    return true
+                  }}
+                  onWalk={walk}
+                  hoverBox={hoverBox ? cssToImage(hoverBox, null, dsf, image.size) : null}
+                  elementBox={selection?.element === null && hint?.box ? cssToImage(hint.box, null, dsf, image.size) : null} />
                 : <div className="screen-drop"><StatusMessage>Reading the image…</StatusMessage></div>}
           {image && (
-            <p className="screen-readout" id={`${ids}-readout`}>
-              {rect
-                ? <>Region <span className="screen-figure">{rect.width} × {rect.height}</span> px
-                  {plan && (plan.clip || page) ? <> · attaching <span className="screen-figure">{plan.image.width} × {plan.image.height}</span></> : null}</>
-                : "Drag across the image to mark what the comment is about. Arrow keys work too."}
-            </p>
+            <div className="screen-stage-foot">
+              {source?.drift && (
+                <Notice tone="warning" layout="bar" className="screen-drift">
+                  The page moved while it was captured. Outlines may not match the image.
+                </Notice>
+              )}
+              <div className="screen-readout" id={`${ids}-readout`}>
+                <p className="screen-readout-text">
+                  {rect
+                    ? <>
+                      {selectedLabel ? <span className="screen-element">{selectedLabel}</span> : "Region"}
+                      {" "}<span className="screen-figure">{rect.width} × {rect.height}</span> px
+                      {plan && (plan.clip || page) ? <> · attaching <span className="screen-figure">{plan.image.width} × {plan.image.height}</span></> : null}
+                    </>
+                    : hoverLabel
+                      ? <><span className="screen-element">{hoverLabel}</span> · click to select it, or drag a region</>
+                      : hits
+                        ? "Click an element or drag a region to mark what the comment is about. Arrow keys draw a region too."
+                        : "Drag across the image to mark what the comment is about. Arrow keys work too."}
+                </p>
+                {rect && (
+                  <span className="screen-readout-actions">
+                    {selectedIndex !== null && hits && parentOf(hits, selectedIndex) !== null && (
+                      <span className="screen-readout-keys"><Kbd>{altKey}</Kbd><Kbd>↑</Kbd> parent</span>
+                    )}
+                    <Button size="sm" variant="ghost" disabled={busy} onClick={clear}>Clear</Button>
+                  </span>
+                )}
+              </div>
+            </div>
           )}
         </section>
         <div className="screen-form">
           {page && (
             <dl className="screen-facts">
-              {(plan?.element || looking) && <>
+              {plan?.element && <>
                 <dt>Element</dt>
-                <dd>{plan?.element
-                  ? <><span className="screen-element">{elementLabel(plan.element)}</span> <span className="screen-muted">(from the page)</span></>
-                  : <span className="screen-muted">Asking the page…</span>}</dd>
+                <dd><span className="screen-element">{elementLabel(plan.element)}</span> <span className="screen-muted">(from the page)</span></dd>
               </>}
               <dt><label htmlFor={`${ids}-url`}>URL</label></dt>
               <dd>
@@ -289,11 +361,6 @@ function ScreenComposer({ actions, onClose, onSent, onSource, registerDiscard, s
   )
 }
 
-// frameBox moves an element's CSS box into frame pixels.
-function frameBox(box: FeedbackRect, deviceScaleFactor: number): FeedbackRect {
-  return { x: box.x * deviceScaleFactor, y: box.y * deviceScaleFactor, width: box.width * deviceScaleFactor, height: box.height * deviceScaleFactor }
-}
-
 function placed(at: Fraction) {
   return { left: `${at.left * 100}%`, top: `${at.top * 100}%`, width: `${at.width * 100}%`, height: `${at.height * 100}%` }
 }
@@ -302,15 +369,33 @@ interface StageProps {
   stageRef: { current: HTMLDivElement | null }
   image: { url: string; size: Size }
   rect: FeedbackRect | null
+  // selected names the selected element, "" for a region.
+  selected: string
   clip: FeedbackRect | null
+  // elementBox is a region's element hint; hoverBox the element a click
+  // would select. Both in image pixels.
   elementBox: FeedbackRect | null
+  hoverBox: FeedbackRect | null
+  // picking says a click selects an element: the capture has a hit map.
+  picking: boolean
   onRect(rect: FeedbackRect): void
+  onPick(point: Point): void
+  onHover(point: Point | null): void
+  // onClear clears the selection, reporting whether there was one.
+  onClear(): boolean
+  // onWalk moves an element selection outward or back, reporting whether
+  // there was one to move.
+  onWalk(outward: boolean): boolean
 }
 
-// Stage is the frozen image under the pointer: a drag draws the rectangle,
-// arrow keys move it, and Shift with them resizes it. What a region keeps
-// shows bright; the rest, which never leaves this page, dims.
-function Stage({ clip, elementBox, image, onRect, rect, stageRef }: StageProps) {
+// Stage is the frozen image under the pointer (decision 0180). With a hit
+// map, hovering outlines the element a click selects, a click selects it,
+// and Alt with Up and Down walks to its parent and back. A drag draws a free
+// rectangle anywhere, gaps and canvases included; arrow keys draw and move
+// one, and Shift with them resizes it. Escape clears the selection before
+// it closes anything. What a region keeps shows bright; the rest, which
+// never leaves this page, dims.
+function Stage({ clip, elementBox, hoverBox, image, onClear, onHover, onPick, onRect, onWalk, picking, rect, selected, stageRef }: StageProps) {
   const [drawing, setDrawing] = useState<FeedbackRect | null>(null)
   const start = useRef<{ point: Point; x: number; y: number } | null>(null)
   const { size } = image
@@ -324,6 +409,20 @@ function Stage({ clip, elementBox, image, onRect, rect, stageRef }: StageProps) 
     && (Math.abs(event.clientX - start.current.x) >= dragThreshold || Math.abs(event.clientY - start.current.y) >= dragThreshold)
 
   const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      // The selection goes first; the dialog's Escape waits for the next.
+      if (onClear()) {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+      return
+    }
+    if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+      if (onWalk(event.key === "ArrowUp")) {
+        event.preventDefault()
+        return
+      }
+    }
     const step = nudgeStep(size)
     const moves: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }
     const move = moves[event.key]
@@ -336,27 +435,43 @@ function Stage({ clip, elementBox, image, onRect, rect, stageRef }: StageProps) 
     }
   }
 
-  const label = shown ? `Region ${shown.width} by ${shown.height} pixels at ${shown.x}, ${shown.y}` : "No region yet"
+  const label = shown
+    ? `${drawing || !selected ? "Region" : `Selected ${selected},`} ${shown.width} by ${shown.height} pixels at ${shown.x}, ${shown.y}`
+    : "Nothing selected yet"
   return (
     <div className="screen-stage">
       <div ref={stageRef} className="screen-frame" tabIndex={0} role="group"
-        aria-label="Screenshot. Drag to mark a region, or press an arrow key to start one; arrows move it and Shift with arrows resizes it."
+        aria-label={picking
+          ? "Screenshot. Click an element to select it, or drag to mark a region; arrow keys draw and move a region, Shift with arrows resizes it, Alt with Up selects the parent element, and Escape clears the selection."
+          : "Screenshot. Drag to mark a region, or press an arrow key to start one; arrows move it and Shift with arrows resizes it."}
         aria-roledescription="region picker"
+        data-picking={picking || undefined}
         style={{ aspectRatio: `${size.width} / ${size.height}`, width: `min(100cqw, calc(100cqh * ${size.width} / ${size.height}))` }}
         onKeyDown={onKeyDown}
         onPointerDown={(event) => {
           if (event.button !== 0) return
           event.currentTarget.setPointerCapture(event.pointerId)
           start.current = { point: pointAt(event), x: event.clientX, y: event.clientY }
+          onHover(null)
         }}
         onPointerMove={(event) => {
-          if (!start.current || !moved(event)) return
+          if (!start.current) {
+            if (event.pointerType !== "touch") onHover(pointAt(event))
+            return
+          }
+          if (!moved(event)) return
           setDrawing(dragRect(start.current.point, pointAt(event), size))
         }}
+        onPointerLeave={() => {
+          if (!start.current) onHover(null)
+        }}
         onPointerUp={(event) => {
-          if (start.current && moved(event)) {
-            const next = dragRect(start.current.point, pointAt(event), size)
+          const pressed = start.current
+          if (pressed && moved(event)) {
+            const next = dragRect(pressed.point, pointAt(event), size)
             if (next) onRect(next)
+          } else if (pressed) {
+            onPick(pressed.point)
           }
           start.current = null
           setDrawing(null)
@@ -368,6 +483,7 @@ function Stage({ clip, elementBox, image, onRect, rect, stageRef }: StageProps) 
         <img className="screen-image" src={image.url} alt="" draggable={false} />
         {clip && !drawing && <div className="screen-keep" style={placed(fraction(clip, size))} aria-hidden="true" />}
         {elementBox && !drawing && <div className="screen-element-box" style={placed(fraction(elementBox, size))} aria-hidden="true" />}
+        {hoverBox && !drawing && <div className="screen-hover-box" style={placed(fraction(hoverBox, size))} aria-hidden="true" />}
         {shown && <div className="screen-mark" style={placed(fraction(shown, size))} aria-hidden="true" />}
         <span className="visually-hidden" role="status">{drawing ? "" : label}</span>
       </div>

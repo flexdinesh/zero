@@ -1,12 +1,17 @@
 // Package review is the pure part of screen comments in the desktop app
-// (decisions 0175, 0176, 0177): the script guest pages run, the page facts
-// and element hints it answers through Page.Eval, which are the page's word
-// and so are validated and bounded here, and the guest window's title. It
-// knows no mygo: the main package drives windows.
+// (decisions 0175, 0176, 0177, 0180): the script guest pages run, the page
+// facts and hit map it answers through Page.Eval, which are the page's word
+// and so are validated and bounded here, the capture flow over any guest
+// page (CaptureFrom), and the guest window's title. It knows no mygo: the
+// main package drives windows.
 package review
 
 import (
+	"context"
+	"crypto/rand"
 	_ "embed"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -134,13 +139,6 @@ func ParseFacts(raw, pageURL string, zoom float64) (Page, error) {
 	}, nil
 }
 
-// SameView reports whether a page still shows what a capture recorded: the
-// same URL, viewport size, and scroll.
-func SameView(captured, now Page) bool {
-	return captured.URL == now.URL && captured.Scroll == now.Scroll &&
-		captured.Viewport.Width == now.Viewport.Width && captured.Viewport.Height == now.Viewport.Height
-}
-
 // Rect is a rectangle in CSS pixels from the viewport's top left.
 type Rect struct {
 	X      int `json:"x"`
@@ -149,76 +147,185 @@ type Rect struct {
 	Height int `json:"height"`
 }
 
-// Element is the page's word on the element at a point (decision 0176):
-// advisory, bounded, never trusted. Box is its border box clipped to the
-// viewport, in CSS pixels.
-type Element struct {
-	Selector string `json:"selector"`
-	Tag      string `json:"tag"`
-	Role     string `json:"role,omitempty"`
-	Name     string `json:"name,omitempty"`
-	Text     string `json:"text,omitempty"`
-	Box      *Rect  `json:"box,omitempty"`
+// Bounds of a capture's hit map (decision 0180).
+const (
+	// MaxHitCells bounds the grid's cells; guest.js keeps to 20000.
+	MaxHitCells = 1 << 15
+	// MaxHitElements bounds the elements a hit map describes.
+	MaxHitElements = 2000
+	// maxHitsBytes bounds the page's answer before it is read.
+	maxHitsBytes = 8 << 20
+)
+
+// Hits is a capture's hit map (decision 0180): what the page showed where,
+// recorded in the same step as the page's facts and before the frame. Grid
+// holds, row by row, the element (an index into Elements, -1 for none)
+// topmost at the center of each Step-pixel cell, Columns × Rows covering
+// the viewport. The page's word: validated and bounded, never trusted.
+type Hits struct {
+	Step     int          `json:"step"`
+	Columns  int          `json:"columns"`
+	Rows     int          `json:"rows"`
+	Grid     []int        `json:"grid"`
+	Elements []HitElement `json:"elements"`
+}
+
+// HitElement is one element of a hit map. Parent is the nearest ancestor
+// the map holds, always earlier, or -1. Box is the part of its border box
+// the page showed, cut to the viewport and to ancestors that clip it, in
+// CSS pixels; nil when nothing showed. Meaningful marks an element a click
+// inside it means: one with a role, input, replaced content, or a name the
+// page gave it. The rest is decision 0176's element hint, present while
+// the page had time to describe it: Tag "" and Selector "" mean it cannot
+// be a hint.
+type HitElement struct {
+	Parent     int    `json:"parent"`
+	Tag        string `json:"tag,omitempty"`
+	Selector   string `json:"selector,omitempty"`
+	Role       string `json:"role,omitempty"`
+	Name       string `json:"name,omitempty"`
+	Text       string `json:"text,omitempty"`
+	Box        *Rect  `json:"box,omitempty"`
+	Meaningful bool   `json:"meaningful,omitempty"`
 }
 
 var tagPattern = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
-// ParseElement reads guest.js's elementAt() answer within viewport: null,
-// or an element with a selector of at most 512 bytes and a lowercase tag of
-// at most 32. Role (at most 64), name, and text (at most 256 characters)
-// become one line; a role past its bound is dropped, a name or text cut.
-// The box is clipped to the viewport and dropped when nothing is left. An
-// element that breaks the selector or tag rules is no element.
-func ParseElement(raw string, viewport Viewport) (*Element, bool) {
-	if strings.TrimSpace(raw) == "null" {
-		return nil, true
+// ParseHits reads the hits of guest.js's capture() answer within viewport.
+// A map whose shape is wrong (the grid's size, an index out of range, a
+// parent that is not earlier, past the bounds) is no map: nil. Within a
+// sound map each element's metadata is bounded as decision 0176 bounds a
+// hint: a selector over 512 bytes or with control characters, a tag that is
+// not lowercase letters, digits, and hyphens or longer than 32, and a role
+// over 64 characters are dropped; name and text become one line of at most
+// 256 characters. Boxes are clipped to the viewport and dropped when
+// nothing is left.
+func ParseHits(raw string, viewport Viewport) *Hits {
+	if len(raw) > maxHitsBytes {
+		return nil
 	}
-	var element struct {
-		Selector string `json:"selector"`
-		Tag      string `json:"tag"`
-		Role     string `json:"role"`
-		Name     string `json:"name"`
-		Text     string `json:"text"`
-		Box      *struct {
-			X, Y, Width, Height float64
-		} `json:"box"`
+	var answer struct {
+		Hits *struct {
+			Step     int   `json:"step"`
+			Columns  int   `json:"columns"`
+			Rows     int   `json:"rows"`
+			Grid     []int `json:"grid"`
+			Elements []struct {
+				Parent     int    `json:"parent"`
+				Tag        string `json:"tag"`
+				Selector   string `json:"selector"`
+				Role       string `json:"role"`
+				Name       string `json:"name"`
+				Text       string `json:"text"`
+				Meaningful bool   `json:"meaningful"`
+				Box        *struct {
+					X, Y, Width, Height float64
+				} `json:"box"`
+			} `json:"elements"`
+		} `json:"hits"`
 	}
-	if err := json.Unmarshal([]byte(raw), &element); err != nil {
-		return nil, false
+	if err := json.Unmarshal([]byte(raw), &answer); err != nil || answer.Hits == nil {
+		return nil
 	}
-	if element.Selector == "" || len(element.Selector) > 512 || !utf8.ValidString(element.Selector) || strings.IndexFunc(element.Selector, unicode.IsControl) >= 0 ||
-		len(element.Tag) > 32 || !tagPattern.MatchString(element.Tag) {
-		return nil, false
+	in := answer.Hits
+	if in.Step < 1 || in.Step > MaxViewportSide || viewport.Width < 1 || viewport.Height < 1 ||
+		in.Columns != (viewport.Width+in.Step-1)/in.Step || in.Rows != (viewport.Height+in.Step-1)/in.Step ||
+		in.Columns*in.Rows > MaxHitCells || len(in.Grid) != in.Columns*in.Rows || len(in.Elements) > MaxHitElements {
+		return nil
 	}
-	parsed := &Element{Selector: element.Selector, Tag: element.Tag, Name: oneLine(element.Name, 256), Text: oneLine(element.Text, 256)}
-	if role := oneLine(element.Role, 1<<10); utf8.RuneCountInString(role) <= 64 {
-		parsed.Role = role
-	}
-	if box := element.Box; box != nil && finite(box.X) && finite(box.Y) && finite(box.Width) && finite(box.Height) {
-		left := math.Max(0, math.Round(box.X))
-		top := math.Max(0, math.Round(box.Y))
-		right := math.Min(float64(viewport.Width), math.Round(box.X+box.Width))
-		bottom := math.Min(float64(viewport.Height), math.Round(box.Y+box.Height))
-		if right-left >= 1 && bottom-top >= 1 {
-			parsed.Box = &Rect{X: int(left), Y: int(top), Width: int(right - left), Height: int(bottom - top)}
+	for _, cell := range in.Grid {
+		if cell < -1 || cell >= len(in.Elements) {
+			return nil
 		}
 	}
-	return parsed, true
+	hits := &Hits{Step: in.Step, Columns: in.Columns, Rows: in.Rows, Grid: in.Grid, Elements: make([]HitElement, len(in.Elements))}
+	for index, element := range in.Elements {
+		if element.Parent < -1 || element.Parent >= index {
+			return nil
+		}
+		out := HitElement{Parent: element.Parent, Meaningful: element.Meaningful, Name: oneLine(element.Name, 256), Text: oneLine(element.Text, 256)}
+		if len(element.Tag) <= 32 && tagPattern.MatchString(element.Tag) {
+			out.Tag = element.Tag
+		}
+		if selector := element.Selector; len(selector) <= 512 && utf8.ValidString(selector) && strings.IndexFunc(selector, unicode.IsControl) < 0 {
+			out.Selector = selector
+		}
+		if role := oneLine(element.Role, 1<<10); utf8.RuneCountInString(role) <= 64 {
+			out.Role = role
+		}
+		if box := element.Box; box != nil && finite(box.X) && finite(box.Y) && finite(box.Width) && finite(box.Height) {
+			left := math.Max(0, math.Floor(box.X))
+			top := math.Max(0, math.Floor(box.Y))
+			right := math.Min(float64(viewport.Width), math.Ceil(box.X+box.Width))
+			bottom := math.Min(float64(viewport.Height), math.Ceil(box.Y+box.Height))
+			if right-left >= 1 && bottom-top >= 1 {
+				out.Box = &Rect{X: int(left), Y: int(top), Width: int(right - left), Height: int(bottom - top)}
+			}
+		}
+		hits.Elements[index] = out
+	}
+	return hits
 }
 
 // Capture is one screen capture waiting for its comment: Project's guest
-// page as a PNG of its whole frame, base64, and the page it shows.
+// page as a PNG of its whole frame, base64, the page it shows, and its hit
+// map, nil when the page gave none that holds. Drift says the page's layout
+// moved while it was captured, twice: the hit map may not match the pixels.
 type Capture struct {
 	ID      string `json:"id"`
 	Project string `json:"project"`
 	PNG     string `json:"png"`
 	Page    Page   `json:"page"`
+	Hits    *Hits  `json:"hits,omitempty"`
+	Drift   bool   `json:"drift,omitempty"`
 }
 
-var captureID = regexp.MustCompile(`^[0-9a-f]{12}$`)
+// PageDriver is the guest page a capture reads: a review window's page, or
+// any other surface that shows a guest page under guest.js (decision 0180).
+// Eval runs code in the page and answers the string it returns.
+type PageDriver interface {
+	URL() string
+	ZoomFactor() float64
+	Eval(ctx context.Context, code string) (string, error)
+	CapturePage() ([]byte, error)
+}
 
-// IsCaptureID reports a capture ID: twelve lowercase hex digits.
-func IsCaptureID(id string) bool { return captureID.MatchString(id) }
+// CaptureFrom captures page for a comment on project (decision 0180): the
+// facts and hit map in one step, then the frame, then the layout's
+// signature again. When the layout moved in between, it captures once
+// more, and marks the capture Drift if it moved again. Call it before
+// anything takes focus from the page, so menus and hovers stay as shown.
+func CaptureFrom(ctx context.Context, page PageDriver, project string) (Capture, error) {
+	var capture Capture
+	for attempt := 0; attempt < 2; attempt++ {
+		raw, err := page.Eval(ctx, "return window.__zeroReview.capture()")
+		if err != nil {
+			return Capture{}, fmt.Errorf("read the page: %w", err)
+		}
+		facts, err := ParseFacts(raw, page.URL(), page.ZoomFactor())
+		if err != nil {
+			return Capture{}, err
+		}
+		frame, err := page.CapturePage()
+		if err != nil {
+			return Capture{}, fmt.Errorf("capture the page: %w", err)
+		}
+		var before struct {
+			Signature string `json:"signature"`
+		}
+		_ = json.Unmarshal([]byte(raw), &before)
+		after, err := page.Eval(ctx, "return window.__zeroReview.signature()")
+		moved := err != nil || before.Signature == "" || after != before.Signature
+		capture = Capture{Project: project, PNG: base64.StdEncoding.EncodeToString(frame), Page: facts, Hits: ParseHits(raw, facts.Viewport), Drift: moved}
+		if !moved {
+			break
+		}
+	}
+	id := make([]byte, 6)
+	_, _ = rand.Read(id)
+	capture.ID = hex.EncodeToString(id)
+	return capture, nil
+}
 
 // oneLine collapses whitespace and control characters to single spaces and
 // cuts the result to limit characters.

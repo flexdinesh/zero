@@ -1,16 +1,23 @@
 import { useEffect, useRef } from "react"
 
-import { desktopBridge, type ScreenCapture } from "../../lib/desktop-bridge.ts"
+import { desktopBridge, type ScreenCapture, type ScreenHits } from "../../lib/desktop-bridge.ts"
 import { decodeBase64PNG } from "./screen-image.ts"
 import type { ScreenPage } from "./visual-model.ts"
 
-// ScreenSource is what a screen comment is about (decision 0176): the
-// frozen image, the page it froze (null for a pasted or dropped image), and
-// the desktop capture's id for the page's element hint (null otherwise).
+// ScreenSource is what a screen comment is about (decisions 0176, 0180): the
+// frozen image, the page it froze (null for a pasted or dropped image), the
+// hit map recorded with it (null without one), and whether the page moved
+// while it was captured.
 export interface ScreenSource {
   blob: Blob
   page: ScreenPage | null
-  capture: string | null
+  hits: ScreenHits | null
+  drift: boolean
+}
+
+// pastedSource is a pasted or dropped image: nothing known but its pixels.
+export function pastedSource(blob: Blob): ScreenSource {
+  return { blob, page: null, hits: null, drift: false }
 }
 
 // A capture waits here while the page switches to its project, or while
@@ -36,7 +43,7 @@ function take(project: string): ScreenSource | null {
 function deliver(capture: ScreenCapture) {
   const blob = decodeBase64PNG(capture.png)
   if (!blob) return
-  const source: ScreenSource = { blob, page: capture.page, capture: capture.id }
+  const source: ScreenSource = { blob, page: capture.page, hits: capture.hits, drift: capture.drift }
   if (receiver?.project === capture.project) {
     receiver.open(source)
     return
