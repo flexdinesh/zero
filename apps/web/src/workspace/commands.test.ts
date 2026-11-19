@@ -18,11 +18,17 @@ test("typing blame finds the line blame command and its setting", () => {
 
 test("the palette offers notification settings only where they exist", () => {
   const ids = (list: readonly Command[]) => list.map((command) => command.id)
-  assert.deepEqual(availableCommands(true), commands)
-  assert.ok(ids(availableCommands(true)).includes("settings.notifyCommits"))
-  assert.ok(!ids(availableCommands(false)).some((id) => id.startsWith("settings.notify")))
-  assert.ok(ids(availableCommands(false)).includes("settings.theme"))
-  assert.ok(ids(availableCommands(false)).includes("help.welcome"))
+  assert.deepEqual(availableCommands(true, true), commands)
+  assert.ok(ids(availableCommands(true, true)).includes("settings.notifyCommits"))
+  assert.ok(!ids(availableCommands(false, false)).some((id) => id.startsWith("settings.notify")))
+  assert.ok(ids(availableCommands(false, false)).includes("settings.theme"))
+  assert.ok(ids(availableCommands(false, false)).includes("help.welcome"))
+})
+
+test("the active tab’s wrap toggle comes before the default setting when searching", () => {
+  const wrap = (canWrap: boolean) => matchCommands(availableCommands(false, canWrap), "wrap").map(({ command }) => command.id)
+  assert.deepEqual(wrap(true), ["editor.toggleWordWrap", "settings.wordWrap"])
+  assert.deepEqual(wrap(false), ["settings.wordWrap"])
 })
 
 test("an empty query lists every command in order", () => {
@@ -68,5 +74,5 @@ test("Go Back, Go Forward, and Recent Locations are Navigation commands", () => 
 
 test("typing report finds Report a Problem in Help on every client", () => {
   assert.deepEqual(matchCommands(commands, "report problem").map((match) => match.command.id), ["help.reportProblem"])
-  assert.ok(availableCommands(false).some((command) => command.id === "help.reportProblem"))
+  assert.ok(availableCommands(false, false).some((command) => command.id === "help.reportProblem"))
 })

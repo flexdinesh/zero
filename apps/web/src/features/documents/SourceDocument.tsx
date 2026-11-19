@@ -92,6 +92,7 @@ interface SourceDocumentProps {
   blame?: SourceBlame
   // findable offers the lines to find in file (decision 0172).
   findable?: boolean
+  wordWrap?: boolean
 }
 
 // LineCopyButton copies a line reference from the gutter. Its presses stay
@@ -248,7 +249,7 @@ function gutterLine(event: MouseEvent | PointerEvent): number | null {
   return lineFromRow(gutter?.parentElement, event.currentTarget)
 }
 
-export function SourceDocument({ source, language, label, selection, navigation, annotation, changes, comments, blame, findable = false }: SourceDocumentProps) {
+export function SourceDocument({ source, language, label, selection, navigation, annotation, changes, comments, blame, findable = false, wordWrap = false }: SourceDocumentProps) {
   const lines = useMemo(() => splitSourceLines(source), [source])
   // Rows show plain text until highlighting arrives.
   const highlightedLines = useHighlightedLines(source, language)
@@ -433,7 +434,7 @@ export function SourceDocument({ source, language, label, selection, navigation,
   return (
     <div
       ref={container}
-      className={`source-document${drag?.active ? " selecting-lines" : ""}${navigationEnabled && linked ? " navigation-linking" : ""}`}
+      className={`source-document${wordWrap ? " wrap-lines" : ""}${drag?.active ? " selecting-lines" : ""}${navigationEnabled && linked ? " navigation-linking" : ""}`}
       role="textbox"
       aria-label={label}
       aria-multiline="true"

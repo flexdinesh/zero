@@ -10,6 +10,7 @@ interface DocumentWorkspace {
   preview: WorkspaceTab | null
   // modes are keyed by documentKey.
   modes: ReadonlyMap<string, DocumentMode>
+  wordWrap: ReadonlyMap<string, boolean>
 }
 
 // useDocumentWorkspace owns open tabs; the routed active tab joins them, as
@@ -18,12 +19,19 @@ export function useDocumentWorkspace(active: WorkspaceTab | null, asPreview: boo
   const [workspace, setWorkspace] = useState<DocumentWorkspace>(() => ({
     ...(active ? placeTab({ tabs: [], preview: null }, active, asPreview) : { tabs: [], preview: null }),
     modes: new Map(),
+    wordWrap: new Map(),
   }))
   useEffect(() => {
     if (!active) return
     setWorkspace((current) => {
       const placed = placeTab(current, active, asPreview)
-      return placed === current ? current : { ...current, ...placed }
+      if (placed === current) return current
+      if (placed.preview !== current.preview && current.preview?.kind === "document") {
+        const wordWrap = new Map(current.wordWrap)
+        wordWrap.delete(documentKey(current.preview.path, current.preview.at))
+        return { ...current, ...placed, wordWrap }
+      }
+      return { ...current, ...placed }
     })
   }, [active, asPreview])
 
@@ -38,6 +46,16 @@ export function useDocumentWorkspace(active: WorkspaceTab | null, asPreview: boo
       const modes = new Map(current.modes)
       modes.set(key, mode)
       return { ...current, modes }
+    })
+  }, [])
+
+  const toggleWordWrap = useCallback((key: string, defaultWrap: boolean) => {
+    setWorkspace((current) => {
+      const wrap = !(current.wordWrap.get(key) ?? defaultWrap)
+      const wordWrap = new Map(current.wordWrap)
+      if (wrap === defaultWrap) wordWrap.delete(key)
+      else wordWrap.set(key, wrap)
+      return { ...current, wordWrap }
     })
   }, [])
 
@@ -71,13 +89,19 @@ export function useDocumentWorkspace(active: WorkspaceTab | null, asPreview: boo
       ?? workspace.tabs.slice(0, Math.max(index, 0)).reverse().find((tab) => !includesTab(closed, tab))
     setWorkspace((current) => {
       const modes = new Map(current.modes)
-      // Modes belong to documents; a document's mode outlives its diff tab.
-      for (const tab of closed) if (tab.kind === "document") modes.delete(documentKey(tab.path, tab.at))
+      const wordWrap = new Map(current.wordWrap)
+      // Modes and wrap overrides belong to documents, independent of reviews.
+      for (const tab of closed) {
+        if (tab.kind !== "document") continue
+        const key = documentKey(tab.path, tab.at)
+        modes.delete(key)
+        wordWrap.delete(key)
+      }
       const preview = current.preview && includesTab(closed, current.preview) ? null : current.preview
-      return { tabs: current.tabs.filter((tab) => !includesTab(closed, tab)), preview, modes }
+      return { tabs: current.tabs.filter((tab) => !includesTab(closed, tab)), preview, modes, wordWrap }
     })
     return { tabs: closed, replacement: replacement ?? null }
   }
 
-  return { tabs: workspace.tabs, preview: workspace.preview, modes: workspace.modes, setDocumentMode, closeTabs, replaceTab, restore, pin }
+  return { tabs: workspace.tabs, preview: workspace.preview, modes: workspace.modes, wordWrap: workspace.wordWrap, setDocumentMode, toggleWordWrap, closeTabs, replaceTab, restore, pin }
 }

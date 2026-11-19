@@ -213,6 +213,8 @@ export function FindProvider({ scope, pane, registerCommands, children }: FindPr
     const root = pane.current
     const resize = new ResizeObserver(() => placeTicks())
     if (root) resize.observe(root)
+    const layout = target.layoutElement?.()
+    if (layout) resize.observe(layout)
     return () => {
       stop()
       resize.disconnect()

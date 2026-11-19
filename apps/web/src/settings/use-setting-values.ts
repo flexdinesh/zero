@@ -8,6 +8,7 @@ import {
   isLanguageServerSetting,
   isNotifySetting,
   isShowWelcomeSetting,
+  isWordWrapSetting,
   languageServerOptions,
   modifiedSettings,
   notifyOptions,
@@ -112,6 +113,19 @@ export function useSettingValues(): SettingValues {
           return true
         },
         reset() { resetSetting("fontSize") },
+      },
+      wordWrap: {
+        definition: definition("wordWrap"),
+        value: settings.wordWrap,
+        label: settings.wordWrap === "on" ? "On" : "Off",
+        defaultLabel: defaultSettings.wordWrap === "on" ? "On" : "Off",
+        modified: settings.wordWrap !== defaultSettings.wordWrap,
+        set(value) {
+          if (!isWordWrapSetting(value)) return false
+          setSetting("wordWrap", value)
+          return true
+        },
+        reset() { resetSetting("wordWrap") },
       },
       languageServers: {
         definition: definition("languageServers"),

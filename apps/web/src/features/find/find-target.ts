@@ -20,6 +20,8 @@ export interface FindTarget {
   // place lists each match's top in the pane's scroll content, null where
   // unplaced.
   place(matches: readonly FindMatch[]): ReadonlyArray<number | null>
+  // layoutElement changes size when matches move without a text change.
+  layoutElement?(): Element | null
   // firstVisible is the segment at the pane's top.
   firstVisible(): number
   // subscribe asks for a repaint when the rendered text or layout changes.

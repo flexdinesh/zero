@@ -83,6 +83,10 @@ export function useSourceFind(
         }
         return low
       },
+      layoutElement() {
+        // The code can resize when the full-height Source container does not.
+        return container.current?.firstElementChild ?? null
+      },
       subscribe(onChange) {
         const root = container.current
         return root ? observeText(root, onChange) : () => {}

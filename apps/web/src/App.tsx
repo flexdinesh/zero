@@ -285,25 +285,6 @@ export function App({ project }: AppProps) {
   const openWelcomeCommand = useRef(() => {})
   const fileHistoryCommand = useRef(() => {})
   const lineBlameCommand = useRef(() => {})
-  const runCommand = useCallback((action: CommandAction) => {
-    if (action.kind === "open-welcome") openWelcomeCommand.current()
-    else if (action.kind === "show-file-history") fileHistoryCommand.current()
-    else if (action.kind === "show-line-blame") lineBlameCommand.current()
-    else if (action.kind === "walkthrough-step") walkthroughCommands.current.move(action.direction)
-    else if (action.kind === "walkthrough-exit") walkthroughCommands.current.close()
-    else if (action.kind === "walkthrough-present") walkthroughCommands.current.present()
-    else if (action.kind === "go-to-file") openQuickOpen.current()
-    else if (action.kind === "go-to-definition") runNavigation.current("definition")
-    else if (action.kind === "find-references") runNavigation.current("references")
-    else if (action.kind === "go-back") historyStore.go(-1)
-    else if (action.kind === "go-forward") historyStore.go(1)
-    else if (action.kind === "recent-locations") openRecent.current()
-    else if (action.kind === "select-color-theme") openColorTheme.current()
-    else if (action.kind === "report-problem") openReport.current()
-    else if (action.kind === "find") findCommands.current?.open()
-    else if (action.kind === "find-step") findCommands.current?.step(action.direction)
-    else openSettings.current(action.kind === "open-setting" ? action.setting : undefined)
-  }, [historyStore])
   const sidebar = useSidebar()
   const { reveal: revealSidebar } = sidebar
   // feedbackVersion rereads feedback: an announcement, a change on disk
@@ -373,7 +354,7 @@ export function App({ project }: AppProps) {
   // (decision 0113).
   const workspace = useDocumentWorkspace(activeTab, pendingDocument?.preview
     ?? (searchWalkthrough !== "" && searchStep !== undefined && !walkthroughRoute))
-  const { setDocumentMode } = workspace
+  const { setDocumentMode, toggleWordWrap } = workspace
   const previewPreference = usePreviewPreference(project)
   const { settings } = useSettings()
   const openRemembered = useCallback((tab: WorkspaceTab) => {
@@ -394,6 +375,31 @@ export function App({ project }: AppProps) {
   const documentMode = resolveDocumentMode(page, workspace.modes.get(pageKey) ?? (lineRange ? "source" : previewPreference.preferredMode))
   const formatState = formatResult(page.selected, page.source, page.at)
   const view = documentView(page, documentMode, formatState)
+  const defaultWordWrap = settings.wordWrap === "on"
+  const canWrap = activeTab?.kind === "document" && !documentPending && !loadError && !page.error && !page.projectUnavailable
+    && (view.kind === "source" || view.kind === "format")
+  const wordWrap = canWrap ? workspace.wordWrap.get(pageKey) ?? defaultWordWrap : null
+  const runCommand = useCallback((action: CommandAction) => {
+    if (action.kind === "open-welcome") openWelcomeCommand.current()
+    else if (action.kind === "show-file-history") fileHistoryCommand.current()
+    else if (action.kind === "show-line-blame") lineBlameCommand.current()
+    else if (action.kind === "walkthrough-step") walkthroughCommands.current.move(action.direction)
+    else if (action.kind === "walkthrough-exit") walkthroughCommands.current.close()
+    else if (action.kind === "walkthrough-present") walkthroughCommands.current.present()
+    else if (action.kind === "go-to-file") openQuickOpen.current()
+    else if (action.kind === "go-to-definition") runNavigation.current("definition")
+    else if (action.kind === "find-references") runNavigation.current("references")
+    else if (action.kind === "go-back") historyStore.go(-1)
+    else if (action.kind === "go-forward") historyStore.go(1)
+    else if (action.kind === "recent-locations") openRecent.current()
+    else if (action.kind === "select-color-theme") openColorTheme.current()
+    else if (action.kind === "report-problem") openReport.current()
+    else if (action.kind === "toggle-word-wrap") {
+      if (wordWrap !== null) toggleWordWrap(pageKey, defaultWordWrap)
+    } else if (action.kind === "find") findCommands.current?.open()
+    else if (action.kind === "find-step") findCommands.current?.step(action.direction)
+    else openSettings.current(action.kind === "open-setting" ? action.setting : undefined)
+  }, [defaultWordWrap, historyStore, pageKey, toggleWordWrap, wordWrap])
   const formatPending = view.kind === "source" && view.formatPending
   const formatSlow = useDelayedFlag(formatPending, 150)
   const image = useImageViewer(page.selected)
@@ -1027,6 +1033,7 @@ export function App({ project }: AppProps) {
             page={page}
             retry={() => { void router.invalidate() }}
             view={view}
+            wordWrap={wordWrap === true}
           />
           {shownRail && shownReview && !sidebar.mobile && (
             <ReviewRail visible={reviewCompare !== null} data={reviewData} marked={markedPaths} activePath={currentFile} viewed={railViewed} threads={reviewFeedback.counts}
@@ -1055,7 +1062,7 @@ export function App({ project }: AppProps) {
         onHome={openWelcome} />
       <ProjectPicker project={project} registerOpen={registerProjects} onOpen={switchProject} />
       <SettingsDialog registerOpen={registerSettings} notificationStatus={notificationStatus} />
-      <CommandPalette registerOpen={registerCommands} onRun={runCommand} onExitToFiles={showFilesFrom} />
+      <CommandPalette registerOpen={registerCommands} onRun={runCommand} onExitToFiles={showFilesFrom} wordWrap={wordWrap} />
       <QuickOpen files={quickOpenFiles} log={historyLog} project={project} current={liveDocument} lineTarget={lineTarget}
         registerOpen={registerQuickOpen} beforeShow={sidebar.dismiss} onOpen={openQuickOpenFile} onGoToLine={goToLine}
         onCommands={showCommandsFrom} />

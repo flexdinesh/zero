@@ -104,6 +104,35 @@
   user-select: none;
 }
 
+/* Wrap the text inside its logical row, aligned with the code column. */
+.source-document.wrap-lines > code {
+  width: 100%;
+}
+
+.source-document.wrap-lines .source-document-line {
+  display: grid;
+  min-height: var(--source-line-height);
+  height: auto;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.source-document.wrap-lines .source-document-line-number {
+  grid-row: 1 / span 2;
+}
+
+.source-document.wrap-lines .source-document-line-content {
+  min-width: 0;
+  padding-right: var(--source-line-end);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.source-document.wrap-lines .source-line-blame {
+  min-width: 0;
+  grid-column: 2;
+  padding-left: 0;
+}
+
 /* Ctrl/Cmd over a name: a link to its definition, as in VS Code. */
 .source-document.navigation-linking .source-document-line-content {
   cursor: pointer;
