@@ -50,6 +50,16 @@ export function canOpenPage(page: FeedbackPage): boolean {
   return page.localhost === undefined && !isLoopback(parsed.hostname)
 }
 
+// PageOpener is where Open page shows a visual thread's page: the project's
+// review window in the desktop app's local window (decisions 0177, 0182),
+// else a browser tab; null when the page cannot be opened as the agent would.
+export type PageOpener = "review" | "browser" | null
+
+export function pageOpener(page: FeedbackPage, reviewWindow: boolean): PageOpener {
+  if (!canOpenPage(page)) return null
+  return reviewWindow ? "review" : "browser"
+}
+
 // pageWhere says what a page's loopback host refers to: "localhost on your
 // machine" when the reviewer's, "" otherwise.
 export function pageWhere(page: FeedbackPage): string {

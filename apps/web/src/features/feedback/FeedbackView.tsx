@@ -19,12 +19,12 @@ import { SidebarBody } from "../../workspace/SidebarBody.tsx"
 import { commitAge, commitDate } from "../source-control/compare.ts"
 import {
   activity, branchLabel, feedbackMarkdown, feedbackMeta, feedbackPrompt, filterChoices, groupByFile, isUnseen, matchesFilter,
-  placeLabel, statusLabels, statusWords, threadRoute, threadTitle, type ThreadRoute,
+  placeLabel, screenRoute, statusLabels, statusWords, threadRoute, threadTitle, type ThreadRoute,
 } from "./feedback-model.ts"
 import { FeedbackStatusIcon, FeedbackThreadZone } from "./FeedbackThreadZone.tsx"
 import { hasImage, imageFile } from "./screen-image.ts"
 import { pastedSource } from "./use-screen-comment.ts"
-import { VisualTarget, VisualThumb } from "./VisualTarget.tsx"
+import { VisualThumb } from "./VisualTarget.tsx"
 import { isVisualThread } from "./visual-model.ts"
 import type { FeedbackActions } from "./use-feedback.ts"
 import type { FeedbackViewState } from "./use-feedback-view.ts"
@@ -312,7 +312,8 @@ function ThreadRows({ feedback, navigate, onOpenThread, threads, view, visible }
   const open = (index: number) => {
     const thread = ordered[index]
     if (!thread) return
-    const route = threadRoute(feedback.project, thread)
+    // A visual thread opens its screen tab (decision 0182).
+    const route = isVisualThread(thread) ? screenRoute(feedback.project, feedback.id, thread.number) : threadRoute(feedback.project, thread)
     if (route) onOpenThread(route)
     else setExpanded((current) => current === thread.number ? null : thread.number)
   }
@@ -335,8 +336,8 @@ function ThreadRows({ feedback, navigate, onOpenThread, threads, view, visible }
             const index = ordered.indexOf(thread)
             const visual = isVisualThread(thread) ? thread.visual : null
             const outdated = thread.location?.state === "outdated"
-            // Outdated and visual threads open in place.
-            const inline = outdated || visual !== null
+            // Outdated threads open in place.
+            const inline = outdated
             const fresh = isUnseen(view.seen, feedback.id, thread)
             const last = thread.messages.at(-1)
             const age = last ? commitAge(last.createdAt, now).long : ""
@@ -364,11 +365,9 @@ function ThreadRows({ feedback, navigate, onOpenThread, threads, view, visible }
               inline && expanded === thread.number && (
                 <div key={`${thread.number}-thread`} className="feedback-inline">
                   <FeedbackThreadZone thread={thread} feedbackId={feedback.id} project={feedback.project} actions={view.session.actions} navigate={navigate} visible={visible}
-                    before={visual
-                      ? <VisualTarget project={feedback.project} feedbackId={feedback.id} number={thread.number} visual={visual} />
-                      : thread.anchor?.text && thread.anchor.text.length > 0
-                        ? <pre className="feedback-original" aria-label="The code this thread was about">{thread.anchor.text.join("\n")}</pre>
-                        : undefined} />
+                    before={thread.anchor?.text && thread.anchor.text.length > 0
+                      ? <pre className="feedback-original" aria-label="The code this thread was about">{thread.anchor.text.join("\n")}</pre>
+                      : undefined} />
                 </div>
               ),
             ]

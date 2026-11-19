@@ -65,6 +65,9 @@ export interface FeedbackThreadZoneProps {
   navigate(href: string): void
   // before shows above the conversation, e.g. an outdated thread's text.
   before?: ReactNode
+  // collapsible lets a closed thread fold to one line; a screen tab shows
+  // its whole conversation (decision 0182).
+  collapsible?: boolean
 }
 
 // FeedbackThreadZone is a thread as an editor zone (decision 0120): a band
@@ -76,11 +79,13 @@ export const FeedbackThreadZone = memo(function FeedbackThreadZone(props: Feedba
   return <ThreadConversation key={draftKey} {...props} draftKey={draftKey} />
 })
 
-function ThreadConversation({ actions, before, draftKey, feedbackId: id, navigate, project, thread, visible = true }: FeedbackThreadZoneProps & { draftKey: string }) {
+function ThreadConversation({
+  actions, before, collapsible = true, draftKey, feedbackId: id, navigate, project, thread, visible = true,
+}: FeedbackThreadZoneProps & { draftKey: string }) {
   const closed = isClosed(thread.status)
   const [expandedAt, setExpandedAt] = useState<string | null>(null)
   // A closed thread stays expanded only for the version the user opened.
-  const expanded = !closed || expandedAt === thread.updatedAt
+  const expanded = !collapsible || !closed || expandedAt === thread.updatedAt
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
   const [reply, setReply] = useState(() => readDraft(draftKey))
@@ -158,7 +163,7 @@ function ThreadConversation({ actions, before, draftKey, feedbackId: id, navigat
               </Menu.Positioner>
             </Menu.Portal>
           </Menu.Root>
-          {closed && <IconButton label="Collapse Thread" icon={<ChevronUpIcon aria-hidden="true" />} onClick={() => setExpandedAt(null)} />}
+          {closed && collapsible && <IconButton label="Collapse Thread" icon={<ChevronUpIcon aria-hidden="true" />} onClick={() => setExpandedAt(null)} />}
         </div>
       </header>
       {before}

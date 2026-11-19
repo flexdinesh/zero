@@ -5,7 +5,7 @@ import test from "node:test"
 import { isFeedback, type Feedback, type FeedbackPage } from "@zero/contracts"
 import { feedbackMarkdown, threadPrompt } from "./feedback-model.ts"
 import {
-  attachmentURL, canOpenPage, elementDraft, elementLabel, isLoopback, isVisualThread, pageAddress, pageURLProblem, pageWhere, planVisual,
+  attachmentURL, canOpenPage, elementDraft, elementLabel, isLoopback, isVisualThread, pageAddress, pageOpener, pageURLProblem, pageWhere, planVisual,
   visualPlace, type VisualThread,
 } from "./visual-model.ts"
 
@@ -97,6 +97,11 @@ test("Open URL is for the project's loopback or a host that is not loopback", ()
   // The server always marks loopback; a page without the mark is not trusted to be open.
   assert.equal(canOpenPage(page("http://127.0.0.1:3000/")), false)
   assert.equal(canOpenPage(page("javascript:alert(1)", "project")), false)
+  // Open page uses the desktop app's review window when it has one.
+  assert.equal(pageOpener(page("http://localhost:5173/", "project"), true), "review")
+  assert.equal(pageOpener(page("http://localhost:5173/", "project"), false), "browser")
+  assert.equal(pageOpener(page("https://staging.acme.test/settings"), false), "browser")
+  assert.equal(pageOpener(page("http://localhost:5173/", "viewer"), true), null)
   for (const host of ["localhost", "app.localhost", "127.0.0.1", "127.9.8.7", "[::1]"]) assert.equal(isLoopback(host), true, host)
   for (const host of ["example.test", "128.0.0.1", "localhost.example"]) assert.equal(isLoopback(host), false, host)
 })

@@ -18,7 +18,7 @@ import { compareSearch, legacyCompare, reviewFragment, routeCompare } from "./fe
 import { isCommitHash } from "./lib/commit-hash.ts"
 import { routeAt } from "./workspace/workspace-tabs.ts"
 import { routeStep, routeWalkthrough } from "./features/walkthrough/walkthrough-steps.ts"
-import { routeFeedback } from "./features/feedback/feedback-model.ts"
+import { routeFeedback, routeThread } from "./features/feedback/feedback-model.ts"
 import { navigationHistoryFor } from "./workspace/navigation-history-store.ts"
 
 interface PageSearch {
@@ -50,8 +50,10 @@ interface PageSearch {
   // project's Browser tab (decision 0181).
   browser?: 1
   // fb=<id> reveals the Feedback view at that feedback (decision 0120);
-  // alone it opens no tab.
+  // alone it opens no tab. With thread=<n>, and without a path, review, or
+  // walkthrough, it opens that visual thread's screen tab (decision 0182).
   fb?: string
+  thread?: number
   // With a path, diff=1, commit=, branch=1, and from=&to= are per-file diff
   // routes from before review tabs; they redirect to the review.
   diff?: 1
@@ -78,6 +80,7 @@ function validateSearch(search: Record<string, unknown>): PageSearch {
     welcome: search.welcome === 1 || search.welcome === "1" ? 1 : undefined,
     browser: search.browser === 1 || search.browser === "1" ? 1 : undefined,
     fb: routeFeedback(search.fb),
+    thread: routeFeedback(search.fb) ? routeThread(search.thread) : undefined,
   }
 }
 

@@ -309,7 +309,7 @@ export function branchLabel(branch: string): string {
   return branch || "detached HEAD"
 }
 
-export type ThreadSearch = (CompareSearch & { project: string }) | { project: string; path: string }
+export type ThreadSearch = (CompareSearch & { project: string }) | { project: string; path: string } | { project: string; fb: string; thread: number }
 
 export interface ThreadRoute {
   search: ThreadSearch
@@ -318,8 +318,8 @@ export interface ThreadRoute {
 
 // threadRoute opens a thread where it was written: its compare's review at
 // the file and lines (#f=<path>&R7-R9, L for the old side), or Source at its
-// lines. Outdated threads have no lines to open, and visual threads no
-// document; null.
+// lines. Outdated threads have no lines to open, and visual threads open
+// their screen tab (screenRoute) instead; null.
 export function threadRoute(project: string, thread: FeedbackThread): ThreadRoute | null {
   if (!isCodeThread(thread)) return null
   const { anchor, location } = thread
@@ -344,6 +344,17 @@ const feedbackIdPattern = /^fb-[a-z0-9]{6}$/
 // routeFeedback reads the fb=<id> route parameter.
 export function routeFeedback(value: unknown): string | undefined {
   return typeof value === "string" && feedbackIdPattern.test(value) ? value : undefined
+}
+
+// routeThread reads the thread=<n> route parameter: a positive integer.
+export function routeThread(value: unknown): number | undefined {
+  const number = typeof value === "string" && /^[1-9]\d{0,8}$/.test(value) ? Number(value) : value
+  return typeof number === "number" && Number.isSafeInteger(number) && number > 0 ? number : undefined
+}
+
+// screenRoute opens a visual thread's screen tab (decision 0182).
+export function screenRoute(project: string, feedback: string, thread: number): ThreadRoute {
+  return { search: { project, fb: feedback, thread }, hash: "" }
 }
 
 export interface FeedbackPromptInput {

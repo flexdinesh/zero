@@ -5,8 +5,8 @@ import { documentKey, includesTab, placeTab, sameTab, type WorkspaceTab } from "
 
 interface DocumentWorkspace {
   tabs: WorkspaceTab[]
-  // preview is the walkthrough step's tab the next step replaces (decision
-  // 0113), or null.
+  // preview is the walkthrough step's or visual thread's tab the next one
+  // replaces (decisions 0113, 0182), or null.
   preview: WorkspaceTab | null
   // modes are keyed by documentKey.
   modes: ReadonlyMap<string, DocumentMode>
@@ -14,7 +14,7 @@ interface DocumentWorkspace {
 }
 
 // useDocumentWorkspace owns open tabs; the routed active tab joins them, as
-// the preview tab when asPreview (a walkthrough step's route).
+// the preview tab when asPreview (a walkthrough step's or screen tab's route).
 export function useDocumentWorkspace(active: WorkspaceTab | null, asPreview: boolean) {
   const [workspace, setWorkspace] = useState<DocumentWorkspace>(() => ({
     ...(active ? placeTab({ tabs: [], preview: null }, active, asPreview) : { tabs: [], preview: null }),

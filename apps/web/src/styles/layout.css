@@ -46,7 +46,8 @@ main {
 }
 
 main.source-mode,
-main.image-mode {
+main.image-mode,
+main.screen-mode {
   padding: 0;
 }
 
