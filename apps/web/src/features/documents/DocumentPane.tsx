@@ -53,6 +53,7 @@ interface DocumentPaneProps {
   onLeaveProject(): void
   page: PageData
   retry(): void
+  wordWrap: boolean
   view: DocumentView
 }
 
@@ -62,7 +63,7 @@ function fileName(path: string): string {
 
 export function DocumentPane({
   diff, diffShown = true, empty, hasData, image, isLoading, lineSelection, loadError, main, navigate, onChooseProject, onLeaveProject, page, retry, sourceAnnotation,
-  sourceBlame, sourceChanges, sourceComments, view, walkthrough, welcome, documentPending,
+  sourceBlame, sourceChanges, sourceComments, view, walkthrough, welcome, documentPending, wordWrap,
 }: DocumentPaneProps) {
   const showLoading = useDelayedFlag(documentPending, 150)
   const showDiff = !documentPending && Boolean(diff) && diffShown && !loadError && !page.projectUnavailable && !page.error
@@ -111,12 +112,12 @@ export function DocumentPane({
         <div className="annotated-document">
           <div className="document-annotation">{sourceAnnotation.render(null)}</div>
           <PageView image={image} lineSelection={lineSelection} navigate={navigate} page={page}
-            view={view} />
+            view={view} wordWrap={wordWrap} />
         </div>
       ) : (
         <PageView image={image} lineSelection={lineSelection} navigate={navigate} page={page}
           sourceAnnotation={sourceAnnotation} sourceBlame={sourceBlame} sourceChanges={sourceChanges} sourceComments={sourceComments}
-          view={view} />
+          view={view} wordWrap={wordWrap} />
       )}
     </main>
   )
@@ -132,11 +133,12 @@ interface PageViewProps {
   sourceChanges?: SourceChanges
   sourceComments?: SourceComments
   view: DocumentView
+  wordWrap: boolean
 }
 
 // PageView is the page's file in its chosen view.
 function PageView({
-  image, lineSelection, navigate, page, sourceAnnotation, sourceBlame, sourceChanges, sourceComments, view,
+  image, lineSelection, navigate, page, sourceAnnotation, sourceBlame, sourceChanges, sourceComments, view, wordWrap,
 }: PageViewProps) {
   const sourceNavigation = useSourceNavigation()
   const label = page.documentType?.label ?? "File"
@@ -164,9 +166,9 @@ function PageView({
         page.at ? (
           <div className="source-stack">
             <SnapshotNotice at={page.at} />
-            <FormattedDocument key={page.selected} text={view.text} language={language} label={`${label} formatted`} />
+            <FormattedDocument key={page.selected} text={view.text} language={language} label={`${label} formatted`} wordWrap={wordWrap} />
           </div>
-        ) : <FormattedDocument key={page.selected} text={view.text} language={language} label={`${label} formatted`} />
+        ) : <FormattedDocument key={page.selected} text={view.text} language={language} label={`${label} formatted`} wordWrap={wordWrap} />
       ) : view.kind === "source" ? (
         <div className="source-stack">
           {page.at && <SnapshotNotice at={page.at} />}
@@ -174,7 +176,7 @@ function PageView({
           {view.formatError && <FormatErrorNotice reason={view.formatError} />}
           <SourceDocument key={page.selected} source={page.source} language={language} label={`${label} source`}
             selection={lineSelection} navigation={sourceNavigation} annotation={sourceAnnotation} changes={sourceChanges}
-            comments={page.at ? undefined : sourceComments} blame={sourceBlame} findable />
+            comments={page.at ? undefined : sourceComments} blame={sourceBlame} wordWrap={wordWrap} findable />
         </div>
       ) : null
 }

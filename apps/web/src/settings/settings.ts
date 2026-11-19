@@ -4,6 +4,7 @@ export const SETTINGS_STORAGE_KEY = "zero-settings"
 
 export interface Settings {
   fontSize: number
+  wordWrap: WordWrapSetting
   languageServers: LanguageServerSetting
   showWelcome: ShowWelcomeSetting
   inlineBlame: InlineBlameSetting
@@ -24,6 +25,17 @@ export const notifyOptions: readonly { label: string; value: NotifySetting }[] =
 ]
 
 export function isNotifySetting(value: unknown): value is NotifySetting {
+  return value === "off" || value === "on"
+}
+
+export type WordWrapSetting = "off" | "on"
+
+export const wordWrapOptions: readonly { label: string; value: WordWrapSetting }[] = [
+  { label: "Off", value: "off" },
+  { label: "On", value: "on" },
+]
+
+export function isWordWrapSetting(value: unknown): value is WordWrapSetting {
   return value === "off" || value === "on"
 }
 
@@ -73,6 +85,7 @@ export type SettingId = SettingKey | "theme"
 
 const storedKeys: readonly SettingKey[] = [
   "fontSize",
+  "wordWrap",
   "languageServers",
   "showWelcome",
   "inlineBlame",
@@ -91,6 +104,7 @@ export const FONT_SIZE_MAX = 20
 
 export const defaultSettings: Settings = {
   fontSize: DEFAULT_FONT_SIZE,
+  wordWrap: "off",
   languageServers: "on",
   showWelcome: "on",
   inlineBlame: "on",
@@ -142,6 +156,14 @@ export const settingDefinitions: readonly SettingDefinition[] = [
     min: FONT_SIZE_MIN,
     max: FONT_SIZE_MAX,
     unit: "px",
+  },
+  {
+    id: "wordWrap",
+    kind: "select",
+    category: "Editor",
+    title: "Word Wrap",
+    description: "Wrap long lines to fit Source and Format by default. Use Toggle Word Wrap in the command palette to override this for the open tab.",
+    options: wordWrapOptions,
   },
   {
     id: "languageServers",
@@ -240,6 +262,9 @@ export function parseSettings(raw: string | null): Settings {
   }
   const stored = typeof data === "object" && data !== null && !Array.isArray(data) ? data : {}
   const fontSize = "fontSize" in stored ? parseFontSize(stored.fontSize) : null
+  const wordWrap = "wordWrap" in stored && isWordWrapSetting(stored.wordWrap)
+    ? stored.wordWrap
+    : defaultSettings.wordWrap
   const languageServers = "languageServers" in stored && isLanguageServerSetting(stored.languageServers)
     ? stored.languageServers
     : defaultSettings.languageServers
@@ -264,7 +289,7 @@ export function parseSettings(raw: string | null): Settings {
   const notifyFeedback = "notifyFeedback" in stored && isNotifySetting(stored.notifyFeedback)
     ? stored.notifyFeedback
     : defaultSettings.notifyFeedback
-  return { fontSize: fontSize ?? DEFAULT_FONT_SIZE, languageServers, showWelcome, inlineBlame, notifyCommits, notifyBranches, notifyEdits, notifyWalkthroughs, notifyFeedback }
+  return { fontSize: fontSize ?? DEFAULT_FONT_SIZE, wordWrap, languageServers, showWelcome, inlineBlame, notifyCommits, notifyBranches, notifyEdits, notifyWalkthroughs, notifyFeedback }
 }
 
 export function modifiedSettings(settings: Settings): SettingKey[] {

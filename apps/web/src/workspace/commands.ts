@@ -21,6 +21,7 @@ export type CommandAction =
   | { kind: "show-file-history" }
   | { kind: "show-line-blame" }
   | { kind: "report-problem" }
+  | { kind: "toggle-word-wrap" }
   | { kind: "find" }
   | { kind: "find-step"; direction: 1 | -1 }
 
@@ -39,7 +40,7 @@ export interface CommandMatch {
   title: readonly HighlightRange[]
 }
 
-// Open Settings and the Color Theme pick come first; then each setting is a
+// Open Settings, Color Theme, and the active tab’s wrap toggle come first. Each setting is a
 // command that opens Settings at that setting; then code navigation, which
 // acts on the name last clicked in Source, and history (decision 0131); then
 // find in file, which acts on the view shown (decision 0172); then
@@ -50,6 +51,7 @@ export interface CommandMatch {
 export const commands: readonly Command[] = [
   { id: "preferences.openSettings", category: "Preferences", title: "Open Settings", action: { kind: "open-settings" } },
   { id: "preferences.colorTheme", category: "Preferences", title: "Color Theme", action: { kind: "select-color-theme" } },
+  { id: "editor.toggleWordWrap", category: "Editor", title: "Toggle Word Wrap", action: { kind: "toggle-word-wrap" } },
   ...settingDefinitions.map((definition): Command => ({
     id: `settings.${definition.id}`,
     category: "Settings",
@@ -75,11 +77,14 @@ export const commands: readonly Command[] = [
   { id: "help.reportProblem", category: "Help", title: "Report a Problem…", action: { kind: "report-problem" } },
 ]
 
-// availableCommands drops the commands of settings this client does not show.
-export function availableCommands(notificationsAvailable: boolean): readonly Command[] {
+// availableCommands keeps commands supported by the client and active view.
+export function availableCommands(notificationsAvailable: boolean, canWrap: boolean): readonly Command[] {
   const settings = availableSettings(notificationsAvailable)
-  return commands.filter(({ action }) =>
-    action.kind !== "open-setting" || settings.some((definition) => definition.id === action.setting))
+  return commands.filter(({ action }) => {
+    if (action.kind === "toggle-word-wrap") return canWrap
+    if (action.kind === "open-setting") return settings.some((definition) => definition.id === action.setting)
+    return true
+  })
 }
 
 function mergeRanges(ranges: HighlightRange[]): HighlightRange[] {

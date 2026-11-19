@@ -30,6 +30,7 @@ export interface CommandPaletteOptions {
 interface CommandPaletteProps {
   registerOpen(open: ((options?: CommandPaletteOptions) => void) | null): void
   onRun(action: CommandAction): void
+  wordWrap: boolean | null
   // onExitToFiles runs when Backspace erases the `>` prompt, as in VS Code.
   onExitToFiles(returnFocus: HTMLElement | null): void
 }
@@ -37,7 +38,7 @@ interface CommandPaletteProps {
 // CommandPalette lists commands like VS Code's: Ctrl/Cmd+Shift+P or F1 opens
 // it, typing filters, arrows move, Enter runs, Escape closes, and Backspace
 // in an empty field returns to Quick Open.
-export function CommandPalette({ registerOpen, onRun, onExitToFiles }: CommandPaletteProps) {
+export function CommandPalette({ registerOpen, onRun, onExitToFiles, wordWrap }: CommandPaletteProps) {
   const { dialog, body, show, close } = useNativePicker()
 
   useEffect(() => {
@@ -67,24 +68,24 @@ export function CommandPalette({ registerOpen, onRun, onExitToFiles }: CommandPa
       onCancel={(event) => { event.preventDefault(); close(true) }}
       onClick={(event) => { if (event.target === dialog.current) close(true) }}
     >
-      {body && <CommandPaletteBody {...body} onRun={onRun} onExitToFiles={onExitToFiles} />}
+      {body && <CommandPaletteBody {...body} onRun={onRun} onExitToFiles={onExitToFiles} wordWrap={wordWrap} />}
     </DialogShell>
   )
 }
 
-type CommandPaletteBodyProps = PickerBodyProps & Pick<CommandPaletteProps, "onRun" | "onExitToFiles">
+type CommandPaletteBodyProps = PickerBodyProps & Pick<CommandPaletteProps, "onRun" | "onExitToFiles" | "wordWrap">
 
-function CommandPaletteBody({ initialQuery, dialog, input, close, onRun, onExitToFiles }: CommandPaletteBodyProps) {
+function CommandPaletteBody({ initialQuery, dialog, input, close, onRun, onExitToFiles, wordWrap }: CommandPaletteBodyProps) {
   const { values } = useSettingValues()
   const [query, setQuery] = useState(initialQuery)
   const [activeIndex, setActiveIndex] = useState(0)
-  const matches = matchCommands(availableCommands(notificationsAvailable()), query)
+  const matches = matchCommands(availableCommands(notificationsAvailable(), wordWrap !== null), query)
   const active = matches[Math.min(activeIndex, matches.length - 1)]
   const list = usePickerScroll(dialog, "data-command", active?.command.id, query)
 
   function run(action: CommandAction | undefined) {
     if (!action) return
-    close(false)
+    close(action.kind === "toggle-word-wrap")
     onRun(action)
   }
 
@@ -141,11 +142,11 @@ function CommandPaletteBody({ initialQuery, dialog, input, close, onRun, onExitT
       <div ref={list} id="command-results" className="search-results command-results" role="listbox" aria-label="Commands">
         {matches.map((match, index) => {
           const { command } = match
-          // Settings and Color Theme show their current value; other
-          // commands their shortcut, if any.
-          const value = command.action.kind === "open-setting"
-            ? values[command.action.setting].label
-            : command.action.kind === "select-color-theme" ? values.theme.label : null
+          // Value-bearing actions show their state; others show a shortcut.
+          let value: string | null = null
+          if (command.action.kind === "open-setting") value = values[command.action.setting].label
+          else if (command.action.kind === "select-color-theme") value = values.theme.label
+          else if (command.action.kind === "toggle-word-wrap") value = wordWrap ? "On" : "Off"
           const detail = value ?? command.shortcut ?? (command.action.kind === "open-settings" ? settingsShortcutLabel : "")
           return (
             <ListRow

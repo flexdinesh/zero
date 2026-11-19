@@ -32,6 +32,16 @@ Markdown Preview hides leading frontmatter enclosed by matching `---` (YAML) or
 `+++` (TOML) lines, and HTML comments. Source preserves both. Unclosed frontmatter
 stays visible; comment syntax inside code stays literal.
 
+## Word wrap
+
+Open the command palette (Cmd/Ctrl+Shift+P or F1) and run
+**Editor › Toggle Word Wrap** to wrap long lines in the current Source or
+Format tab. Closing the document tab or reloading clears the override.
+Line numbers and file contents stay the same.
+
+Set **Settings › Editor › Word Wrap** to change the default for all document
+tabs. It is off by default.
+
 ## Binary and large files
 
 - Binary files (a NUL byte in the first 8000 bytes) other than images show a

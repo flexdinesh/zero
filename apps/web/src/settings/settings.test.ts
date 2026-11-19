@@ -32,13 +32,15 @@ test("font size accepts whole pixel values within range", () => {
 })
 
 test("stored settings keep valid values and default the rest", () => {
-  const defaults = { fontSize: DEFAULT_FONT_SIZE, languageServers: "on", showWelcome: "on", inlineBlame: "on", notifyCommits: "on", notifyBranches: "on", notifyEdits: "off", notifyWalkthroughs: "on", notifyFeedback: "on" }
+  const defaults = { fontSize: DEFAULT_FONT_SIZE, wordWrap: "off", languageServers: "on", showWelcome: "on", inlineBlame: "on", notifyCommits: "on", notifyBranches: "on", notifyEdits: "off", notifyWalkthroughs: "on", notifyFeedback: "on" }
   assert.deepEqual(parseSettings(null), defaults)
   assert.deepEqual(parseSettings("not json"), defaults)
   assert.deepEqual(parseSettings("[]"), defaults)
   assert.deepEqual(parseSettings('{"fontSize":15}'), { ...defaults, fontSize: 15 })
   assert.deepEqual(parseSettings('{"fontSize":99}'), defaults)
   assert.deepEqual(parseSettings('{"fontSize":"15"}'), { ...defaults, fontSize: 15 })
+  assert.deepEqual(parseSettings('{"wordWrap":"on"}'), { ...defaults, wordWrap: "on" })
+  assert.deepEqual(parseSettings('{"wordWrap":true}'), defaults)
   assert.deepEqual(parseSettings('{"languageServers":"off"}'), { ...defaults, languageServers: "off" })
   assert.deepEqual(parseSettings('{"languageServers":true}'), defaults)
   assert.deepEqual(parseSettings('{"showWelcome":"off"}'), { ...defaults, showWelcome: "off" })
@@ -77,7 +79,7 @@ test("notification settings exist only where notifications do", () => {
 })
 
 test("setting search matches every term across category, title, and description", () => {
-  assert.deepEqual(matchSettings("").map((definition) => definition.id), ["theme", "fontSize", "languageServers", "showWelcome", "inlineBlame"])
+  assert.deepEqual(matchSettings("").map((definition) => definition.id), ["theme", "fontSize", "wordWrap", "languageServers", "showWelcome", "inlineBlame"])
   assert.deepEqual(matchSettings("welcome startup").map((definition) => definition.id), ["showWelcome"])
   assert.deepEqual(matchSettings("blame").map((definition) => definition.id), ["inlineBlame"])
   assert.deepEqual(matchSettings("gopls").map((definition) => definition.id), ["languageServers"])
