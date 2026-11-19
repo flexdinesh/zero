@@ -22,7 +22,8 @@ import (
 //
 // An upload is staged for StagedLifetime; creating a thread moves it into
 // its feedback's directory. Every staging and thread creation, under the
-// repository lock, sweeps staged files past their lifetime and attachments
+// repository lock, sweeps staged files past their lifetime, the temporary
+// files of uploads interrupted as long ago (decision 0179), and attachments
 // no feedback references.
 
 // Attachment bounds (decision 0176).
@@ -42,6 +43,10 @@ const (
 )
 
 const stagingDirectory = "staging"
+
+// stagingTemporary begins the name of an upload's temporary file, renamed
+// to at-<id>.png once written.
+const stagingTemporary = ".attachment-"
 
 func (s *Store) stagingFile(repository, attachment string) string {
 	return filepath.Join(s.repositoryDirectory(repository), stagingDirectory, attachment+".png")
@@ -105,7 +110,7 @@ func (s *Store) Stage(repository string, data []byte, now time.Time, newID func(
 		}
 	}
 	name := s.stagingFile(repository, id)
-	if err := writePrivate(name, ".attachment-*", data); err != nil {
+	if err := writePrivate(name, stagingTemporary+"*", data); err != nil {
 		return "", fmt.Errorf("write upload: %w", err)
 	}
 	if err := os.Chtimes(name, now, now); err != nil {
@@ -301,7 +306,8 @@ func (s *Store) held(f *Feedback) ([]heldAttachment, error) {
 	return held, nil
 }
 
-// sweep removes repository's staged uploads past StagedLifetime at now and
+// sweep removes repository's staged uploads past StagedLifetime at now, the
+// temporary files of uploads interrupted as long ago (decision 0179), and
 // attachment files no feedback references, with the directories of
 // feedback that is gone. A feedback that cannot be read keeps its files.
 // The caller holds the repository lock.
@@ -315,6 +321,7 @@ func (s *Store) sweep(repository string, now time.Time) error {
 			_ = os.Remove(upload.file)
 		}
 	}
+	s.sweepInterrupted(repository, now)
 	directory := s.repositoryDirectory(repository)
 	entries, err := os.ReadDir(directory)
 	if err != nil {
@@ -353,6 +360,26 @@ func (s *Store) sweep(repository string, now time.Time) error {
 		}
 	}
 	return nil
+}
+
+// sweepInterrupted removes the temporary files that uploads interrupted
+// before their rename left in repository's staging directory, once they
+// are StagedLifetime old at now; a younger one may be an upload still
+// being written. The caller holds the repository lock.
+func (s *Store) sweepInterrupted(repository string, now time.Time) {
+	directory := filepath.Join(s.repositoryDirectory(repository), stagingDirectory)
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if !strings.HasPrefix(entry.Name(), stagingTemporary) || !entry.Type().IsRegular() {
+			continue
+		}
+		if info, err := entry.Info(); err == nil && !live(info.ModTime(), now) {
+			_ = os.Remove(filepath.Join(directory, entry.Name()))
+		}
+	}
 }
 
 // writePrivate replaces name atomically with a 0600 file holding data,

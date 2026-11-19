@@ -1,0 +1,82 @@
+{
+  "id": "fb-q7m2xk",
+  "repository": "/home/user/markdown/.git",
+  "branch": "feature/greeting",
+  "project": "/home/user/markdown",
+  "nextThread": 4,
+  "threads": [
+    {
+      "number": 1,
+      "status": "resolved",
+      "anchor": {
+        "path": "code/main.go",
+        "side": "new",
+        "lines": [
+          7,
+          7
+        ],
+        "text": [
+          "\tfmt.Println(\"hello from zero\") // go-search-token"
+        ],
+        "before": [
+          "",
+          "func main() {"
+        ],
+        "after": [
+          "}"
+        ],
+        "blob": "9f3b5c1d2e4a6b7c8d9e0f1a2b3c4d5e6f708192",
+        "compare": {
+          "kind": "branch",
+          "base": "main",
+          "head": "feature/greeting",
+          "uncommitted": false
+        }
+      },
+      "messages": [
+        {
+          "number": 1,
+          "author": "user",
+          "body": "Keep the greeting in a constant so the CLI and tests share it.",
+          "createdAt": "2026-11-10T09:12:00Z"
+        },
+        {
+          "number": 2,
+          "author": "agent",
+          "name": "codex",
+          "body": "Moved it to greeting.go.",
+          "createdAt": "2026-11-10T09:20:00Z"
+        },
+        {
+          "number": 3,
+          "author": "user",
+          "body": "Thanks.",
+          "status": "resolved",
+          "createdAt": "2026-11-10T09:25:00Z"
+        }
+      ],
+      "createdAt": "2026-11-10T09:12:00Z",
+      "updatedAt": "2026-11-10T09:25:00Z"
+    },
+    {
+      "number": 3,
+      "status": "open",
+      "anchor": {
+        "path": "README.md",
+        "side": "new"
+      },
+      "messages": [
+        {
+          "number": 1,
+          "author": "user",
+          "body": "Mention the new flag here.",
+          "createdAt": "2026-11-10T09:30:00Z"
+        }
+      ],
+      "createdAt": "2026-11-10T09:30:00Z",
+      "updatedAt": "2026-11-10T09:30:00Z"
+    }
+  ],
+  "createdAt": "2026-11-10T09:12:00Z",
+  "updatedAt": "2026-11-10T09:30:00Z"
+}
