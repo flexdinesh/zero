@@ -1,11 +1,18 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	"image/draw"
+	"image/png"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -50,6 +57,10 @@ type feedbackOptions struct {
 	reopen     bool
 	path       string
 	lines      string
+	// attachment
+	output  string
+	crop    int
+	cropSet bool
 	// Test seams, not flags.
 	feedbackDir string                 // "" uses feedback.DefaultDirectory()
 	socket      string                 // "" uses daemon.DefaultSocket()
@@ -80,6 +91,7 @@ func newFeedbackCommand() *cobra.Command {
 			RunE: func(command *cobra.Command, positional []string) error {
 				opts.cliName = cliName(command.Root().Name())
 				opts.hasMessage = command.Flags().Changed("message")
+				opts.cropSet = command.Flags().Changed("crop")
 				return run(command.Context(), opts, positional, command.InOrStdin(), command.OutOrStdout(), command.ErrOrStderr())
 			},
 		}
@@ -114,6 +126,11 @@ func newFeedbackCommand() *cobra.Command {
 		_ = command.MarkFlagRequired("path")
 	})
 	add("list", "List the repository's feedback, one per branch", cobra.NoArgs, listFeedback, projectFlag)
+	add("attachment <id> <attachment>", "Print a visual thread's screenshot file, or copy or crop it", cobra.ExactArgs(2), attachmentFeedback, func(command *cobra.Command, opts *feedbackOptions) {
+		command.Flags().StringVarP(&opts.output, "output", "o", "", "copy the screenshot to this file; - writes standard output")
+		command.Flags().IntVar(&opts.crop, "crop", defaultCropMargin, "write only the thread's rectangle plus this margin in image px; needs -o")
+		command.Flags().Lookup("crop").NoOptDefVal = strconv.Itoa(defaultCropMargin)
+	})
 	return command
 }
 
@@ -135,6 +152,14 @@ func showFeedback(ctx context.Context, opts feedbackOptions, args []string, _ io
 		shown.Threads = awaitingAgent(stored.Threads)
 	}
 	if opts.json {
+		// Only the CLI names host paths: it reads the store it names.
+		for _, thread := range shown.Threads {
+			if visual := thread.Visual; visual != nil && visual.Available {
+				if name, err := session.app.Feedback.AttachmentPath(contract.FeedbackAttachmentRequest{Project: session.root, ID: stored.ID, Attachment: visual.Attachment.ID}); err == nil {
+					visual.Attachment.Path = name
+				}
+			}
+		}
 		return writeJSONLine(stdout, shown)
 	}
 	_, err = io.WriteString(stdout, feedbackMarkdown(opts.cliName, stored, shown.Threads, opts.all))
@@ -213,8 +238,123 @@ func commentFeedback(ctx context.Context, opts feedbackOptions, args []string, s
 	if opts.json {
 		return writeJSONLine(stdout, thread)
 	}
-	_, err = fmt.Fprintf(stdout, "started thread %d at %s\n", thread.Number, rangeLabel(thread.Anchor.Path, thread.Anchor.Lines))
+	label := ""
+	if thread.Anchor != nil {
+		label = rangeLabel(thread.Anchor.Path, thread.Anchor.Lines)
+	}
+	_, err = fmt.Fprintf(stdout, "started thread %d at %s\n", thread.Number, label)
 	return err
+}
+
+// defaultCropMargin is --crop's margin around a thread's rectangle, in image
+// pixels.
+const defaultCropMargin = 24
+
+// attachmentFeedback finds a visual thread's screenshot from the feedback ID
+// alone, as Locate does, with no project or server (decision 0176): it
+// prints the file, copies it (-o), or writes its rectangle plus a margin
+// (--crop), after checking the file against the thread's sha256.
+func attachmentFeedback(_ context.Context, opts feedbackOptions, args []string, _ io.Reader, stdout, _ io.Writer) error {
+	id, attachment := args[0], args[1]
+	switch {
+	case !feedback.ValidID(id):
+		return fmt.Errorf("feedback ID must be fb- and six lowercase letters or digits, such as fb-3k2q8m, not %q", id)
+	case !feedback.ValidAttachmentID(attachment):
+		return fmt.Errorf("attachment must be at- and ten lowercase letters or digits, such as at-7hq2mx4kpa, not %q", attachment)
+	case opts.cropSet && opts.output == "":
+		return errors.New("--crop needs -o <file|->")
+	case opts.cropSet && opts.crop < 0:
+		return fmt.Errorf("--crop must be a margin of 0 or more px, not %d", opts.crop)
+	}
+	directory, err := feedbackDirectory(opts)
+	if err != nil {
+		return err
+	}
+	service := feedback.NewService(feedback.NewStore(directory))
+	stored, err := service.Locate(id)
+	if errors.Is(err, feedback.ErrNotFound) {
+		return fmt.Errorf("no feedback %s in %s", id, directory)
+	}
+	if err != nil {
+		return err
+	}
+	var visual *feedback.Visual
+	for _, thread := range stored.Threads {
+		if thread.Visual != nil && thread.Visual.Attachment.ID == attachment {
+			visual = thread.Visual
+		}
+	}
+	if visual == nil {
+		return fmt.Errorf("feedback %s has no screenshot %s", id, attachment)
+	}
+	name, metadata, err := service.AttachmentFile(stored, attachment)
+	if err != nil {
+		return fmt.Errorf("screenshot %s of %s was removed to stay within the storage budget", attachment, id)
+	}
+	data, err := os.ReadFile(name)
+	if err != nil {
+		return fmt.Errorf("read screenshot: %w", err)
+	}
+	sum := sha256.Sum256(data)
+	if got := hex.EncodeToString(sum[:]); got != metadata.SHA256 {
+		return fmt.Errorf("%s doesn't match its thread: its sha256 is %s, but the thread recorded %s", name, got, metadata.SHA256)
+	}
+	switch {
+	case opts.output == "" && opts.json:
+		answered := contract.FeedbackAttachment{ID: metadata.ID, MediaType: metadata.MediaType, Width: metadata.Width, Height: metadata.Height, Bytes: int(metadata.Bytes), SHA256: metadata.SHA256, Path: name}
+		return writeJSONLine(stdout, answered)
+	case opts.output == "":
+		_, err := fmt.Fprintln(stdout, name)
+		return err
+	case !opts.cropSet:
+		if err := writeOutput(opts.output, data, stdout); err != nil || opts.output == "-" {
+			return err
+		}
+		_, err := fmt.Fprintf(stdout, "wrote %s (%d×%d)\n", opts.output, metadata.Width, metadata.Height)
+		return err
+	}
+	cropped, bounds, err := cropPNG(data, visual.Rect, opts.crop)
+	if err != nil {
+		return err
+	}
+	if err := writeOutput(opts.output, cropped, stdout); err != nil || opts.output == "-" {
+		return err
+	}
+	rect := visual.Rect
+	_, err = fmt.Fprintf(stdout, "wrote %s (%d×%d: region %d,%d %d×%d plus %d px margin)\n", opts.output, bounds.Dx(), bounds.Dy(), rect.X, rect.Y, rect.Width, rect.Height, opts.crop)
+	return err
+}
+
+// writeOutput writes data to the file output, or standard output for -.
+func writeOutput(output string, data []byte, stdout io.Writer) error {
+	if output == "-" {
+		_, err := stdout.Write(data)
+		return err
+	}
+	if err := os.WriteFile(output, data, 0o600); err != nil {
+		return fmt.Errorf("write %s: %w", output, err)
+	}
+	return nil
+}
+
+// cropPNG decodes a PNG and encodes rect grown by margin, within the image,
+// returning the region it kept.
+func cropPNG(data []byte, rect feedback.Rect, margin int) ([]byte, image.Rectangle, error) {
+	decoded, err := png.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, image.Rectangle{}, fmt.Errorf("decode screenshot: %w", err)
+	}
+	region := image.Rect(rect.X-margin, rect.Y-margin, rect.X+rect.Width+margin, rect.Y+rect.Height+margin).Intersect(decoded.Bounds())
+	if region.Empty() {
+		return nil, image.Rectangle{}, errors.New("the thread's rectangle lies outside its screenshot")
+	}
+	cropped := image.NewNRGBA(image.Rect(0, 0, region.Dx(), region.Dy()))
+	draw.Draw(cropped, cropped.Bounds(), decoded, region.Min, draw.Src)
+	var out bytes.Buffer
+	if err := png.Encode(&out, cropped); err != nil {
+		return nil, image.Rectangle{}, fmt.Errorf("encode crop: %w", err)
+	}
+	return out.Bytes(), region, nil
 }
 
 func listFeedback(_ context.Context, opts feedbackOptions, _ []string, _ io.Reader, stdout, stderr io.Writer) error {
@@ -255,12 +395,9 @@ type feedbackSession struct {
 // current directory's repository. A feedback ID that repository lacks is
 // read where it was last written, when that directory still exists.
 func openFeedback(opts feedbackOptions, id string) (feedbackSession, error) {
-	directory := opts.feedbackDir
-	if directory == "" {
-		var err error
-		if directory, err = feedback.DefaultDirectory(); err != nil {
-			return feedbackSession{}, err
-		}
+	directory, err := feedbackDirectory(opts)
+	if err != nil {
+		return feedbackSession{}, err
 	}
 	dir := opts.project
 	if dir == "" {
@@ -297,6 +434,15 @@ func openFeedback(opts feedbackOptions, id string) (feedbackSession, error) {
 		return feedbackSession{}, err
 	}
 	return feedbackSession{root: root, app: application}, nil
+}
+
+// feedbackDirectory is the store the CLI reads: the test seam's, or the
+// user's default.
+func feedbackDirectory(opts feedbackOptions) (string, error) {
+	if opts.feedbackDir != "" {
+		return opts.feedbackDir, nil
+	}
+	return feedback.DefaultDirectory()
 }
 
 // repositoryRoot is the project that shows dir: its repository's root, or
@@ -437,19 +583,24 @@ func feedbackMarkdown(name cliName, stored contract.Feedback, threads []contract
 	fmt.Fprintf(&out, "\nReply: %s feedback reply %s <thread> -m \"<what you did>\" [--resolve | --wontfix]\n", name, stored.ID)
 	for _, thread := range threads {
 		out.WriteString("\n")
-		writeThreadMarkdown(&out, thread)
+		writeThreadMarkdown(&out, name, stored.ID, thread)
 	}
 	return out.String()
 }
 
 // writeThreadMarkdown writes one thread: its heading, its anchored text
-// fenced, and its messages.
-func writeThreadMarkdown(out *strings.Builder, thread contract.FeedbackThread) {
-	fmt.Fprintf(out, "## Thread %d · %s · %s\n", thread.Number, statusLabel(thread.Status), locationLabel(thread))
-	if len(thread.Anchor.Text) > 0 {
-		text := strings.Join(thread.Anchor.Text, "\n")
-		fence := strings.Repeat("`", max(3, longestRun(text, '`')+1))
-		fmt.Fprintf(out, "%s%s\n%s\n%s\n", fence, thread.Anchor.Language, text, fence)
+// fenced or its visual target's facts, and its messages.
+func writeThreadMarkdown(out *strings.Builder, name cliName, id string, thread contract.FeedbackThread) {
+	switch {
+	case thread.Visual != nil:
+		writeVisualMarkdown(out, name, id, thread)
+	case thread.Anchor != nil:
+		fmt.Fprintf(out, "## Thread %d · %s · %s\n", thread.Number, statusLabel(thread.Status), locationLabel(thread))
+		if len(thread.Anchor.Text) > 0 {
+			text := strings.Join(thread.Anchor.Text, "\n")
+			fence := strings.Repeat("`", max(3, longestRun(text, '`')+1))
+			fmt.Fprintf(out, "%s%s\n%s\n%s\n", fence, thread.Anchor.Language, text, fence)
+		}
 	}
 	for i, message := range thread.Messages {
 		if i > 0 {
@@ -468,6 +619,89 @@ func writeThreadMarkdown(out *strings.Builder, thread contract.FeedbackThread) {
 			out.WriteString(body + "\n")
 		}
 	}
+}
+
+// writeVisualMarkdown writes a visual thread's heading and facts (decision
+// 0176): the page, what its loopback URL refers to, the region in image,
+// CSS, and document pixels, the element hint, the commit, and the command
+// that reads the screenshot, never its path, so the CLI and Copy as
+// Markdown write one text. A blank line separates the facts from the
+// messages.
+func writeVisualMarkdown(out *strings.Builder, name cliName, id string, thread contract.FeedbackThread) {
+	visual := thread.Visual
+	label := "screenshot"
+	if !visual.Available {
+		label += " (removed)"
+	}
+	if visual.Page != nil {
+		label += " · " + visual.Page.URL
+	}
+	fmt.Fprintf(out, "## Thread %d · %s · %s\n", thread.Number, statusLabel(thread.Status), label)
+	rect, shot := visual.Rect, visual.Attachment
+	region := fmt.Sprintf("Region: image %s of %d×%d", rectText(rect), shot.Width, shot.Height)
+	if page := visual.Page; page != nil {
+		viewport := page.Viewport
+		facts := []string{}
+		if page.Title != "" {
+			facts = append(facts, `"`+page.Title+`"`)
+		}
+		facts = append(facts, fmt.Sprintf("viewport %d×%d CSS px at %s×", viewport.Width, viewport.Height, strconv.FormatFloat(viewport.DeviceScaleFactor, 'f', -1, 64)))
+		facts = append(facts, fmt.Sprintf("scrolled %d,%d", page.Scroll.X, page.Scroll.Y))
+		fmt.Fprintf(out, "Page: %s\n", strings.Join(facts, " · "))
+		switch page.Localhost {
+		case contract.FeedbackLocalhostProject:
+			out.WriteString("Localhost: this machine, where the project is; the URL opens as written\n")
+		case contract.FeedbackLocalhostViewer:
+			out.WriteString("Localhost: the reviewer's machine, not this one; the port may not reach the project\n")
+		}
+		var clipX, clipY int
+		if page.Clip != nil {
+			clipX, clipY = page.Clip.X, page.Clip.Y
+		}
+		scale := viewport.DeviceScaleFactor
+		css := contract.FeedbackRect{
+			X: cssPixels(rect.X+clipX, scale), Y: cssPixels(rect.Y+clipY, scale),
+			Width: cssPixels(rect.Width, scale), Height: cssPixels(rect.Height, scale),
+		}
+		region += fmt.Sprintf(" · CSS %s · document %d,%d", rectText(css), css.X+page.Scroll.X, css.Y+page.Scroll.Y)
+	}
+	out.WriteString(region + "\n")
+	if element := visual.Element; element != nil {
+		hint := element.Tag
+		if element.Role != "" && element.Role != element.Tag {
+			hint += " (" + element.Role + ")"
+		}
+		switch {
+		case element.Name != "":
+			hint += ` "` + element.Name + `"`
+		case element.Text != "":
+			hint += ` "` + element.Text + `"`
+		}
+		fmt.Fprintf(out, "Element: %s · %s\n", hint, element.Selector)
+	}
+	if visual.Head != "" {
+		fmt.Fprintf(out, "Code at: %s\n", visual.Head)
+	}
+	if visual.Available {
+		fmt.Fprintf(out, "Screenshot: %s feedback attachment %s %s [--crop -o region.png]\n", name, id, shot.ID)
+	} else {
+		out.WriteString("Screenshot: removed to stay within the storage budget\n")
+	}
+	if len(thread.Messages) > 0 {
+		out.WriteString("\n")
+	}
+}
+
+func rectText(rect contract.FeedbackRect) string {
+	return fmt.Sprintf("%d,%d %d×%d", rect.X, rect.Y, rect.Width, rect.Height)
+}
+
+// cssPixels is frame pixels at scale as whole CSS pixels.
+func cssPixels(frame int, scale float64) int {
+	if scale <= 0 {
+		return frame
+	}
+	return int(math.Round(float64(frame) / scale))
 }
 
 // locationLabel is path:start or path:start-end, marked (old side), (moved

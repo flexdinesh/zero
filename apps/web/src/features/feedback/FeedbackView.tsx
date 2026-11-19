@@ -1,5 +1,5 @@
 import { Menu } from "@base-ui/react/menu"
-import { CheckIcon, ChevronDownIcon, ClipboardCopyIcon, EllipsisIcon, GitBranchIcon, XIcon } from "lucide-react"
+import { CheckIcon, ChevronDownIcon, ClipboardCopyIcon, EllipsisIcon, GitBranchIcon, ImageIcon, ImagePlusIcon, XIcon } from "lucide-react"
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react"
 
 import { FileIcon } from "../../components/FileIcon.tsx"
@@ -19,9 +19,12 @@ import { SidebarBody } from "../../workspace/SidebarBody.tsx"
 import { commitAge, commitDate } from "../source-control/compare.ts"
 import {
   activity, branchLabel, feedbackMarkdown, feedbackMeta, feedbackPrompt, filterChoices, groupByFile, isUnseen, matchesFilter,
-  placeLabel, statusLabels, threadRoute, threadTitle, type ThreadRoute,
+  placeLabel, statusLabels, statusWords, threadRoute, threadTitle, type ThreadRoute,
 } from "./feedback-model.ts"
 import { FeedbackStatusIcon, FeedbackThreadZone } from "./FeedbackThreadZone.tsx"
+import { hasImage, imageFile } from "./screen-image.ts"
+import { VisualTarget, VisualThumb } from "./VisualTarget.tsx"
+import { isVisualThread } from "./visual-model.ts"
 import type { FeedbackActions } from "./use-feedback.ts"
 import type { FeedbackViewState } from "./use-feedback-view.ts"
 
@@ -39,6 +42,12 @@ interface FeedbackViewProps {
 }
 
 const emptyHint = "Select lines in a diff or file and press C to comment. Then copy the prompt for your agent."
+const screenHint = "Paste or drop a screenshot here to comment on what it shows."
+
+// typing reports a paste into a field, which keeps its text.
+function typing(target: EventTarget): boolean {
+  return target instanceof HTMLElement && (target.isContentEditable || target.closest("input, textarea, [contenteditable]") !== null)
+}
 
 function copyIcon(status: "idle" | "copied" | "failed") {
   return status === "copied" ? <CheckIcon aria-hidden="true" /> : status === "failed" ? <XIcon aria-hidden="true" /> : <ClipboardCopyIcon aria-hidden="true" />
@@ -131,8 +140,9 @@ export function FeedbackView({ branch, mobile, navigate, onDismiss, onOpenThread
   const { actions, feedback } = view.session
   const [confirmation, setConfirmation] = useState<{ actions: FeedbackActions; busy: boolean; error: string } | null>(null)
   const markdown = useClipboardCopy()
+  const [dropping, setDropping] = useState(false)
   const shownThreads = useMemo(() => (feedback?.threads ?? [])
-    .filter((thread) => matchesFilter(thread, view.filter) && (!view.path || thread.location.path === view.path)), [feedback, view.filter, view.path])
+    .filter((thread) => matchesFilter(thread, view.filter) && (!view.path || thread.location?.path === view.path)), [feedback, view.filter, view.path])
   const remove = () => {
     if (!confirmation || confirmation.actions !== actions || confirmation.busy || !feedback?.id) return
     setConfirmation({ actions, busy: true, error: "" })
@@ -146,8 +156,35 @@ export function FeedbackView({ branch, mobile, navigate, onDismiss, onOpenThread
   }
   const hasThreads = (feedback?.threads.length ?? 0) > 0
   return (
-    <div className="feedback-view">
+    <div className="feedback-view" data-dropping={dropping || undefined}
+      onPaste={(event) => {
+        // A screenshot pasted into the view starts a screen comment (decision 0176).
+        if (typing(event.target)) return
+        const file = imageFile(event.clipboardData)
+        if (!file) return
+        event.preventDefault()
+        view.openComposer({ blob: file, page: null, capture: null })
+      }}
+      onDragOver={(event) => {
+        if (!hasImage(event.dataTransfer)) return
+        event.preventDefault()
+        event.dataTransfer.dropEffect = "copy"
+        setDropping(true)
+      }}
+      onDragLeave={(event) => {
+        if (!(event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))) setDropping(false)
+      }}
+      onDrop={(event) => {
+        setDropping(false)
+        const file = imageFile(event.dataTransfer)
+        if (!file) return
+        event.preventDefault()
+        view.openComposer({ blob: file, page: null, capture: null })
+      }}>
+      {dropping && <p className="feedback-drop" aria-hidden="true"><ImagePlusIcon />Drop to comment on the screenshot</p>}
       <ViewHeader className="explorer-header sidebar-header" title="Feedback" actions={<>
+        <IconButton label="New Screen Comment" title="New screen comment: paste or drop a screenshot" icon={<ImagePlusIcon aria-hidden="true" />}
+          onClick={() => view.openComposer(null)} />
         <CopyPrompt feedback={feedback} project={project} />
         <Menu.Root>
           <Menu.Trigger render={<IconButton label="More Feedback Actions" tone={markdown.status === "copied" ? "success" : "default"}
@@ -244,6 +281,7 @@ function FeedbackBody({ navigate, onOpenThread, project, threads, view, visible 
     return (
       <div className="feedback-note">
         <StatusMessage>{emptyHint}</StatusMessage>
+        <StatusMessage>{screenHint}</StatusMessage>
         <CopyPrompt feedback={feedback} project={project} labeled />
       </div>
     )
@@ -286,26 +324,34 @@ function ThreadRows({ feedback, navigate, onOpenThread, threads, view, visible }
         onKeyDown(event)
       }}>
       {groups.map((group) => (
-        <div key={group.path} role="group" aria-label={group.path} className="feedback-group">
+        <div key={group.kind === "file" ? group.path : "screens"} role="group" aria-label={group.kind === "file" ? group.path : "Screenshots"} className="feedback-group">
           <div className="feedback-group-header" aria-hidden="true">
-            <FileIcon path={group.path} />
-            <span className="feedback-group-path" title={group.path}>{group.path}</span>
+            {group.kind === "file"
+              ? <><FileIcon path={group.path} /><span className="feedback-group-path" title={group.path}>{group.path}</span></>
+              : <><ImageIcon className="feedback-group-icon" /><span className="feedback-group-name">Screenshots</span></>}
           </div>
           {group.threads.map((thread) => {
             const index = ordered.indexOf(thread)
-            const outdated = thread.location.state === "outdated"
+            const visual = isVisualThread(thread) ? thread.visual : null
+            const outdated = thread.location?.state === "outdated"
+            // Outdated and visual threads open in place.
+            const inline = outdated || visual !== null
             const fresh = isUnseen(view.seen, feedback.id, thread)
             const last = thread.messages.at(-1)
             const age = last ? commitAge(last.createdAt, now).long : ""
             const title = threadTitle(thread)
-            const detail = `${placeLabel(thread)} · ${activity(thread)} ${age}`
+            const detail = visual
+              ? `#${thread.number} · ${statusWords[thread.status]} · ${placeLabel(thread)} · ${activity(thread)} ${age}`
+              : `${placeLabel(thread)} · ${activity(thread)} ${age}`
             return [
               <ListRow indent="nested" key={thread.number} role="option" aria-selected={false} tabIndex={index === tabIndex ? 0 : -1}
-                className="feedback-row" data-new={fresh || undefined} aria-expanded={outdated ? expanded === thread.number : undefined}
+                className="feedback-row" data-visual={visual ? true : undefined} data-new={fresh || undefined} aria-expanded={inline ? expanded === thread.number : undefined}
                 title={`Thread ${thread.number}: ${title}\n${detail}${last ? `\n${commitDate(last.createdAt)}` : ""}`}
                 aria-label={`Thread ${thread.number}, ${statusLabels[thread.status]}${fresh ? ", new reply" : ""}: ${title}, ${detail}${outdated ? ", outdated" : ""}`}
                 onFocus={() => setFocused(index)} onClick={() => open(index)}>
-                <FeedbackStatusIcon status={thread.status} className="feedback-row-icon feedback-status-icon" />
+                {visual
+                  ? <VisualThumb project={feedback.project} feedbackId={feedback.id} visual={visual} />
+                  : <FeedbackStatusIcon status={thread.status} className="feedback-row-icon feedback-status-icon" />}
                 <span className="feedback-row-text">
                   <span className="feedback-row-title">{title}</span>
                   <span className="feedback-row-meta">
@@ -314,12 +360,14 @@ function ThreadRows({ feedback, navigate, onOpenThread, threads, view, visible }
                 </span>
                 {fresh && <span className="feedback-row-new" title="New reply" aria-hidden="true" />}
               </ListRow>,
-              outdated && expanded === thread.number && (
+              inline && expanded === thread.number && (
                 <div key={`${thread.number}-thread`} className="feedback-inline">
                   <FeedbackThreadZone thread={thread} feedbackId={feedback.id} project={feedback.project} actions={view.session.actions} navigate={navigate} visible={visible}
-                    before={thread.anchor.text && thread.anchor.text.length > 0
-                      ? <pre className="feedback-original" aria-label="The code this thread was about">{thread.anchor.text.join("\n")}</pre>
-                      : undefined} />
+                    before={visual
+                      ? <VisualTarget project={feedback.project} feedbackId={feedback.id} number={thread.number} visual={visual} />
+                      : thread.anchor?.text && thread.anchor.text.length > 0
+                        ? <pre className="feedback-original" aria-label="The code this thread was about">{thread.anchor.text.join("\n")}</pre>
+                        : undefined} />
                 </div>
               ),
             ]

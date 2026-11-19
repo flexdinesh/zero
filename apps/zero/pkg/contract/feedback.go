@@ -90,6 +90,106 @@ type FeedbackAnchor struct {
 	Language string           `json:"language,omitempty"`
 }
 
+// FeedbackRect is a rectangle of whole pixels from a top-left origin, x
+// right and y down. Inside a visual target (decision 0176) it is in
+// screenshot image pixels, wholly inside the image; a page's clip is in
+// frame pixels.
+type FeedbackRect struct {
+	X      int `json:"x"`
+	Y      int `json:"y"`
+	Width  int `json:"width"`
+	Height int `json:"height"`
+}
+
+// FeedbackViewport is a captured page's layout viewport in CSS pixels.
+// DeviceScaleFactor is the guest's zoom factor times devicePixelRatio; the
+// frame is round(width × it) by round(height × it).
+type FeedbackViewport struct {
+	Width             int     `json:"width"`
+	Height            int     `json:"height"`
+	DeviceScaleFactor float64 `json:"deviceScaleFactor"`
+}
+
+// FeedbackScroll is a captured page's scroll position in CSS pixels.
+type FeedbackScroll struct {
+	X int `json:"x"`
+	Y int `json:"y"`
+}
+
+// FeedbackLocalhost says what a loopback page URL refers to: the project's
+// host (the agent can open it as written) or the reviewer's machine.
+type FeedbackLocalhost string
+
+const (
+	FeedbackLocalhostProject FeedbackLocalhost = "project"
+	FeedbackLocalhostViewer  FeedbackLocalhost = "viewer"
+)
+
+// FeedbackPage is the page a screenshot was captured from. URL is http or
+// https as the server normalized and redacted it; Clip, in frame pixels, is
+// the part of the frame kept as the image, absent when the image is the
+// whole frame. Localhost is the server's, from the transport the thread
+// arrived on, and absent for a host that is not loopback.
+type FeedbackPage struct {
+	URL       string            `json:"url"`
+	Title     string            `json:"title,omitempty"`
+	Viewport  FeedbackViewport  `json:"viewport"`
+	Scroll    FeedbackScroll    `json:"scroll"`
+	Clip      *FeedbackRect     `json:"clip,omitempty"`
+	Localhost FeedbackLocalhost `json:"localhost,omitempty"`
+}
+
+// FeedbackElement is the page's own word on the element at a visual
+// target's center when it was captured: advisory, bounded, never trusted.
+// Box is its border box clipped to the viewport, in image pixels.
+type FeedbackElement struct {
+	Selector string        `json:"selector"`
+	Tag      string        `json:"tag"`
+	Role     string        `json:"role,omitempty"`
+	Name     string        `json:"name,omitempty"`
+	Text     string        `json:"text,omitempty"`
+	Box      *FeedbackRect `json:"box,omitempty"`
+}
+
+// FeedbackAttachment is an image the server holds for one feedback (at-
+// and ten lowercase base32 characters), PNG only. Path is its absolute
+// file path, filled only by the CLI; HTTP never sends host paths.
+type FeedbackAttachment struct {
+	ID        string `json:"id"`
+	MediaType string `json:"mediaType"`
+	Width     int    `json:"width"`
+	Height    int    `json:"height"`
+	Bytes     int    `json:"bytes"`
+	SHA256    string `json:"sha256"`
+	Path      string `json:"path,omitempty"`
+}
+
+// FeedbackUpload is POST /api/feedback-attachments: an image staged for the
+// project's repository until ExpiresAt (an RFC 3339 time) or a thread takes
+// it.
+type FeedbackUpload struct {
+	ID        string `json:"id"`
+	MediaType string `json:"mediaType"`
+	Width     int    `json:"width"`
+	Height    int    `json:"height"`
+	Bytes     int    `json:"bytes"`
+	SHA256    string `json:"sha256"`
+	ExpiresAt string `json:"expiresAt"`
+}
+
+// FeedbackVisual is a visual thread's target (decision 0176): one
+// screenshot, one rectangle on it, and optionally the page and an element
+// hint. Head is the project's HEAD commit when the thread was created,
+// absent without git. Available is false once the screenshot is gone.
+type FeedbackVisual struct {
+	Attachment FeedbackAttachment `json:"attachment"`
+	Rect       FeedbackRect       `json:"rect"`
+	Page       *FeedbackPage      `json:"page,omitempty"`
+	Element    *FeedbackElement   `json:"element,omitempty"`
+	Head       string             `json:"head,omitempty"`
+	Available  bool               `json:"available"`
+}
+
 // FeedbackLocation is a thread's anchor resolved against what a request
 // views: a compare's sides, or else the working tree (new side) and the
 // thread's own compare (old side). Path follows renames; Lines is absent for
@@ -115,14 +215,21 @@ type FeedbackMessage struct {
 	CreatedAt string `json:"createdAt"`
 }
 
-// FeedbackThread is one conversation at an anchor. Number counts from 1
+// FeedbackThread is one conversation at an anchor: code (Anchor and its
+// Location) or visual (decision 0176), never both. Number counts from 1
 // within the feedback and never repeats.
+//
+//contract:rule anchor == null => visual != null
+//contract:rule anchor != null => visual == null
+//contract:rule anchor == null => location == null
+//contract:rule anchor != null => location != null
 type FeedbackThread struct {
 	Number   int               `json:"number"`
 	Status   FeedbackStatus    `json:"status"`
 	Awaiting FeedbackAwaiting  `json:"awaiting"`
-	Anchor   FeedbackAnchor    `json:"anchor"`
-	Location FeedbackLocation  `json:"location"`
+	Anchor   *FeedbackAnchor   `json:"anchor,omitempty"`
+	Location *FeedbackLocation `json:"location,omitempty"`
+	Visual   *FeedbackVisual   `json:"visual,omitempty"`
 	Messages []FeedbackMessage `json:"messages"`
 	// CreatedAt is an RFC 3339 time.
 	CreatedAt string `json:"createdAt"`

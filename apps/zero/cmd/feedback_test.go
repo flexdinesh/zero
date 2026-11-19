@@ -44,8 +44,8 @@ func TestFeedbackMarkdownEdges(t *testing.T) {
 	}
 	resolved := contract.FeedbackThread{
 		Number: 1, Status: contract.FeedbackStatusResolved, Awaiting: contract.FeedbackAwaitingNone,
-		Anchor:   contract.FeedbackAnchor{Path: "a.md", Side: contract.FeedbackSideNew, Lines: []int{1, 1}, Text: []string{"```js", "x", "```"}},
-		Location: contract.FeedbackLocation{State: contract.FeedbackAnchored, Path: "a.md", Side: contract.FeedbackSideNew, Lines: []int{1, 1}},
+		Anchor:   &contract.FeedbackAnchor{Path: "a.md", Side: contract.FeedbackSideNew, Lines: []int{1, 1}, Text: []string{"```js", "x", "```"}},
+		Location: &contract.FeedbackLocation{State: contract.FeedbackAnchored, Path: "a.md", Side: contract.FeedbackSideNew, Lines: []int{1, 1}},
 		Messages: []contract.FeedbackMessage{{Number: 1, Author: contract.FeedbackAuthorUser, Body: "Fix.\n", CreatedAt: "2026-11-10T09:12:00+02:00"}},
 	}
 	stored := contract.Feedback{ID: "fb-aaaaaa", Project: "/p", Branch: "main", Threads: []contract.FeedbackThread{resolved}}

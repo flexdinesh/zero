@@ -396,6 +396,33 @@ func (c *HTTP) DeleteFeedback(ctx context.Context, request contract.FeedbackDele
 	return c.deleteNoContent(ctx, "/api/feedback", url.Values{"project": {request.Project}, "id": {request.ID}})
 }
 
+func (c *HTTP) UploadFeedbackAttachment(ctx context.Context, project string, png []byte) (contract.FeedbackUpload, error) {
+	var upload contract.FeedbackUpload
+	response, err := c.doWith(ctx, http.MethodPost, "/api/feedback-attachments", url.Values{"project": {project}}, http.Header{"Content-Type": {"image/png"}}, png)
+	if err != nil {
+		return upload, err
+	}
+	defer func() { _ = response.Body.Close() }()
+	return upload, answer(response, &upload)
+}
+
+func (c *HTTP) FeedbackAttachment(ctx context.Context, request contract.FeedbackAttachmentRequest) (contract.Image, error) {
+	query := url.Values{"project": {request.Project}, "id": {request.ID}, "attachment": {request.Attachment}}
+	response, err := c.do(ctx, http.MethodGet, "/api/feedback-attachment", query, nil)
+	if err != nil {
+		return contract.Image{}, err
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode != http.StatusOK {
+		return contract.Image{}, failure(response)
+	}
+	content, err := io.ReadAll(io.LimitReader(response.Body, contract.MaxFeedbackAttachmentBytes+1))
+	if err != nil {
+		return contract.Image{}, err
+	}
+	return contract.Image{MediaType: response.Header.Get("Content-Type"), Content: content}, nil
+}
+
 // postJSON posts body as JSON and decodes a JSON answer into result.
 func (c *HTTP) postJSON(ctx context.Context, path string, body, result any) error {
 	encoded, err := json.Marshal(body)
@@ -482,7 +509,8 @@ func (c *HTTP) do(ctx context.Context, method, path string, query url.Values, bo
 	return c.doWith(ctx, method, path, query, nil, body)
 }
 
-// doWith is do with extra request headers.
+// doWith is do with extra request headers. A body is JSON unless header
+// names its Content-Type.
 func (c *HTTP) doWith(ctx context.Context, method, path string, query url.Values, header http.Header, body []byte) (*http.Response, error) {
 	target := c.base + path
 	if len(query) > 0 {
@@ -502,7 +530,7 @@ func (c *HTTP) doWith(ctx context.Context, method, path string, query url.Values
 		}
 	}
 	request.Header.Set("Accept", "application/json")
-	if body != nil {
+	if body != nil && request.Header.Get("Content-Type") == "" {
 		request.Header.Set("Content-Type", "application/json")
 	}
 	return c.http.Do(request)

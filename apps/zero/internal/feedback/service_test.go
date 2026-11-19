@@ -29,8 +29,8 @@ func testService(t *testing.T) (*Service, string) {
 	return service, directory
 }
 
-func lineAnchor(path string, start, end int) Anchor {
-	return Anchor{Path: path, Side: SideNew, Lines: &Lines{start, end}, Text: []string{"x"}}
+func lineAnchor(path string, start, end int) *Anchor {
+	return &Anchor{Path: path, Side: SideNew, Lines: &Lines{start, end}, Text: []string{"x"}}
 }
 
 func TestDefaultDirectory(t *testing.T) {

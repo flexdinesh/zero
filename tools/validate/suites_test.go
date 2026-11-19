@@ -124,6 +124,7 @@ func TestConsumerInputInvalidation(t *testing.T) {
 		{"apps/web/src/View.test.tsx", []string{"web-static", "frontend"}},
 		{"apps/zero/internal/app/app_test.go", []string{"repo", "go", "desktop", "desktop-extended"}},
 		{"apps/desktop/e2e/e2e_test.go", []string{"repo", "desktop", "desktop-extended"}},
+		{"apps/desktop/internal/review/guest.js", []string{"repo", "browser", "desktop", "browser-extended", "desktop-extended", "webkit"}},
 		{"tools/validate/snapshot_test.go", []string{"repo", "go"}},
 		{"tools/validate/snapshot.go", all},
 		{"apps/web/test-fixtures/markdown-document.tsx", []string{"web-static", "go", "frontend", "browser", "desktop", "browser-extended", "desktop-extended", "webkit"}},

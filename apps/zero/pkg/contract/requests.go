@@ -214,6 +214,38 @@ type FeedbackThreadDraft struct {
 	Body    string           `json:"body"`
 	Author  FeedbackAuthor   `json:"author,omitempty"`
 	Name    string           `json:"name,omitempty"`
+	// Visual makes a visual thread (decision 0176) and excludes Path, Side,
+	// Lines, and Compare.
+	Visual *FeedbackVisualDraft `json:"visual,omitempty"`
+}
+
+// FeedbackVisualDraft is a new visual thread's target: an upload staged for
+// the project's repository (POST /api/feedback-attachments), a rectangle in
+// its image pixels, and optionally the page (Localhost is the server's to
+// set) and an element hint, which needs Page.
+type FeedbackVisualDraft struct {
+	Attachment string             `json:"attachment"`
+	Rect       FeedbackRect       `json:"rect"`
+	Page       *FeedbackPageDraft `json:"page,omitempty"`
+	Element    *FeedbackElement   `json:"element,omitempty"`
+}
+
+// FeedbackPageDraft is FeedbackPage as a client sends it, without
+// Localhost.
+type FeedbackPageDraft struct {
+	URL      string           `json:"url"`
+	Title    string           `json:"title,omitempty"`
+	Viewport FeedbackViewport `json:"viewport"`
+	Scroll   FeedbackScroll   `json:"scroll"`
+	Clip     *FeedbackRect    `json:"clip,omitempty"`
+}
+
+// FeedbackAttachmentRequest names one attachment of a project's feedback:
+// GET /api/feedback-attachment (decision 0176).
+type FeedbackAttachmentRequest struct {
+	Project    string
+	ID         string
+	Attachment string
 }
 
 // FeedbackMessageDraft is POST /api/feedback-messages: a reply to thread

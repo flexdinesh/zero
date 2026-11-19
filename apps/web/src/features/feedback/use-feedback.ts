@@ -3,7 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { Feedback, FeedbackCompare, FeedbackStatus, FeedbackSummary, FeedbackThread } from "@zero/contracts"
 import {
   createFeedbackThread, deleteFeedback, deleteFeedbackThread, feedbackUrl, fetchFeedback, fetchFeedbackList, isFeedbackMissing,
-  postFeedbackMessage, type FeedbackQuery,
+  postFeedbackMessage, uploadFeedbackAttachment, type FeedbackQuery, type FeedbackVisualDraft,
 } from "../../api/feedback-data.ts"
 import { isAbort } from "../../api/http.ts"
 import { indexFeedback, type FeedbackIndex } from "./feedback-index.ts"
@@ -33,6 +33,9 @@ export interface FeedbackOptions {
 export interface FeedbackActions {
   // start opens a thread with its first message at anchor.
   start(anchor: FeedbackAnchorInput, body: string): Promise<FeedbackThread>
+  // startVisual uploads png, then opens a visual thread on it (decision
+  // 0176); the target's rectangles are in png's pixels.
+  startVisual(png: Blob, visual: Omit<FeedbackVisualDraft, "attachment">, body: string): Promise<FeedbackThread>
   // reply adds a message, a status change, or both.
   reply(thread: number, body: string, status?: FeedbackStatus): Promise<FeedbackThread>
   removeThread(thread: number): Promise<void>
@@ -132,6 +135,17 @@ export function useFeedback({ compare, enabled, id, onChanged, project, version 
           path: anchor.path,
           side: anchor.side,
           ...(anchor.lines ? { lines: [anchor.lines[0], anchor.lines[1]] } : {}),
+          body,
+        })
+        apply((current) => withThread(current, thread))
+        return thread
+      },
+      async startVisual(png, visual, body) {
+        const upload = await uploadFeedbackAttachment(query.project, png)
+        const thread = await createFeedbackThread({
+          project: query.project,
+          ...(known ? { id: known } : {}),
+          visual: { attachment: upload.id, ...visual },
           body,
         })
         apply((current) => withThread(current, thread))

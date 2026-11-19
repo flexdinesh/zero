@@ -132,7 +132,8 @@ func Run(ctx context.Context, config Config) error {
 		},
 	})
 	log.Info("zero daemon listening", "version", version.Number(), "protocol", ProtocolVersion, "socket", config.Socket, "roots", len(roots.Set().List()))
-	err = rt.Serve(ctx, listener, idle.wrap(control.Handler(rt.Handler())))
+	// Only the socket's clients share this host; exposures stay remote.
+	err = rt.Serve(ctx, listener, idle.wrap(control.Handler(rt.LocalHandler())))
 	log.Info("zero daemon stopped", "reason", context.Cause(ctx))
 	return err
 }

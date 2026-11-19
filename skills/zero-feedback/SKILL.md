@@ -1,6 +1,6 @@
 ---
 name: zero-feedback
-description: Read and answer review feedback a user left in Zero, comment threads on diff lines, whole files, and Source lines of a branch, with the `zero feedback` CLI. Use when the user asks you to address, apply, or reply to their Zero feedback or review comments, gives you a feedback id such as fb-3k2q8m, or wants you to raise something on their code in Zero.
+description: Read and answer review feedback a user left in Zero, comment threads on diff lines, whole files, Source lines, and screenshots of a running UI, with the `zero feedback` CLI. Use when the user asks you to address, apply, or reply to their Zero feedback or review comments, gives you a feedback id such as fb-3k2q8m, or wants you to raise something on their code in Zero.
 ---
 
 # Zero review feedback
@@ -24,6 +24,8 @@ conversation between the user and agents:
 - **Location**: threads follow their code as it changes. A thread whose lines
   moved shows `(moved from 38-40)`; one whose code is gone is `outdated` and
   still shows the text it was written on.
+- **Screenshot threads** point at a rectangle on a screenshot of the UI
+  instead of code (see "Screenshot threads" below). They never move.
 
 No running server is needed: the CLI reads and writes Zero's store directly,
 and any open Zero window updates within a second.
@@ -64,6 +66,39 @@ lines, numbered as before the change; `path (file)` is about the whole file.
 
 `zero feedback list` prints one line per branch with feedback in the
 repository: `fb-3k2q8m  feature/greeting  4 threads, 2 awaiting you`.
+
+### Screenshot threads
+
+A screenshot thread prints the page, the region, and the command that reads
+the image, never a path:
+
+```
+## Thread 5 · open · screenshot · http://localhost:5173/settings?tab=billing&session=REDACTED#plan
+Page: "Settings · Acme" · viewport 1440×900 CSS px at 2× · scrolled 0,1320
+Localhost: the reviewer's machine, not this one; the port may not reach the project
+Region: image 96,96 420×96 of 612×288 · CSS 605,320 210×48 · document 605,1640
+Element: button "Save changes" · main form > button[data-testid="save"]
+Code at: 4e1d8c2b7a9f0e3d5c6b1a2f8e7d9c0b3a4f5e6d
+Screenshot: zero feedback attachment fb-3k2q8m at-7hq2mx4kpa [--crop -o region.png]
+```
+
+- Look at the image before changing code:
+  `zero feedback attachment fb-3k2q8m at-7hq2mx4kpa` prints its file;
+  `--crop -o region.png` writes the region plus a 24 px margin
+  (`--crop=48` for more); `-o -` writes the PNG to standard output. Run it
+  where the project is served: inside a sandbox, through
+  `docker exec <container> /tmp/.zero/zero feedback attachment … -o -`.
+- `Region` is in image pixels, then the page's CSS and document pixels.
+  `Element` is the page's own hint and may be stale; `Code at` is the commit
+  the screenshot was taken on. Neither names the file to change.
+- `Localhost: this machine` means you can open the URL as written; `the
+  reviewer's machine` means the port may not be forwarded to you.
+- `screenshot (removed)` means the image was dropped to stay within the
+  storage budget; the thread and its region remain.
+- `show --json` threads carry `visual` instead of `anchor` and `location`,
+  with the file in `visual.attachment.path`.
+
+Agents cannot start screenshot threads; reply to them as to any thread.
 
 ## 2. Work through the threads
 
@@ -129,6 +164,8 @@ Keep these rare: the user asked for changes, not a second review.
   and run again.
 - Limits: 16 KiB per message, 100 messages per thread, 500 threads per
   feedback.
+- `zero feedback attachment` fails when the file's sha256 is not the one the
+  thread recorded; the message names both.
 
 ## 5. Without the CLI
 

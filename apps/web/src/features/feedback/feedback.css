@@ -401,6 +401,7 @@
 
 .feedback-rows {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 /* A file's header row, in the Files rail's style. */
@@ -479,6 +480,18 @@
 /* An outdated thread opens in place, the code it was about leading it. */
 .feedback-inline > .feedback-thread {
   padding-inline: var(--space-3);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Its row, just above, already names the place. */
+.feedback-inline .feedback-thread-place {
+  display: none;
+}
+
+/* A narrow sidebar wraps the thread's actions under its status. */
+.feedback-inline .feedback-thread-header {
+  flex-wrap: wrap;
+  row-gap: 0;
 }
 
 .feedback-original {

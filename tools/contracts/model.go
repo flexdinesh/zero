@@ -211,7 +211,10 @@ func load(dir string, generated, goOnly []string) (*model, error) {
 				if !ok {
 					return nil, fmt.Errorf("%s: %s rule names unknown field %q", decl.file.name, decl.name, condition.field)
 				}
-				if named.pointer || named.optional && named.ref.kind == arrayRef {
+				// An absent pointer reads as null, so a rule may test it
+				// against null only (decision 0176).
+				absentNull := named.pointer && named.optional && condition.literal == "null"
+				if !absentNull && (named.pointer || named.optional && named.ref.kind == arrayRef) {
 					return nil, fmt.Errorf("%s: %s rule names %q, which may be absent", decl.file.name, decl.name, condition.field)
 				}
 			}

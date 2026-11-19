@@ -164,6 +164,25 @@ func TestRefusals(t *testing.T) {
 	}
 }
 
+func TestAdmitRefusesPagesItDoesNotAdmit(t *testing.T) {
+	reached := 0
+	p, _ := newProxy(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) { reached++ }))
+	p.Admit(func(r *http.Request) bool { return r.Header.Get("X-Test-Guest") == "" })
+	// A guest's no-cors request carries no Origin; only Admit stops it.
+	guest := request(http.MethodGet, Origin+"/api/projects", nil)
+	guest.Header.Set("X-Test-Guest", "1")
+	recorder := httptest.NewRecorder()
+	p.ServeHTTP(recorder, guest)
+	if recorder.Code != http.StatusForbidden || reached != 0 {
+		t.Errorf("guest: status %d, reached %d; want 403 and 0", recorder.Code, reached)
+	}
+	recorder = httptest.NewRecorder()
+	p.ServeHTTP(recorder, request(http.MethodGet, Origin+"/api/projects", nil))
+	if recorder.Code != http.StatusOK || reached != 1 {
+		t.Errorf("app page: status %d, reached %d; want 200 and 1", recorder.Code, reached)
+	}
+}
+
 func TestForwardsAllowlistedHeadersAndSetsDaemonChecks(t *testing.T) {
 	var got *http.Request
 	p, _ := newProxy(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

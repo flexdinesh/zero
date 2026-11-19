@@ -126,9 +126,13 @@ func emitModule(m *model, source *sourceFile) string {
 }
 
 // ruleAccess reads a field for a rule; an absent optional string is "", as
-// Go omits it.
+// Go omits it, and an absent pointer is null.
 func ruleAccess(decl *typeDecl, name string) string {
-	if named, _ := decl.field(name); named.optional {
+	named, _ := decl.field(name)
+	if named.optional && named.pointer {
+		return fmt.Sprintf("(value.%s ?? null)", name)
+	}
+	if named.optional {
 		return fmt.Sprintf("(value.%s ?? \"\")", name)
 	}
 	return "value." + name

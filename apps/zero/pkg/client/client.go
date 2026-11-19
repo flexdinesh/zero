@@ -108,6 +108,11 @@ type Client interface {
 	DeleteFeedbackThread(ctx context.Context, request contract.FeedbackDeleteRequest) error
 	// DeleteFeedback removes a whole feedback.
 	DeleteFeedback(ctx context.Context, request contract.FeedbackDeleteRequest) error
+	// UploadFeedbackAttachment stages a PNG screenshot for the project's next
+	// visual thread (decision 0176).
+	UploadFeedbackAttachment(ctx context.Context, project string, png []byte) (contract.FeedbackUpload, error)
+	// FeedbackAttachment reads a visual thread's screenshot.
+	FeedbackAttachment(ctx context.Context, request contract.FeedbackAttachmentRequest) (contract.Image, error)
 
 	// DaemonStatus returns the daemon's status.
 	DaemonStatus(ctx context.Context) (contract.DaemonStatus, error)

@@ -99,6 +99,24 @@ export async function postJSON<T>(
   }, options, valid, describe)
 }
 
+// postBytes posts raw bytes of contentType (an image upload) and returns
+// the payload valid accepts, failing as fetchJSON does.
+export async function postBytes<T>(
+  url: string,
+  body: Blob,
+  contentType: string,
+  options: FetchJSONOptions,
+  valid: (value: unknown) => value is T,
+  describe: (failure: RequestFailure) => string,
+): Promise<T> {
+  return requestJSON(url, {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": contentType, ...options.headers },
+    body,
+    signal: options.signal,
+  }, options, valid, describe)
+}
+
 // deleteJSON deletes url and returns the payload valid accepts, failing as
 // fetchJSON does.
 export async function deleteJSON<T>(

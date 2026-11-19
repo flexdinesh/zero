@@ -1,9 +1,9 @@
-import { isFeedbackCompare, type FeedbackThread } from "@zero/contracts"
+import { isFeedbackCompare } from "@zero/contracts"
 import { useCallback, useMemo } from "react"
 
 import { compareKey, type Compare } from "../source-control/compare.ts"
 import type { ReviewComments, ReviewZone } from "../source-control/ReviewDocument.tsx"
-import { anchorKey, diffSide, feedbackCompare, lineRange } from "./feedback-model.ts"
+import { anchorKey, diffSide, feedbackCompare, lineRange, type CodeThread } from "./feedback-model.ts"
 import { FeedbackComposer } from "./FeedbackComposer.tsx"
 import { FeedbackThreadZone } from "./FeedbackThreadZone.tsx"
 import { useFeedback } from "./use-feedback.ts"
@@ -49,7 +49,7 @@ export function useReviewFeedback({
   const { anchor, cancel, open, submit } = useFeedbackComposer(JSON.stringify([project, key]), actions.start, onSubmitted)
   const feedbackId = feedback?.id ?? ""
   const feedbackProject = feedback?.project ?? project
-  const renderThread = useCallback((thread: FeedbackThread): ReviewZone => ({
+  const renderThread = useCallback((thread: CodeThread): ReviewZone => ({
     key: `thread-${thread.number}`,
     side: diffSide(thread.location.side),
     line: lineRange(thread.location.lines)?.[1] ?? 0,

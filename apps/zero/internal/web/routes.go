@@ -195,6 +195,9 @@ func (a *App) newRoutes() *http.ServeMux {
 	write("POST /api/feedback-messages", a.servePostFeedbackMessage)
 	write("DELETE /api/feedback-threads", func(w http.ResponseWriter, r *http.Request) { a.serveDeleteFeedback(w, r, true) })
 	write("DELETE /api/feedback", func(w http.ResponseWriter, r *http.Request) { a.serveDeleteFeedback(w, r, false) })
+	// Screenshots of visual threads (decision 0176).
+	write("POST /api/feedback-attachments", a.serveUploadFeedbackAttachment)
+	mux.HandleFunc("GET /api/feedback-attachment", a.serveFeedbackAttachment)
 
 	// Served folders (decision 0146).
 	write("POST /api/roots", a.serveOpenRoot)

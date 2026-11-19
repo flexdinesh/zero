@@ -1,7 +1,13 @@
 # Visual feedback fixtures
 
 Representative shapes for [decision 0176](../../../docs/decisions/0176-visual-feedback-targets.md).
-Not wired to tests yet; the storage and UI tasks adopt them.
+Go tests decode the drafts strictly and create threads from them
+(`apps/zero/internal/app/feedback_visual_test.go`), round-trip `stored.json`
+and build `problems.json`'s draft (`apps/zero/internal/feedback/visual_test.go`,
+`apps/zero/internal/web/feedback_attachment_test.go`), check `upload.json`
+against `FeedbackUpload`, compare a created thread's `visual` with
+`feedback.json`'s thread 5, and pin `show.md` and `feedback-cli.json`'s path
+(`apps/zero/cmd/feedback_visual_test.go`).
 
 | File | Shape |
 | --- | --- |

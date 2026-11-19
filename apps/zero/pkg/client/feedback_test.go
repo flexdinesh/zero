@@ -1,7 +1,12 @@
 package client_test
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"image"
+	"image/png"
 	"strings"
 	"testing"
 	"time"
@@ -98,6 +103,46 @@ func TestFeedbackParityAcrossTransports(t *testing.T) {
 		t.Errorf("FeedbackList = %+v", list)
 	}
 
+	// Each transport uploads a screenshot, starts a visual thread on it, and
+	// reads it back (decision 0176). Loopback is the project's only where
+	// the transport shares its host.
+	screenshot := testPNG(t, 4, 3)
+	sum := sha256.Sum256(screenshot)
+	localhost := map[string]contract.FeedbackLocalhost{"tcp": contract.FeedbackLocalhostProject, "unix": contract.FeedbackLocalhostProject, "in-process": contract.FeedbackLocalhostProject, "remote": contract.FeedbackLocalhostViewer, "exec": contract.FeedbackLocalhostViewer}
+	for i, transport := range f.transports {
+		upload, err := transport.client.UploadFeedbackAttachment(ctx, f.root, screenshot)
+		if err != nil || upload.Width != 4 || upload.Height != 3 || upload.SHA256 != hex.EncodeToString(sum[:]) {
+			t.Fatalf("UploadFeedbackAttachment over %s = %+v, %v", transport.name, upload, err)
+		}
+		draft := contract.FeedbackThreadDraft{Project: f.root, Body: "Look.", Visual: &contract.FeedbackVisualDraft{
+			Attachment: upload.ID, Rect: contract.FeedbackRect{Width: 4, Height: 3},
+			Page: &contract.FeedbackPageDraft{URL: "http://localhost:5173/", Viewport: contract.FeedbackViewport{Width: 4, Height: 3, DeviceScaleFactor: 1}},
+		}}
+		thread, err := transport.client.CreateFeedbackThread(ctx, draft)
+		if err != nil || thread.Number != len(f.transports)+i+1 || thread.Visual == nil || thread.Visual.Page.Localhost != localhost[transport.name] || !thread.Visual.Available {
+			t.Fatalf("visual CreateFeedbackThread over %s = %+v, %v", transport.name, thread, err)
+		}
+		read, err := transport.client.FeedbackAttachment(ctx, contract.FeedbackAttachmentRequest{Project: f.root, ID: stored.ID, Attachment: upload.ID})
+		if err != nil || read.MediaType != "image/png" || !bytes.Equal(read.Content, screenshot) {
+			t.Errorf("FeedbackAttachment over %s = %s, %d bytes, %v", transport.name, read.MediaType, len(read.Content), err)
+		}
+	}
+	badImage := f.same(t, "UploadFeedbackAttachment not a PNG", func(c client.Client) outcome {
+		return result(c.UploadFeedbackAttachment(ctx, f.root, []byte("GIF89a")))
+	})
+	if kindOf(badImage.Err) != contract.KindInvalid || codeOf(badImage.Err) != contract.CodeInvalidFeedback || badImage.Err.Error() != "invalid image: not a PNG" {
+		t.Errorf("UploadFeedbackAttachment not a PNG error = %v", badImage.Err)
+	}
+	unknown := f.same(t, "FeedbackAttachment unknown", func(c client.Client) outcome {
+		return result(c.FeedbackAttachment(ctx, contract.FeedbackAttachmentRequest{Project: f.root, ID: stored.ID, Attachment: "at-zzzzzzzzzz"}))
+	})
+	if kindOf(unknown.Err) != contract.KindNotFound || codeOf(unknown.Err) != contract.CodeFeedbackUnavailable {
+		t.Errorf("FeedbackAttachment unknown error = %v", unknown.Err)
+	}
+	f.same(t, "Feedback with visual threads", func(c client.Client) outcome {
+		return result(c.Feedback(ctx, contract.FeedbackRequest{Project: f.root}))
+	})
+
 	for i, transport := range f.transports {
 		if err := transport.client.DeleteFeedbackThread(ctx, contract.FeedbackDeleteRequest{Project: f.root, ID: stored.ID, Thread: i + 1}); err != nil {
 			t.Errorf("DeleteFeedbackThread over %s = %v", transport.name, err)
@@ -145,4 +190,14 @@ func nextFeedback(t *testing.T, stream *client.Stream[contract.Event]) contract.
 			t.Fatal("no feedback event")
 		}
 	}
+}
+
+// testPNG encodes a blank width×height PNG.
+func testPNG(t *testing.T, width, height int) []byte {
+	t.Helper()
+	var out bytes.Buffer
+	if err := png.Encode(&out, image.NewGray(image.Rect(0, 0, width, height))); err != nil {
+		t.Fatal(err)
+	}
+	return out.Bytes()
 }

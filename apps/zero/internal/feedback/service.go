@@ -2,16 +2,19 @@ package feedback
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"slices"
 	"time"
 )
 
-// ErrFull wraps a write past a limit: threads per feedback or messages per
-// thread.
+// ErrFull wraps a write past a limit: threads per feedback, messages per
+// thread, or attachment bounds.
 var ErrFull = errors.New("feedback is full")
 
 // idAlphabet is lowercase base32 (RFC 4648).
@@ -39,10 +42,12 @@ type Target struct {
 	Project    string
 }
 
-// NewThread is a thread's anchor and first message. Name is an agent's own
-// name.
+// NewThread is a thread's code Anchor or Visual target and its first
+// message. Name is an agent's own name. A Visual's attachment is a live
+// upload's ID and metadata (Store.Staged).
 type NewThread struct {
-	Anchor Anchor
+	Anchor *Anchor
+	Visual *Visual
 	Author string
 	Name   string
 	Body   string
@@ -76,8 +81,9 @@ func (s *Service) Locate(id string) (Feedback, error) { return s.store.Locate(id
 func (s *Service) Delete(repository, id string) error { return s.store.Delete(repository, id) }
 
 // AddThread starts a thread in target's feedback, creating the feedback for
-// the branch when target names no ID. It returns the stored feedback and the
-// new thread.
+// the branch when target names no ID. A visual thread's upload moves into
+// the feedback (Store.adopt); one that is gone is a Problems error. It
+// returns the stored feedback and the new thread.
 func (s *Service) AddThread(target Target, thread NewThread) (Feedback, Thread, error) {
 	now := s.now().UTC()
 	id := target.ID
@@ -93,10 +99,16 @@ func (s *Service) AddThread(target Target, thread NewThread) (Feedback, Thread, 
 		if len(f.Threads) >= MaxThreads {
 			return fmt.Errorf("%w: feedback %s has %d threads, the most it may hold", ErrFull, f.ID, MaxThreads)
 		}
+		if thread.Visual != nil {
+			if err := s.store.adopt(f, thread.Visual.Attachment.ID, now); err != nil {
+				return err
+			}
+		}
 		added = Thread{
 			Number:    max(f.NextThread, 1),
 			Status:    StatusOpen,
 			Anchor:    thread.Anchor,
+			Visual:    thread.Visual,
 			Messages:  []Message{{Number: 1, Author: thread.Author, Name: thread.Name, Body: thread.Body, CreatedAt: now}},
 			CreatedAt: now,
 			UpdatedAt: now,
@@ -149,19 +161,98 @@ func (s *Service) AddMessage(repository, id, project string, message NewMessage)
 	return stored, changed, nil
 }
 
-// DeleteThread removes a thread of repository's feedback id; its number is
-// never reused. A thread the feedback lacks is a Problems error.
+// DeleteThread removes a thread of repository's feedback id, and its
+// attachment; its number is never reused. A thread the feedback lacks is a
+// Problems error.
 func (s *Service) DeleteThread(repository, id string, number int) (Feedback, error) {
 	now := s.now().UTC()
-	return s.store.Update(repository, id, func(f *Feedback) error {
+	var removed Thread
+	stored, err := s.store.Update(repository, id, func(f *Feedback) error {
 		index := slices.IndexFunc(f.Threads, func(thread Thread) bool { return thread.Number == number })
 		if index < 0 {
 			return Problems{{Field: "thread", Message: fmt.Sprintf("feedback %s has no thread %d", f.ID, number)}}
 		}
+		removed = f.Threads[index]
 		f.Threads = slices.Delete(f.Threads, index, index+1)
 		f.UpdatedAt = now
 		return nil
 	})
+	if err == nil && removed.Visual != nil && ValidAttachmentID(removed.Visual.Attachment.ID) {
+		// No thread names it now; a sweep removes it if this fails.
+		_ = os.Remove(s.store.AttachmentFile(repository, id, removed.Visual.Attachment.ID))
+	}
+	return stored, err
+}
+
+// Upload is a staged attachment and when it expires.
+type Upload struct {
+	Attachment
+	ExpiresAt time.Time
+}
+
+// Stage checks and cleans a PNG (CleanPNG) and stages it for repository's
+// next visual thread. Errors wrap ErrInvalidImage for an image zero does not
+// store.
+func (s *Service) Stage(repository string, data []byte) (Upload, error) {
+	if len(data) > MaxAttachmentBytes {
+		return Upload{}, fmt.Errorf("%w: larger than %d bytes", ErrInvalidImage, MaxAttachmentBytes)
+	}
+	cleaned, width, height, err := CleanPNG(data)
+	if err != nil {
+		return Upload{}, err
+	}
+	now := s.now().UTC().Truncate(time.Second)
+	id, err := s.store.Stage(repository, cleaned, now, s.newAttachmentID)
+	if err != nil {
+		return Upload{}, err
+	}
+	sum := sha256.Sum256(cleaned)
+	attachment := Attachment{ID: id, MediaType: MediaTypePNG, Width: width, Height: height, Bytes: int64(len(cleaned)), SHA256: hex.EncodeToString(sum[:])}
+	return Upload{Attachment: attachment, ExpiresAt: now.Add(StagedLifetime)}, nil
+}
+
+// Staged reads repository's upload attachment: its metadata, whether it is
+// still live, and whether the repository has it at all.
+func (s *Service) Staged(repository, attachment string) (Attachment, bool, bool) {
+	return s.store.Staged(repository, attachment, s.now())
+}
+
+// HasAttachment reports whether feedback id of repository still holds
+// attachment.
+func (s *Service) HasAttachment(repository, id, attachment string) bool {
+	return s.store.HasAttachment(repository, id, attachment)
+}
+
+// AttachmentFile returns the file of the attachment a thread of feedback f
+// names, with its metadata, or ErrNotFound when no thread names it or its
+// file is gone.
+func (s *Service) AttachmentFile(f Feedback, attachment string) (string, Attachment, error) {
+	for _, thread := range f.Threads {
+		if thread.Visual == nil || thread.Visual.Attachment.ID != attachment {
+			continue
+		}
+		if !s.store.HasAttachment(f.Repository, f.ID, attachment) {
+			break
+		}
+		return s.store.AttachmentFile(f.Repository, f.ID, attachment), thread.Visual.Attachment, nil
+	}
+	return "", Attachment{}, ErrNotFound
+}
+
+// newAttachmentID is at- and ten random lowercase base32 characters.
+func (s *Service) newAttachmentID() (string, error) {
+	var random [8]byte
+	if _, err := io.ReadFull(s.random, random[:]); err != nil {
+		return "", err
+	}
+	value := binary.BigEndian.Uint64(random[:])
+	id := make([]byte, 0, 13)
+	id = append(id, "at-"...)
+	for range 10 {
+		id = append(id, idAlphabet[value&31])
+		value >>= 5
+	}
+	return string(id), nil
 }
 
 // newID is fb- and six random lowercase base32 characters.

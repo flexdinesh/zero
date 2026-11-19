@@ -20,8 +20,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
+	"image/png"
+	"io"
 	"io/fs"
+	"math"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -59,8 +64,9 @@ func proxyOrigin(host string) string { return "zero-app://" + host }
 
 type windowListing struct {
 	Windows []struct {
-		ID  int    `json:"id"`
-		URL string `json:"url"`
+		ID    int    `json:"id"`
+		URL   string `json:"url"`
+		Title string `json:"title"`
 	} `json:"windows"`
 }
 
@@ -588,6 +594,130 @@ func TestWebViewApp(t *testing.T) {
 		}
 		// The landing page goes on to the project's last tab.
 		app.waitEval("the folder's project", `return location.pathname !== "/api/projects" && location.search.includes("project=")`)
+	})
+
+	// Screen comments (decisions 0175, 0176, 0177): a page of the developer's
+	// app opens in a guest window of its own that reaches nothing of Zero's;
+	// Comment on Screen hands its frame and facts to the local window, which
+	// asks for element hints while the page still shows what was captured.
+	run("Review URL opens a guest window whose screen reaches the local window", func(t *testing.T) {
+		guest := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+			response.Header().Set("Content-Type", "text/html")
+			_, _ = io.WriteString(response, `<!doctype html><title>Settings</title>
+				<body style="margin:0;height:3000px">
+				<button data-testid="save" style="position:absolute;left:100px;top:200px;width:120px;height:40px">Save changes</button>
+				<input type="password" value="hunter2" placeholder="Password" style="position:absolute;left:300px;top:200px;width:120px;height:40px">
+				</body>`)
+		}))
+		defer guest.Close()
+		local := app.windowOn(proxyOrigin("local"))
+		app.target = local
+		defer func() { app.target = 0 }()
+		if got := app.eval(`return typeof window.zeroDesktop.openReview`); got != "function" {
+			t.Fatalf("openReview = %v", got)
+		}
+		app.eval(`window.zeroDesktop.openReview(` + strconv.Quote(w.project) + `, ` + strconv.Quote(guest.URL+"/settings") + `); return true`)
+		review := app.waitWindow(guest.URL)
+		if review == local {
+			t.Fatal("the page opened in the local window")
+		}
+		app.target = review
+		app.waitEval("the guest page and its script", `return document.title === "Settings" && typeof window.__zeroReview === "object"`)
+		if got := app.eval(`return typeof window.zeroDesktop`); got != "undefined" {
+			t.Errorf("guest page: zeroDesktop is %v, want no bridge", got)
+		}
+		// The guest's requests to the app's scheme carry no Origin; the proxy
+		// refuses them by their page.
+		reached := app.eval(`const image = new Image();
+			image.src = "zero-app://local/api/image?project=" + encodeURIComponent(` + strconv.Quote(w.project) + `) + "&path=pic.png";
+			return await new Promise((resolve) => { image.onload = () => resolve("loaded"); image.onerror = () => resolve("refused") })`)
+		if reached != "refused" {
+			t.Errorf("a guest image from zero-app = %v, want refused", reached)
+		}
+		for _, window := range app.listWindows().Windows {
+			if window.ID == review && !strings.Contains(window.Title, "/settings · "+filepath.Base(w.project)+" · ") {
+				t.Errorf("guest window title %q", window.Title)
+			}
+		}
+
+		// The test stands in for the composer: it keeps the event from the
+		// web app, which would take the capture first.
+		app.target = local
+		app.eval(`window.__screenComment = 0
+			window.addEventListener("zero:screen-comment", (event) => { event.stopImmediatePropagation(); window.__screenComment++ }, { capture: true })
+			return true`)
+		if err := app.call("menu", map[string]any{"window": review, "path": []string{"Review", "Comment on Screen"}}, nil); err != nil {
+			t.Fatal(err)
+		}
+		app.waitEval("the screen comment in the local window", `return window.__screenComment === 1`)
+		raw := app.eval(`return JSON.stringify(await window.zeroDesktop.screenCapture())`)
+		var capture struct {
+			ID      string `json:"id"`
+			Project string `json:"project"`
+			PNG     string `json:"png"`
+			Page    struct {
+				URL      string `json:"url"`
+				Title    string `json:"title"`
+				Viewport struct {
+					Width             int     `json:"width"`
+					Height            int     `json:"height"`
+					DeviceScaleFactor float64 `json:"deviceScaleFactor"`
+				} `json:"viewport"`
+				Scroll struct{ X, Y int } `json:"scroll"`
+			} `json:"page"`
+		}
+		text, _ := raw.(string)
+		if err := json.Unmarshal([]byte(text), &capture); err != nil {
+			t.Fatalf("screenCapture() = %.200v: %v", raw, err)
+		}
+		page := capture.Page
+		if capture.Project != w.project || page.URL != guest.URL+"/settings" || page.Title != "Settings" || page.Scroll.X != 0 || page.Scroll.Y != 0 || page.Viewport.DeviceScaleFactor <= 0 {
+			t.Errorf("capture = %s %+v", capture.Project, page)
+		}
+		frame, err := base64.StdEncoding.DecodeString(capture.PNG)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = os.WriteFile(filepath.Join(os.Getenv("ZERO_DESKTOP_E2E_OUT"), "screen-capture.png"), frame, 0o644)
+		size, err := png.DecodeConfig(bytes.NewReader(frame))
+		scale := page.Viewport.DeviceScaleFactor
+		if err != nil || size.Width != int(math.Round(float64(page.Viewport.Width)*scale)) || size.Height != int(math.Round(float64(page.Viewport.Height)*scale)) {
+			t.Errorf("capture is %dx%d (%v), want the %dx%d viewport at %v", size.Width, size.Height, err, page.Viewport.Width, page.Viewport.Height, scale)
+		}
+		if again := app.eval(`return await window.zeroDesktop.screenCapture()`); again != nil {
+			t.Errorf("a second screenCapture() = %.80v, want null: a capture is taken once", again)
+		}
+
+		element := func(x, y int) string {
+			t.Helper()
+			value := app.eval(`return JSON.stringify(await window.zeroDesktop.screenElement(` + strconv.Quote(capture.ID) + `, ` + strconv.Itoa(x) + `, ` + strconv.Itoa(y) + `))`)
+			text, _ := value.(string)
+			return text
+		}
+		if got := element(160, 220); got != `{"selector":"[data-testid=\"save\"]","tag":"button","role":"button","name":"Save changes","text":"Save changes","box":{"x":100,"y":200,"width":120,"height":40}}` {
+			t.Errorf("element at the button = %s", got)
+		}
+		if got := element(360, 220); strings.Contains(got, "hunter2") || !strings.Contains(got, `"tag":"input"`) || strings.Contains(got, `"text"`) {
+			t.Errorf("element at the password field = %s, want its tag and no value or text", got)
+		}
+		// Once the page scrolls it no longer shows what was captured.
+		app.target = review
+		app.eval(`scrollTo(0, 50); return true`)
+		app.target = local
+		if got := element(160, 220); got != "null" {
+			t.Errorf("element after scrolling = %s, want null", got)
+		}
+
+		if err := app.call("menu", map[string]any{"window": review, "path": []string{"Page", "Close Window"}}, nil); err != nil {
+			t.Fatal(err)
+		}
+		deadline := time.Now().Add(pageTimeout)
+		for app.windowOn(guest.URL) != 0 {
+			if time.Now().After(deadline) {
+				t.Fatal("the guest window did not close")
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
 	})
 
 	run("a crashed page reloads once, then says so", func(t *testing.T) {

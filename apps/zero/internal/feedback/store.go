@@ -306,7 +306,8 @@ func (s *Store) Delete(repository, id string) error {
 	return s.remove(repository, id)
 }
 
-// remove deletes a feedback's file under its lock, then the lock file.
+// remove deletes a feedback's file under its lock, then its attachments and
+// the lock file.
 func (s *Store) remove(repository, id string) error {
 	lock := filepath.Join(s.repositoryDirectory(repository), id+".lock")
 	unlock, err := lockFile(lock)
@@ -328,6 +329,8 @@ func (s *Store) remove(repository, id string) error {
 	if err != nil {
 		return fmt.Errorf("delete feedback: %w", err)
 	}
+	// Its attachments go with it; a sweep removes what this leaves.
+	_ = os.RemoveAll(s.attachmentDirectory(repository, id))
 	_ = os.Remove(lock)
 	return nil
 }

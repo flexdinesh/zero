@@ -74,8 +74,13 @@ func New(config Config) (*Runtime, error) {
 // clients (pkg/client).
 func (r *Runtime) Application() *app.App { return r.app.Application() }
 
-// Handler is the web application (Host check, CSP, routes).
+// Handler is the web application (Host check, CSP, routes) for a
+// transport whose clients may be on another machine.
 func (r *Runtime) Handler() http.Handler { return r.app }
+
+// LocalHandler is Handler for a transport whose clients share the project's
+// host: the daemon's Unix socket and a loopback listener (decision 0176).
+func (r *Runtime) LocalHandler() http.Handler { return web.Local(r.app) }
 
 // HandlerFor is the web application under policy's Host check, for a
 // listener reached by name.

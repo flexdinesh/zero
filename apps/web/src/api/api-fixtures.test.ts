@@ -13,6 +13,7 @@ import { unknownBaseCode, unknownHeadCode } from "./source-control-messages.ts"
 import { isRecord } from "./http.ts"
 import { isLiveChange, isLiveStatus } from "./events-contract.ts"
 import { splitSourceLines } from "../lib/line-selection.ts"
+import { isCodeThread } from "../features/feedback/feedback-model.ts"
 
 async function fixture(name: string): Promise<unknown> {
   const source = await readFile(
@@ -360,17 +361,23 @@ test("walkthrough fixtures satisfy runtime contracts", async () => {
 test("feedback fixtures satisfy runtime contracts", async () => {
   const feedback = await fixture("feedback.json")
   assert.ok(isFeedback(feedback))
-  // The fixture exercises every anchor state, status, and awaiting party.
-  assert.deepEqual(new Set(feedback.threads.map((thread) => thread.location.state)), new Set(["anchored", "moved", "outdated"]))
+  // The fixture exercises every anchor state, status, and awaiting party,
+  // and visual threads with a page and element, and pasted and removed
+  // (decision 0176).
+  const code = feedback.threads.filter(isCodeThread)
+  assert.deepEqual(new Set(code.map((thread) => thread.location.state)), new Set(["anchored", "moved", "outdated"]))
   assert.deepEqual(new Set(feedback.threads.map((thread) => thread.status)), new Set(["open", "resolved", "wontfix"]))
   assert.deepEqual(new Set(feedback.threads.map((thread) => thread.awaiting)), new Set(["agent", "user"]))
-  assert.ok(feedback.threads.some((thread) => thread.anchor.lines === undefined), "a file-level thread")
+  assert.ok(code.some((thread) => thread.anchor.lines === undefined), "a file-level thread")
   // An outdated location has no lines; others keep the anchor's line count.
-  for (const thread of feedback.threads) {
+  for (const thread of code) {
     const { anchor, location } = thread
     if (location.state === "outdated") assert.equal(location.lines, undefined, String(thread.number))
     else assert.equal(location.lines?.length, anchor.lines?.length, String(thread.number))
   }
+  const visual = feedback.threads.flatMap((thread) => thread.visual ? [thread.visual] : [])
+  assert.ok(visual.some((target) => target.available && target.page?.clip && target.element?.box), "a captured page with an element")
+  assert.ok(visual.some((target) => !target.available && !target.page), "a removed paste")
 
   const list = await fixture("feedback-list.json")
   assert.ok(Array.isArray(list) && list.every(isFeedbackSummary))

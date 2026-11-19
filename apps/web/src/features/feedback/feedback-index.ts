@@ -1,13 +1,16 @@
-import type { Feedback, FeedbackAnchor, FeedbackCompare, FeedbackLocation, FeedbackMessage, FeedbackThread } from "@zero/contracts"
+import type { Feedback, FeedbackAnchor, FeedbackCompare, FeedbackLocation, FeedbackMessage, FeedbackThread, FeedbackVisual } from "@zero/contracts"
+import { isCodeThread, type CodeThread } from "./feedback-model.ts"
 
+// FeedbackFileThreads is one file's code threads; code-only views (review,
+// Source) read only these, never visual threads (decision 0176).
 export interface FeedbackFileThreads {
-  readonly all: readonly FeedbackThread[]
-  readonly open: readonly FeedbackThread[]
+  readonly all: readonly CodeThread[]
+  readonly open: readonly CodeThread[]
   readonly outdatedAll: number
   readonly outdatedOpen: number
 }
 
-const emptyThreads: readonly FeedbackThread[] = Object.freeze([])
+const emptyThreads: readonly CodeThread[] = Object.freeze([])
 export const emptyFeedbackFile: FeedbackFileThreads = Object.freeze({
   all: emptyThreads, open: emptyThreads, outdatedAll: 0, outdatedOpen: 0,
 })
@@ -16,6 +19,8 @@ export interface FeedbackIndex {
   readonly feedback: Feedback
   readonly files: ReadonlyMap<string, FeedbackFileThreads>
   readonly counts: ReadonlyMap<string, number>
+  // visualOpen counts open visual threads, which belong to no file.
+  readonly visualOpen: number
   readonly byNumber: ReadonlyMap<number, FeedbackThread>
 }
 
@@ -34,6 +39,20 @@ function sameAnchor(a: FeedbackAnchor, b: FeedbackAnchor): boolean {
     && sameArray(a.text, b.text) && sameArray(a.before, b.before) && sameArray(a.after, b.after))
 }
 
+function sameAnchorOf(a: FeedbackAnchor | undefined, b: FeedbackAnchor | undefined): boolean {
+  return a === b || (a !== undefined && b !== undefined && sameAnchor(a, b))
+}
+
+// A visual target never changes after creation but its availability; its
+// small tree compares by value.
+function sameVisual(a: FeedbackVisual | undefined, b: FeedbackVisual | undefined): boolean {
+  return a === b || (a !== undefined && b !== undefined && JSON.stringify(a) === JSON.stringify(b))
+}
+
+function sameLocationOf(a: FeedbackLocation | undefined, b: FeedbackLocation | undefined): boolean {
+  return a === b || (a !== undefined && b !== undefined && sameLocation(a, b))
+}
+
 function sameLocation(a: FeedbackLocation, b: FeedbackLocation): boolean {
   return a === b || (a.state === b.state && a.path === b.path && a.side === b.side && sameArray(a.lines, b.lines))
 }
@@ -45,29 +64,29 @@ function sameMessage(a: FeedbackMessage, b: FeedbackMessage): boolean {
 
 function sameThread(a: FeedbackThread, b: FeedbackThread): boolean {
   return a === b || (a.number === b.number && a.status === b.status && a.awaiting === b.awaiting
-    && a.createdAt === b.createdAt && a.updatedAt === b.updatedAt && sameLocation(a.location, b.location)
-    && sameAnchor(a.anchor, b.anchor) && (a.messages === b.messages || (a.messages.length === b.messages.length
+    && a.createdAt === b.createdAt && a.updatedAt === b.updatedAt && sameLocationOf(a.location, b.location)
+    && sameAnchorOf(a.anchor, b.anchor) && sameVisual(a.visual, b.visual) && (a.messages === b.messages || (a.messages.length === b.messages.length
       && a.messages.every((message, i) => sameMessage(message, b.messages[i])))))
 }
 
 // Keep matching prefixes in the previous list. An unchanged file allocates
 // no replacement thread arrays and needs no second pass to compare them.
 class ThreadList {
-  private readonly previous: readonly FeedbackThread[]
-  private changed?: FeedbackThread[]
+  private readonly previous: readonly CodeThread[]
+  private changed?: CodeThread[]
   length = 0
 
-  constructor(previous: readonly FeedbackThread[]) {
+  constructor(previous: readonly CodeThread[]) {
     this.previous = previous
   }
 
-  append(thread: FeedbackThread): void {
+  append(thread: CodeThread): void {
     if (!this.changed && this.previous[this.length] !== thread) this.changed = this.previous.slice(0, this.length)
     this.changed?.push(thread)
     this.length++
   }
 
-  finish(): readonly FeedbackThread[] {
+  finish(): readonly CodeThread[] {
     if (this.length === 0) return emptyThreads
     if (this.changed) return this.changed
     return this.length === this.previous.length ? this.previous : this.previous.slice(0, this.length)
@@ -89,12 +108,17 @@ export function indexFeedback(feedback: Feedback, previous?: FeedbackIndex): Fee
   const threads: FeedbackThread[] = []
   let unchanged = previous?.feedback.threads.length === feedback.threads.length
   const groups = new Map<string, FileGroup>()
+  let visualOpen = 0
   for (const incoming of feedback.threads) {
     const known = previous?.byNumber.get(incoming.number)
     const thread = known && sameThread(known, incoming) ? known : incoming
     if (previous?.feedback.threads[threads.length] !== thread) unchanged = false
     threads.push(thread)
     byNumber.set(thread.number, thread)
+    if (!isCodeThread(thread)) {
+      if (thread.status === "open") visualOpen++
+      continue
+    }
     const { path, state } = thread.location
     let group = groups.get(path)
     if (!group) {
@@ -132,6 +156,7 @@ export function indexFeedback(feedback: Feedback, previous?: FeedbackIndex): Fee
     feedback: { ...feedback, threads },
     files,
     counts: countsMatch && previous?.counts.size === counts.size ? previous.counts : counts,
+    visualOpen,
     byNumber,
   }
 }

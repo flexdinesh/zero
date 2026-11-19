@@ -133,10 +133,10 @@ func TestFeedbackSourceThreadReanchorsInTheWorkingTree(t *testing.T) {
 
 	thread := r.thread(contract.FeedbackThreadDraft{Path: "main.go", Lines: []int{4, 4}, Body: "Say *hello*."})
 	wantAnchor := contract.FeedbackAnchor{Path: "main.go", Side: contract.FeedbackSideNew, Lines: []int{4, 4}, Text: []string{"\tgreet()"}, Before: []string{"package main", "", "func main() {"}, After: []string{"}"}, Blob: git.BlobHash([]byte(mainGo)), Language: "go"}
-	if !reflect.DeepEqual(thread.Anchor, wantAnchor) || thread.Number != 1 || thread.Status != contract.FeedbackStatusOpen || thread.Awaiting != contract.FeedbackAwaitingAgent {
+	if !reflect.DeepEqual(thread.Anchor, &wantAnchor) || thread.Number != 1 || thread.Status != contract.FeedbackStatusOpen || thread.Awaiting != contract.FeedbackAwaitingAgent {
 		t.Errorf("thread = %+v\nanchor want %+v", thread, wantAnchor)
 	}
-	if want := (contract.FeedbackLocation{State: contract.FeedbackAnchored, Path: "main.go", Side: contract.FeedbackSideNew, Lines: []int{4, 4}}); !reflect.DeepEqual(thread.Location, want) {
+	if want := (contract.FeedbackLocation{State: contract.FeedbackAnchored, Path: "main.go", Side: contract.FeedbackSideNew, Lines: []int{4, 4}}); !reflect.DeepEqual(thread.Location, &want) {
 		t.Errorf("location = %+v, want %+v", thread.Location, want)
 	}
 	if message := thread.Messages[0]; message.Author != contract.FeedbackAuthorUser || message.BodyHTML != "<p>Say <em>hello</em>.</p>\n" {
@@ -213,7 +213,7 @@ func TestFeedbackCompareThreadsResolveOnTheirSides(t *testing.T) {
 	if old.Anchor.Path != "old.txt" || old.Anchor.Language != "" || !reflect.DeepEqual(old.Anchor.Text, []string{"two"}) || !reflect.DeepEqual(old.Anchor.Compare, branch) {
 		t.Errorf("old-side anchor = %+v", old.Anchor)
 	}
-	if want := (contract.FeedbackLocation{State: contract.FeedbackAnchored, Path: "new.txt", Side: contract.FeedbackSideOld, Lines: []int{2, 2}}); !reflect.DeepEqual(old.Location, want) {
+	if want := (contract.FeedbackLocation{State: contract.FeedbackAnchored, Path: "new.txt", Side: contract.FeedbackSideOld, Lines: []int{2, 2}}); !reflect.DeepEqual(old.Location, &want) {
 		t.Errorf("old-side location = %+v, want %+v", old.Location, want)
 	}
 	added := r.thread(contract.FeedbackThreadDraft{Compare: branch, Path: "main.go", Lines: []int{7, 7}, Body: "Exit code?"})

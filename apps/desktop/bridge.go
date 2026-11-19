@@ -13,6 +13,7 @@ import (
 
 	"github.com/flexdinesh/zero/apps/desktop/internal/bridge"
 	"github.com/flexdinesh/zero/apps/desktop/internal/proxy"
+	"github.com/flexdinesh/zero/apps/desktop/internal/review"
 	"github.com/flexdinesh/zero/pkg/client"
 	"github.com/flexdinesh/zero/pkg/contract"
 )
@@ -36,6 +37,9 @@ const preloadScript = `(() => {
     ...window_,
     revealPath(project, path) { return call("RevealPath", project, path) },
     diagnostics() { return call("Diagnostics") },
+    openReview(project, url) { return call("OpenReview", project, url) },
+    screenCapture() { return call("ScreenCapture") },
+    screenElement(id, x, y) { return call("ScreenElement", id, x, y) },
   } : { version: 2, ...window_ })
 })()`
 
@@ -155,6 +159,44 @@ func (b *bridgeService) RevealPath(ctx context.Context, project, relative any) (
 	return true, nil
 }
 
+// OpenReview shows a page of the developer's app in the project's guest
+// window (decision 0177), from the local window only: its screen comments
+// read and write this machine's feedback.
+func (b *bridgeService) OpenReview(ctx context.Context, project, pageURL any) error {
+	if _, ok := callerWindow(ctx, isLocal); !ok {
+		return errRefused
+	}
+	request, ok := bridge.ParseOpenReview(project, pageURL)
+	if !ok {
+		return errRefused
+	}
+	b.host.reviews.open(request)
+	return nil
+}
+
+// ScreenCapture answers the screen capture waiting for a comment, once, or
+// null (decision 0177), to the local window only.
+func (b *bridgeService) ScreenCapture(ctx context.Context) (*review.Capture, error) {
+	if _, ok := callerWindow(ctx, isLocal); !ok {
+		return nil, errRefused
+	}
+	return b.host.reviews.takeCapture(), nil
+}
+
+// ScreenElement answers the page's word on the element at a point of a
+// capture, in CSS pixels, while its guest page still shows what was
+// captured; null otherwise (decision 0176).
+func (b *bridgeService) ScreenElement(ctx context.Context, id, x, y any) (*review.Element, error) {
+	if _, ok := callerWindow(ctx, isLocal); !ok {
+		return nil, errRefused
+	}
+	request, ok := bridge.ParseScreenElement(id, x, y)
+	if !ok {
+		return nil, errRefused
+	}
+	return b.host.reviews.element(ctx, request), nil
+}
+
 // ShowContextMenu pops a native menu at a point in the page and answers the
 // chosen id, or null when dismissed.
 func (b *bridgeService) ShowContextMenu(ctx context.Context, items, x, y any) (*string, error) {
@@ -215,6 +257,7 @@ func (h *host) menu() *mygo.Menu {
 		{Role: mygo.RoleEditMenu},
 		{Role: mygo.RoleViewMenu},
 		h.goMenu(runtime.GOOS),
+		h.reviewMenu(),
 		h.windowMenu(runtime.GOOS),
 		h.helpMenu(),
 	})
@@ -244,8 +287,17 @@ func (h *host) goMenu(goos string) *mygo.MenuItem {
 }
 
 // navigate asks the page to make a history move; pages without a
-// workspace ignore it.
+// workspace ignore it. A guest window moves through its page's history.
 func (h *host) navigate(window *mygo.Window, move string) {
+	if h.reviews.isReview(window) {
+		switch move {
+		case "back":
+			window.Page().GoBack()
+		case "forward":
+			window.Page().GoForward()
+		}
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_, _ = window.Page().EvalContext(ctx, `return window.dispatchEvent(new CustomEvent("zero:navigate", { detail: `+strconv.Quote(move)+`, cancelable: true }))`)
@@ -275,6 +327,10 @@ func (h *host) windowMenu(goos string) *mygo.MenuItem {
 // closeTab asks the UI to close its active tab. Pages without a workspace
 // (including startup failures) retain the native close behavior.
 func (h *host) closeTab(window *mygo.Window) {
+	if h.reviews.isReview(window) {
+		window.Close()
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	unhandled, err := window.Page().EvalContext(ctx, `return window.dispatchEvent(new Event("zero:close-tab", { cancelable: true }))`)
@@ -297,4 +353,72 @@ func (h *host) chooseFolder(window *mygo.Window) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_, _ = window.Page().EvalContext(ctx, `return window.dispatchEvent(new Event("zero:open-folder", { cancelable: true }))`)
+}
+
+// reviewMenu reviews the developer's app (decision 0177): Review URL… asks
+// the local window for a page to open in a guest window; F8 captures the
+// focused guest window's page for a comment; Shift+F8 captures it after a
+// countdown, for menus and hovers that a key press would close.
+func (h *host) reviewMenu() *mygo.MenuItem {
+	return &mygo.MenuItem{Label: "Review", Submenu: []*mygo.MenuItem{
+		{Label: "Review URL…", Click: func(*mygo.MenuItem, *mygo.Window) { go h.reviewURL() }},
+		mygo.Separator(),
+		h.commentItem(false),
+		h.commentItem(true),
+	}}
+}
+
+// commentItem is Comment on Screen, or its countdown, acting on a guest
+// window.
+func (h *host) commentItem(delay bool) *mygo.MenuItem {
+	item := &mygo.MenuItem{Label: "Comment on Screen", Accelerator: "F8"}
+	if delay {
+		item = &mygo.MenuItem{Label: "Comment on Screen in 3 Seconds", Accelerator: "Shift+F8"}
+	}
+	item.Click = func(_ *mygo.MenuItem, window *mygo.Window) { h.reviews.comment(window, delay) }
+	return item
+}
+
+// reviewWindowMenu is a guest window's own menu bar (decision 0175) on
+// Linux and Windows; macOS shows the app's, whose items act on it too.
+func (h *host) reviewWindowMenu() *mygo.Menu {
+	page := func(act func(*mygo.Page)) func(*mygo.MenuItem, *mygo.Window) {
+		return func(_ *mygo.MenuItem, window *mygo.Window) {
+			if window != nil {
+				act(window.Page())
+			}
+		}
+	}
+	return mygo.NewMenu([]*mygo.MenuItem{
+		{Label: "Page", Submenu: []*mygo.MenuItem{
+			{Label: "Back", Accelerator: "Alt+Left", Click: page((*mygo.Page).GoBack)},
+			{Label: "Forward", Accelerator: "Alt+Right", Click: page((*mygo.Page).GoForward)},
+			{Label: "Reload", Accelerator: "CmdOrCtrl+R", Click: page((*mygo.Page).Reload)},
+			mygo.Separator(),
+			{Label: "Close Window", Accelerator: "CmdOrCtrl+W", Click: func(_ *mygo.MenuItem, window *mygo.Window) {
+				if window != nil {
+					window.Close()
+				}
+			}},
+		}},
+		{Role: mygo.RoleEditMenu},
+		{Label: "Review", Submenu: []*mygo.MenuItem{h.commentItem(false), h.commentItem(true)}},
+	})
+}
+
+// reviewURL asks the local window to choose a page to review, opening it
+// first when it is closed.
+func (h *host) reviewURL() {
+	h.mu.Lock()
+	window := h.windows[proxy.Host]
+	h.mu.Unlock()
+	if window == nil {
+		h.load(proxy.Origin + "/")
+		return
+	}
+	window.Restore()
+	window.Focus()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, _ = window.Page().EvalContext(ctx, `return window.dispatchEvent(new Event("zero:review-url", { cancelable: true }))`)
 }
