@@ -179,6 +179,9 @@
   --z-behind: -1;
   --z-raised: 1;
   --z-sticky: 5;
+  /* A sash's widened hit area reaches into the next pane, over its sticky
+     headers. */
+  --z-sash: 10;
   --z-popover: 20;
   --z-progress: 30;
   --z-menu: 60;

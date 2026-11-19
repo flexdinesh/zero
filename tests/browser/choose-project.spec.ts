@@ -24,6 +24,18 @@ async function mockProjects(page: Page) {
   })
 }
 
+// rememberedProjects lists the last project of each session in workspace
+// memory.
+function rememberedProjects(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const memory: unknown = JSON.parse(localStorage.getItem("zero-workspaces-v2") ?? "{}")
+    if (typeof memory !== "object" || memory === null || !("last" in memory)) return []
+    const last = memory.last
+    if (typeof last !== "object" || last === null) return []
+    return Object.values(last).filter((project): project is string => typeof project === "string")
+  })
+}
+
 const chooser = (page: Page) => page.getByRole("main")
 const filter = (page: Page) => chooser(page).getByRole("textbox", { name: "Filter projects" })
 
@@ -57,6 +69,9 @@ test("the last opened project is marked, and Enter opens it", async ({ page }) =
   await mockProjects(page)
   await page.goto(`/?project=${projectParam("reference")}`)
   await expect(page).toHaveURL(endsWith(`/view?project=${projectParam("reference")}&welcome=1`))
+  // The workspace remembers a project once its page loads, after the URL
+  // settles; leaving earlier would record nothing.
+  await expect.poll(() => rememberedProjects(page)).toContain(at("reference"))
 
   await page.goto("/")
   await expect(chooser(page).getByRole("heading", { name: "Choose a project" })).toBeVisible()
