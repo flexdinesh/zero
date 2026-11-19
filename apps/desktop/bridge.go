@@ -21,7 +21,10 @@ import (
 // preloadScript is window.zeroDesktop (decisions 0081, 0098) over mygo's IPC,
 // on the app's origins only. The UI feature-detects every method. A remote
 // server's page gets what its window needs, nothing of this machine: its files
-// are elsewhere, and its problem report carries none of this app's logs. The methods check again, since a page can call mygo directly.
+// are elsewhere, its problem report carries none of this app's logs, and the
+// review windows (decision 0177) and their Browser tab (decision 0181) are
+// this machine's. The methods check again, since a page can call mygo
+// directly.
 const preloadScript = `(() => {
   if (location.protocol !== "` + proxy.Scheme + `:") return
   const call = (method, ...args) => window.mygo.call("Bridge." + method, ...args)
@@ -39,6 +42,8 @@ const preloadScript = `(() => {
     diagnostics() { return call("Diagnostics") },
     openReview(project, url) { return call("OpenReview", project, url) },
     screenCapture() { return call("ScreenCapture") },
+    browserState(project) { return call("BrowserState", project) },
+    browserAction(project, action) { return call("BrowserAction", project, action) },
   } : { version: 2, ...window_ })
 })()`
 
@@ -173,6 +178,33 @@ func (b *bridgeService) OpenReview(ctx context.Context, project, pageURL any) er
 	return nil
 }
 
+// BrowserState answers what the Browser tab shows of the project's guest
+// window, or null when it has none (decision 0181), to the local window only.
+func (b *bridgeService) BrowserState(ctx context.Context, project any) (*review.BrowserState, error) {
+	if _, ok := callerWindow(ctx, isLocal); !ok {
+		return nil, errRefused
+	}
+	name, ok := bridge.ParseBrowserProject(project)
+	if !ok {
+		return nil, errRefused
+	}
+	return b.host.reviews.state(name), nil
+}
+
+// BrowserAction does what the Browser tab asks of the project's guest window
+// (decision 0181), from the local window only; nothing when it has none.
+func (b *bridgeService) BrowserAction(ctx context.Context, project, action any) error {
+	if _, ok := callerWindow(ctx, isLocal); !ok {
+		return errRefused
+	}
+	request, ok := bridge.ParseBrowserAction(project, action)
+	if !ok {
+		return errRefused
+	}
+	b.host.reviews.act(request)
+	return nil
+}
+
 // ScreenCapture answers the screen capture waiting for a comment, once, or
 // null (decision 0177), to the local window only.
 func (b *bridgeService) ScreenCapture(ctx context.Context) (*review.Capture, error) {
@@ -277,9 +309,9 @@ func (h *host) navigate(window *mygo.Window, move string) {
 	if h.reviews.isReview(window) {
 		switch move {
 		case "back":
-			window.Page().GoBack()
+			h.reviews.actOn(window, bridge.BrowserBack)
 		case "forward":
-			window.Page().GoForward()
+			h.reviews.actOn(window, bridge.BrowserForward)
 		}
 		return
 	}
@@ -365,20 +397,28 @@ func (h *host) commentItem(delay bool) *mygo.MenuItem {
 }
 
 // reviewWindowMenu is a guest window's own menu bar (decision 0175) on
-// Linux and Windows; macOS shows the app's, whose items act on it too.
+// Linux and Windows; macOS shows the app's, whose items act on it too. Open
+// Location… hands the keyboard to the Browser tab's address field in the
+// local window (decision 0181): the guest window has none.
 func (h *host) reviewWindowMenu() *mygo.Menu {
-	page := func(act func(*mygo.Page)) func(*mygo.MenuItem, *mygo.Window) {
+	page := func(action string) func(*mygo.MenuItem, *mygo.Window) {
 		return func(_ *mygo.MenuItem, window *mygo.Window) {
 			if window != nil {
-				act(window.Page())
+				go h.reviews.actOn(window, action)
 			}
 		}
 	}
 	return mygo.NewMenu([]*mygo.MenuItem{
 		{Label: "Page", Submenu: []*mygo.MenuItem{
-			{Label: "Back", Accelerator: "Alt+Left", Click: page((*mygo.Page).GoBack)},
-			{Label: "Forward", Accelerator: "Alt+Right", Click: page((*mygo.Page).GoForward)},
-			{Label: "Reload", Accelerator: "CmdOrCtrl+R", Click: page((*mygo.Page).Reload)},
+			{Label: "Open Location…", Accelerator: "CmdOrCtrl+L", Click: func(_ *mygo.MenuItem, window *mygo.Window) {
+				if window != nil {
+					go h.reviews.openLocation(window)
+				}
+			}},
+			mygo.Separator(),
+			{Label: "Back", Accelerator: "Alt+Left", Click: page(bridge.BrowserBack)},
+			{Label: "Forward", Accelerator: "Alt+Right", Click: page(bridge.BrowserForward)},
+			{Label: "Reload", Accelerator: "CmdOrCtrl+R", Click: page(bridge.BrowserReload)},
 			mygo.Separator(),
 			{Label: "Close Window", Accelerator: "CmdOrCtrl+W", Click: func(_ *mygo.MenuItem, window *mygo.Window) {
 				if window != nil {

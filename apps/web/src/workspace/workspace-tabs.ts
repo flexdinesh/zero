@@ -9,14 +9,15 @@ import { isRecord } from "../api/http.ts"
 // tree or, with at, from a commit (a snapshot), or review tabs of one
 // compare: uncommitted changes, the branch, a commit, or a commit range
 // (decision 0035), a walkthrough's own tab: its cover and notes (decision
-// 0047), or the Welcome tab (decision 0052). Pure helpers; components and
-// memory share them.
+// 0047), the Welcome tab (decision 0052), or the project's Browser tab
+// (decision 0181). Pure helpers; components and memory share them.
 
 export type WorkspaceTab =
   | { kind: "document"; path: string; at?: string }
   | { kind: "review"; compare: Compare }
   | { kind: "walkthrough"; id: string }
   | { kind: "welcome" }
+  | { kind: "browser" }
 
 // StoredSnapshot is a remembered commit document.
 export interface StoredSnapshot {
@@ -34,10 +35,15 @@ export interface StoredWelcome {
   welcome: true
 }
 
+// StoredBrowser is the remembered Browser tab.
+export interface StoredBrowser {
+  browser: true
+}
+
 // StoredTab is a remembered tab: a plain path for a document, as earlier
 // versions stored it, a stored snapshot, a stored compare, a walkthrough, or
-// Welcome.
-export type StoredTab = string | StoredSnapshot | StoredCompare | StoredWalkthrough | StoredWelcome
+// Welcome, or the Browser tab.
+export type StoredTab = string | StoredSnapshot | StoredCompare | StoredWalkthrough | StoredWelcome | StoredBrowser
 
 // documentTab is a working-tree document, or with at (a full commit hash)
 // that commit's version of it.
@@ -68,9 +74,14 @@ export function welcomeTab(): WorkspaceTab {
   return { kind: "welcome" }
 }
 
+export function browserTab(): WorkspaceTab {
+  return { kind: "browser" }
+}
+
 // tabKey identifies a tab uniquely across kinds.
 export function tabKey(tab: WorkspaceTab): string {
   if (tab.kind === "welcome") return "welcome"
+  if (tab.kind === "browser") return "browser"
   if (tab.kind === "walkthrough") return `walkthrough:${tab.id}`
   return tab.kind === "review" ? `review:${compareKey(tab.compare)}` : `document:${documentKey(tab.path, tab.at)}`
 }
@@ -116,9 +127,14 @@ export interface TabName {
 }
 
 // tabName names a tab as VS Code does: documents by file name, reviews by
-// what they compare, walkthroughs by their title once read.
-export function tabName(tab: WorkspaceTab, context: CompareContext, walkthroughTitle: (id: string) => string = () => ""): TabName {
+// what they compare, walkthroughs by their title once read, and the Browser
+// tab as browserName names its page.
+export function tabName(
+  tab: WorkspaceTab, context: CompareContext, walkthroughTitle: (id: string) => string = () => "",
+  browserName: () => TabName = () => ({ label: "Browser", title: "Browser" }),
+): TabName {
   if (tab.kind === "welcome") return { label: "Welcome", title: "Welcome" }
+  if (tab.kind === "browser") return browserName()
   if (tab.kind === "walkthrough") {
     const title = walkthroughTitle(tab.id)
     return { label: title || "Walkthrough", title: title ? `Walkthrough: ${title}` : `Walkthrough ${tab.id}` }
@@ -133,6 +149,7 @@ export function tabName(tab: WorkspaceTab, context: CompareContext, walkthroughT
 
 export function storedTab(tab: WorkspaceTab): StoredTab {
   if (tab.kind === "welcome") return { welcome: true }
+  if (tab.kind === "browser") return { browser: true }
   if (tab.kind === "walkthrough") return { walkthrough: tab.id }
   if (tab.kind === "review") return storedCompare(tab.compare)
   return tab.at ? { path: tab.path, at: tab.at } : tab.path
@@ -143,6 +160,7 @@ export function storedTab(tab: WorkspaceTab): StoredTab {
 export function parseStoredTab(value: unknown): WorkspaceTab | null {
   if (typeof value === "string") return value ? documentTab(value) : null
   if (isRecord(value) && "welcome" in value) return value.welcome === true ? welcomeTab() : null
+  if (isRecord(value) && "browser" in value) return value.browser === true ? browserTab() : null
   if (isRecord(value) && "walkthrough" in value) {
     return typeof value.walkthrough === "string" && value.walkthrough ? walkthroughTab(value.walkthrough) : null
   }
@@ -155,10 +173,12 @@ export function parseStoredTab(value: unknown): WorkspaceTab | null {
 }
 
 const welcomeSearch = { welcome: 1 } satisfies { welcome: 1 }
+const browserSearch = { browser: 1 } satisfies { browser: 1 }
 
 // tabSearch is the /view search that opens tab.
 export function tabSearch(project: string, tab: WorkspaceTab) {
   if (tab.kind === "welcome") return { project, ...welcomeSearch }
+  if (tab.kind === "browser") return { project, ...browserSearch }
   if (tab.kind === "walkthrough") return { project, wt: tab.id }
   if (tab.kind === "review") return { project, ...compareSearch(tab.compare) }
   return tab.at ? { project, path: tab.path, at: tab.at } : { project, path: tab.path }

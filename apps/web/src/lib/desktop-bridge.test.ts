@@ -186,3 +186,28 @@ test("screenCapture keeps a sound hit map and the drift mark, and drops a broken
     assert.equal(capture?.hits, null)
   }
 })
+
+test("browserState passes the project and keeps a well-formed state only", async () => {
+  const calls: unknown[][] = []
+  const state = { url: "http://localhost:5173/", loading: false, canGoBack: true, canGoForward: false, failure: { kind: "load", url: "http://localhost:5173/", description: "refused" }, extra: 1 }
+  const bridge = readDesktopBridge({ version: 2, browserState(...args: unknown[]) { calls.push(args); return Promise.resolve(state) } })
+  assert.deepEqual(await bridge?.browserState?.("/p"), {
+    url: "http://localhost:5173/", loading: false, canGoBack: true, canGoForward: false, failure: { kind: "load", url: "http://localhost:5173/", description: "refused" },
+  })
+  assert.deepEqual(calls, [["/p"]])
+  const answer = (value: unknown) => readDesktopBridge({ version: 2, browserState: () => Promise.resolve(value) })?.browserState?.("/p")
+  assert.equal(await answer(null), null)
+  assert.equal(await answer({ ...state, loading: "no" }), null)
+  assert.equal(await answer({ ...state, failure: { kind: "boom", url: "", description: "" } }), null)
+  assert.deepEqual(await answer({ ...state, failure: null, extra: undefined }), { url: state.url, loading: false, canGoBack: true, canGoForward: false, failure: null })
+  assert.equal(await readDesktopBridge({ version: 2, browserState: () => Promise.reject(new Error("refused")) })?.browserState?.("/p"), null)
+  assert.equal(readDesktopBridge({ version: 2 })?.browserState, null)
+})
+
+test("browserAction passes the project and action through and swallows refusals", () => {
+  const calls: unknown[][] = []
+  const bridge = readDesktopBridge({ version: 2, browserAction(...args: unknown[]) { calls.push(args); return Promise.reject(new Error("refused")) } })
+  bridge?.browserAction?.("/p", "back")
+  assert.deepEqual(calls, [["/p", "back"]])
+  assert.equal(readDesktopBridge({ version: 2 })?.browserAction, null)
+})

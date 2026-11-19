@@ -327,3 +327,48 @@ func ParseOpenReview(project, pageURL any) (OpenReview, bool) {
 	}
 	return OpenReview{Project: p, URL: checked}, true
 }
+
+// ParseBrowserProject validates browserState's payload: an absolute project
+// directory (decision 0181).
+func ParseBrowserProject(project any) (string, bool) {
+	p, ok := project.(string)
+	if !ok || !isPlainAbsolute(p) {
+		return "", false
+	}
+	return p, true
+}
+
+// BrowserAction is browserAction's payload: what to do with a project's
+// guest window (decision 0181).
+type BrowserAction struct {
+	Project string
+	Action  string
+}
+
+// Browser actions: history moves, loading, the window itself, and Comment on
+// Screen with or without its countdown.
+const (
+	BrowserBack           = "back"
+	BrowserForward        = "forward"
+	BrowserReload         = "reload"
+	BrowserStop           = "stop"
+	BrowserShow           = "show"
+	BrowserClose          = "close"
+	BrowserComment        = "comment"
+	BrowserCommentDelayed = "commentDelayed"
+)
+
+// ParseBrowserAction validates browserAction's payload: an absolute project
+// directory and one of the Browser actions.
+func ParseBrowserAction(project, action any) (BrowserAction, bool) {
+	p, okP := ParseBrowserProject(project)
+	a, okA := action.(string)
+	if !okP || !okA {
+		return BrowserAction{}, false
+	}
+	switch a {
+	case BrowserBack, BrowserForward, BrowserReload, BrowserStop, BrowserShow, BrowserClose, BrowserComment, BrowserCommentDelayed:
+		return BrowserAction{Project: p, Action: a}, true
+	}
+	return BrowserAction{}, false
+}

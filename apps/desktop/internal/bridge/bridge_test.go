@@ -249,3 +249,43 @@ func TestParseOpenReview(t *testing.T) {
 		}
 	}
 }
+
+func TestParseBrowserProject(t *testing.T) {
+	if got, ok := ParseBrowserProject("/home/u/app"); !ok || got != "/home/u/app" {
+		t.Errorf("ParseBrowserProject = %q, %v", got, ok)
+	}
+	for name, value := range map[string]any{
+		"relative":   "app",
+		"unclean":    "/home/u/../app",
+		"trailing /": "/home/u/app/",
+		"empty":      "",
+		"NUL":        "/home/u\x00app",
+		"not text":   3.0,
+		"missing":    nil,
+	} {
+		if got, ok := ParseBrowserProject(value); ok {
+			t.Errorf("%s: accepted %q", name, got)
+		}
+	}
+}
+
+func TestParseBrowserAction(t *testing.T) {
+	for _, action := range []string{"back", "forward", "reload", "stop", "show", "close", "comment", "commentDelayed"} {
+		got, ok := ParseBrowserAction("/home/u/app", action)
+		if !ok || got != (BrowserAction{Project: "/home/u/app", Action: action}) {
+			t.Errorf("ParseBrowserAction(%q) = %+v, %v", action, got, ok)
+		}
+	}
+	for name, args := range map[string][2]any{
+		"unknown action":   {"/p", "navigate"},
+		"case":             {"/p", "Back"},
+		"empty action":     {"/p", ""},
+		"action not text":  {"/p", 1.0},
+		"relative project": {"p", "back"},
+		"project not text": {nil, "back"},
+	} {
+		if got, ok := ParseBrowserAction(args[0], args[1]); ok {
+			t.Errorf("%s: accepted %+v", name, got)
+		}
+	}
+}

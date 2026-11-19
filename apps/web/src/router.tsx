@@ -46,6 +46,9 @@ interface PageSearch {
   // welcome=1, without a path, review, or walkthrough, opens the Welcome tab
   // (decision 0052).
   welcome?: 1
+  // browser=1, without a path, review, walkthrough, or Welcome, opens the
+  // project's Browser tab (decision 0181).
+  browser?: 1
   // fb=<id> reveals the Feedback view at that feedback (decision 0120);
   // alone it opens no tab.
   fb?: string
@@ -73,6 +76,7 @@ function validateSearch(search: Record<string, unknown>): PageSearch {
     wt: routeWalkthrough(search.wt),
     step: routeStep(search.step),
     welcome: search.welcome === 1 || search.welcome === "1" ? 1 : undefined,
+    browser: search.browser === 1 || search.browser === "1" ? 1 : undefined,
     fb: routeFeedback(search.fb),
   }
 }
@@ -160,10 +164,10 @@ const viewRoute = createRoute({
     // Keep line anchors (#L12) across the default-project redirect.
     if (project) throw redirect({ to: "/view", search: withProject(search, project), hash: location.hash, replace: true })
   },
-  // A review, walkthrough, or Welcome tab loads only the tree; a review's
+  // A review, walkthrough, Welcome, or Browser tab loads only the tree; a review's
   // pane reads /api/diff per file.
   loaderDeps: ({ search }) => {
-    const diff = routeCompare(search) !== null || (!search.path && (search.wt !== undefined || search.welcome !== undefined || search.fb !== undefined))
+    const diff = routeCompare(search) !== null || (!search.path && (search.wt !== undefined || search.welcome !== undefined || search.browser !== undefined || search.fb !== undefined))
     return { project: search.project ?? "", selected: diff ? "" : search.path ?? "", at: diff ? "" : search.at ?? "", diff }
   },
   loader: ({ abortController, deps }) => loadPage({

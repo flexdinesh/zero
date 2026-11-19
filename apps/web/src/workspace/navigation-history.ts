@@ -93,6 +93,7 @@ export function routeName(href: string): { label: string; title: string } {
   if (search.has("review") || search.has("commit") || search.has("from")) return { label: "Review", title: "Review" }
   if (search.has("wt")) return { label: "Walkthrough", title: "Walkthrough" }
   if (search.has("welcome")) return { label: "Welcome", title: "Welcome" }
+  if (search.has("browser")) return { label: "Browser", title: "Browser" }
   const project = projectOf(href)
   return project ? { label: projectName(project), title: project } : { label: "Start", title: "Start" }
 }

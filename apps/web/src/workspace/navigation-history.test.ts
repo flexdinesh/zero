@@ -55,6 +55,7 @@ test("routes are named before the workspace names them", () => {
   assert.equal(routeName(`/view?project=x&commit=${hash}`).label, "Review")
   assert.equal(routeName("/view?project=x&wt=abc").label, "Walkthrough")
   assert.equal(routeName("/view?project=x&welcome=1").label, "Welcome")
+  assert.equal(routeName("/view?project=x&browser=1").label, "Browser")
   assert.equal(routeName("/?project=%2Fwork%2Fzero").label, "zero")
   // The router quotes a string that would parse as JSON.
   assert.equal(routeName(`/view?project=x&path=${encodeURIComponent("\"123\"")}`).label, "123")

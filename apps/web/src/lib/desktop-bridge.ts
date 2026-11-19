@@ -166,6 +166,59 @@ export function readScreenHits(value: unknown, width: number, height: number): S
   return { step, columns, rows, grid: cells, elements: read }
 }
 
+// BrowserFailureKind is why a project browser's page did not show (decision
+// 0181): it could not load, its certificate was refused, the page asked for
+// a scheme the guest window refuses, or its web process stopped.
+export type BrowserFailureKind = "load" | "certificate" | "refused" | "crashed"
+
+// BrowserFailure is the page's last failure: the address it concerned and
+// the web view's one-line description.
+export interface BrowserFailure {
+  kind: BrowserFailureKind
+  url: string
+  description: string
+}
+
+// BrowserState is a project's open guest window as the app reads it now
+// (decision 0181): the page's address, whether it is loading, its history,
+// and its last failure, cleared by the next navigation.
+export interface BrowserState {
+  url: string
+  loading: boolean
+  canGoBack: boolean
+  canGoForward: boolean
+  failure: BrowserFailure | null
+}
+
+// BrowserAction is what the Browser tab asks of its guest window.
+export type BrowserAction = "back" | "forward" | "reload" | "stop" | "show" | "close" | "comment" | "commentDelayed"
+
+const failureKinds: readonly string[] = ["load", "certificate", "refused", "crashed"] satisfies readonly BrowserFailureKind[]
+
+function isFailureKind(value: unknown): value is BrowserFailureKind {
+  return typeof value === "string" && failureKinds.includes(value)
+}
+
+function readBrowserFailure(value: unknown): BrowserFailure | null | undefined {
+  if (value === null || value === undefined) return null
+  if (!isRecord(value)) return undefined
+  const { kind, url, description } = value
+  if (!isFailureKind(kind) || typeof url !== "string" || typeof description !== "string") return undefined
+  return { kind, url, description }
+}
+
+// readBrowserState accepts the app's state of a project's guest window, or
+// null: no window, or an answer that is not one.
+export function readBrowserState(value: unknown): BrowserState | null {
+  if (!isRecord(value)) return null
+  const { url, loading, canGoBack, canGoForward } = value
+  const failure = readBrowserFailure(value.failure)
+  if (typeof url !== "string" || typeof loading !== "boolean" || typeof canGoBack !== "boolean" || typeof canGoForward !== "boolean" || failure === undefined) {
+    return null
+  }
+  return { url, loading, canGoBack, canGoForward, failure }
+}
+
 // NotificationStatus is whether notices can reach the user.
 export interface NotificationStatus {
   supported: boolean
@@ -186,7 +239,9 @@ export interface NotificationStatus {
 // app's part of a problem report, or null when it refuses (decision 0152).
 // openReview shows a page of the developer's app in the project's review
 // window; screenCapture resolves the capture waiting for this window's
-// composer, with its hit map, or null (decisions 0177, 0180). A
+// composer, with its hit map, or null (decisions 0177, 0180). browserState
+// resolves a project's guest window, or null without one, and browserAction
+// steers it from the Browser tab (decision 0181). A
 // window on a remote server has no revealPath or diagnostics: its files are
 // not on this computer, and its server is not trusted with this computer's
 // logs (decision 0098).
@@ -201,6 +256,8 @@ export interface DesktopBridge {
   diagnostics: (() => Promise<DesktopDiagnostics | null>) | null
   openReview: ((project: string, url: string) => void) | null
   screenCapture: (() => Promise<ScreenCapture | null>) | null
+  browserState: ((project: string) => Promise<BrowserState | null>) | null
+  browserAction: ((project: string, action: BrowserAction) => void) | null
 }
 
 // DesktopAppearance is the polarity native surfaces take: the OS's, or one.
@@ -211,7 +268,7 @@ export type DesktopAppearance = "system" | "light" | "dark"
 export function readDesktopBridge(value: unknown): DesktopBridge | null {
   if (!isRecord(value) || typeof value.version !== "number" || !Number.isInteger(value.version) || value.version < 1) return null
   const { closeWindow, showAppMenu, revealPath, showContextMenu, configureNotifications, setAppearance, diagnostics } = value
-  const { openReview, screenCapture } = value
+  const { openReview, screenCapture, browserState, browserAction } = value
   return {
     version: value.version,
     closeWindow: typeof closeWindow === "function"
@@ -279,6 +336,20 @@ export function readDesktopBridge(value: unknown): DesktopBridge | null {
         } catch {
           return null
         }
+      }
+      : null,
+    browserState: typeof browserState === "function"
+      ? async (project) => {
+        try {
+          return readBrowserState(await browserState.call(value, project))
+        } catch {
+          return null
+        }
+      }
+      : null,
+    browserAction: typeof browserAction === "function"
+      ? (project, action) => {
+        Promise.resolve(browserAction.call(value, project, action)).catch(() => undefined)
       }
       : null,
   }
