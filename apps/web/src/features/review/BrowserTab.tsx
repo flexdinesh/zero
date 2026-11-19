@@ -1,5 +1,5 @@
 import {
-  AppWindowIcon, ArrowLeftIcon, ArrowRightIcon, CornerDownLeftIcon, FolderIcon, GitBranchIcon, MessageSquarePlusIcon, RotateCwIcon, TimerIcon, XIcon,
+  AppWindowIcon, ArrowLeftIcon, ArrowRightIcon, CornerDownLeftIcon, MessageSquarePlusIcon, RotateCwIcon, TimerIcon, XIcon,
 } from "lucide-react"
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react"
 
@@ -10,7 +10,7 @@ import { ListRow } from "../../components/ui/list-row.tsx"
 import { Notice, StatusMessage } from "../../components/ui/notice.tsx"
 import { ProgressBar } from "../../components/ui/progress-bar.tsx"
 import { TextField } from "../../components/ui/text-field.tsx"
-import { branchLabel } from "../feedback/feedback-model.ts"
+import { CommentTarget } from "../feedback/CommentTarget.tsx"
 import { browserPhase, currentPage, failureText } from "./browser-model.ts"
 import { pageLabel, reviewChoices, type ReviewChoice } from "./review-model.ts"
 import type { ProjectBrowser } from "./use-project-browser.ts"
@@ -153,15 +153,7 @@ export function BrowserTab({ browser, name, branch, folder }: BrowserTabProps) {
         <ProgressBar active={Boolean(state?.loading)} label="Loading page" />
       </div>
 
-      <p className="project-browser-target">
-        <span className="project-browser-target-label">Comments go to</span>
-        <span className="project-browser-target-part"><FolderIcon aria-hidden="true" />{name}</span>
-        {!folder && (
-          <span className="project-browser-target-part" data-detached={branch ? undefined : true}>
-            <GitBranchIcon aria-hidden="true" />{branchLabel(branch)}
-          </span>
-        )}
-      </p>
+      <CommentTarget name={name} branch={branch} folder={folder} />
 
       <div className="project-browser-state" role="status" aria-live="polite">
         {phase === "empty" && (

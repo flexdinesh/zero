@@ -81,6 +81,9 @@ test("rows and details name a page by host and path, or a pasted screenshot", as
   assert.equal(elementLabel({ tag: "button", name: "Save changes" }), "button \"Save changes\"")
   assert.equal(elementLabel({ tag: "div", text: "Empty" }), "div \"Empty\"")
   assert.equal(elementLabel({ tag: "img" }), "img")
+  // The role names it as the composer's readout does: an li that is a menu item.
+  assert.equal(elementLabel({ tag: "li", role: "menuitem", name: "Export data" }), "menuitem \"Export data\"")
+  assert.equal(elementLabel({ tag: "div", role: "listbox" }), "listbox")
   assert.equal(attachmentURL("/home/user/markdown", "fb-3k2q8m", "at-7hq2mx4kpa"),
     "/api/feedback-attachment?project=%2Fhome%2Fuser%2Fmarkdown&id=fb-3k2q8m&attachment=at-7hq2mx4kpa")
 })

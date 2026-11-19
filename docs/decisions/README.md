@@ -182,3 +182,4 @@ rewriting history; update `Status` on the old record.
 | [0180](0180-hit-map-at-capture.md) | Hit map at capture | Accepted; supersedes 0177's element hint; extends 0175, 0176 |
 | [0181](0181-project-browser-tab.md) | Project browser tab | Accepted; extends 0052, 0081, 0175, 0177 |
 | [0182](0182-screen-tabs-for-visual-threads.md) | Screen tabs for visual threads | Accepted; extends 0113, 0120, 0176, 0177, 0178 |
+| [0183](0183-visual-review-loop-verified.md) | The visual review loop, verified end to end | Accepted; extends 0175, 0176, 0177, 0178, 0180, 0181, 0182 |

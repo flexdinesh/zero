@@ -100,7 +100,9 @@ export async function postJSON<T>(
 }
 
 // postBytes posts raw bytes of contentType (an image upload) and returns
-// the payload valid accepts, failing as fetchJSON does.
+// the payload valid accepts, failing as fetchJSON does. The body goes as an
+// ArrayBuffer, never the Blob: WebKitGTK crashes the desktop app reading a
+// Blob request body on its zero-app: scheme (decision 0183).
 export async function postBytes<T>(
   url: string,
   body: Blob,
@@ -112,7 +114,7 @@ export async function postBytes<T>(
   return requestJSON(url, {
     method: "POST",
     headers: { Accept: "application/json", "Content-Type": contentType, ...options.headers },
-    body,
+    body: await body.arrayBuffer(),
     signal: options.signal,
   }, options, valid, describe)
 }

@@ -355,8 +355,10 @@ export function App({ project }: AppProps) {
     revealSidebar("feedback")
     openComposer(source)
   }, [openComposer, revealSidebar, showFeedback])
+  // A capture of another project opens it as a project switch does, on its
+  // startup tab: /view without a file would ask for one and fail (0183).
   const switchToProject = useCallback((next: string) => {
-    void navigate({ to: "/view", search: { project: next }, hash: "" })
+    void navigate({ to: "/", search: { project: next }, hash: "" })
   }, [navigate])
   useDesktopScreenComment(project, commentOnScreen, switchToProject)
   const revealExplorer = useCallback(() => revealSidebar("explorer"), [revealSidebar])
@@ -1131,7 +1133,7 @@ export function App({ project }: AppProps) {
             browser={browserRoute ? <BrowserTab browser={projectBrowser}
               name={projectName(project)} branch={page.branch} folder={page.projectKind === "folder"} /> : undefined}
             screen={screenRouted ? <ScreenThreadTab project={project} feedbackId={screenRouted.feedback} number={screenRouted.thread}
-              session={screenSession} navigate={navigateToHref} onOpenThread={openThread}
+              session={screenSession} navigate={navigateToHref} reviewPage={projectBrowser.available ? projectBrowser.open : null} onOpenThread={openThread}
               onPin={() => workspace.pin(screenTab(screenRouted.feedback, screenRouted.thread))}
               onClose={() => closeTab(screenTab(screenRouted.feedback, screenRouted.thread))} /> : undefined}
             empty={<WorkspaceEmptyState input={emptyInput} viewName={sidebarViewName(sidebar.view)}
@@ -1190,6 +1192,7 @@ export function App({ project }: AppProps) {
       <RecentLocations log={historyLog} project={project} registerOpen={registerRecent} onOpen={navigateToHref} />
       <ReportProblemDialog registerOpen={registerReport} />
       <ScreenCommentDialog composer={feedbackView.composer} actions={feedbackView.session.actions}
+        target={{ name: projectName(project), branch: page.branch, folder: page.projectKind === "folder" }}
         onSource={openComposer} onClose={closeComposer} onSent={screenSent} />
       <OverlayScrollbars />
     </FindProvider>

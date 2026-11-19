@@ -6,7 +6,6 @@ import { Button } from "../../components/ui/button.tsx"
 import { StatusMessage } from "../../components/ui/notice.tsx"
 import { SegmentedControl, SegmentedItem } from "../../components/ui/segmented-control.tsx"
 import { shortHash } from "../../lib/commit-hash.ts"
-import { desktopBridge } from "../../lib/desktop-bridge.ts"
 import { commitAge, commitDate } from "../source-control/compare.ts"
 import { threadRoute, threadTitle, type ThreadRoute } from "./feedback-model.ts"
 import { FeedbackThreadZone } from "./FeedbackThreadZone.tsx"
@@ -23,6 +22,10 @@ interface ScreenThreadTabProps {
   // session reads the feedback holding the thread.
   session: FeedbackSession
   navigate(href: string): void
+  // reviewPage opens a page in the project's review window through its
+  // Browser tab, which remembers it (decisions 0181, 0183); null outside
+  // the desktop app's local window.
+  reviewPage: ((url: string) => void) | null
   // onPin keeps the preview tab open once the reviewer writes in it.
   onPin(): void
   onClose(): void
@@ -33,7 +36,7 @@ interface ScreenThreadTabProps {
 // screenshot as it was captured with the region marked, beside the page it
 // came from and the conversation. It reads the stored screenshot, so the
 // evidence stays as it was however the page changes since.
-export function ScreenThreadTab({ feedbackId, navigate, number, onClose, onOpenThread, onPin, project, session }: ScreenThreadTabProps) {
+export function ScreenThreadTab({ feedbackId, navigate, number, onClose, onOpenThread, onPin, project, reviewPage, session }: ScreenThreadTabProps) {
   const { feedback, load } = session
   const thread = feedback?.id === feedbackId ? feedback.threads.find((entry) => entry.number === number) ?? null : null
   if (load.kind === "missing") {
@@ -59,7 +62,7 @@ export function ScreenThreadTab({ feedbackId, navigate, number, onClose, onOpenT
     )
   }
   return <ScreenThread key={`${feedbackId}:${number}`} project={project} feedbackId={feedbackId} thread={thread} visual={thread.visual}
-    actions={session.actions} navigate={navigate} onPin={onPin} />
+    actions={session.actions} navigate={navigate} reviewPage={reviewPage} onPin={onPin} />
 }
 
 function Gone({ message, onClose }: { message: string; onClose(): void }) {
@@ -86,10 +89,11 @@ interface ThreadProps {
   visual: FeedbackVisual
   actions: FeedbackActions
   navigate(href: string): void
+  reviewPage: ((url: string) => void) | null
   onPin(): void
 }
 
-function ScreenThread({ actions, feedbackId, navigate, onPin, project, thread, visual }: ThreadProps) {
+function ScreenThread({ actions, feedbackId, navigate, onPin, project, reviewPage, thread, visual }: ThreadProps) {
   const image = useRef<HTMLImageElement>(null)
   const canvas = useRef<HTMLDivElement>(null)
   const [failed, setFailed] = useState(false)
@@ -123,7 +127,7 @@ function ScreenThread({ actions, feedbackId, navigate, onPin, project, thread, v
   const shown = visual.available && !failed
   const dsf = page?.viewport.deviceScaleFactor ?? 1
   const place = visualPlace(visual)
-  const opener = useMemo(() => page ? pageOpener(page, Boolean(desktopBridge()?.openReview)) : null, [page])
+  const opener = useMemo(() => page ? pageOpener(page, reviewPage !== null) : null, [page, reviewPage])
   const where = page ? pageWhere(page) : ""
 
   const copyCrop = () => {
@@ -134,8 +138,7 @@ function ScreenThread({ actions, feedbackId, navigate, onPin, project, thread, v
   }
   const openPage = () => {
     if (!page) return
-    const review = desktopBridge()?.openReview
-    if (opener === "review" && review) review(project, page.url)
+    if (opener === "review" && reviewPage) reviewPage(page.url)
     else window.open(page.url, "_blank", "noopener,noreferrer")
   }
 

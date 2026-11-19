@@ -77,8 +77,8 @@ test("the Browser tab opens a page, names it, steers it, and says where comments
   await expect(address(page)).toBeFocused()
   const main = page.getByRole("main")
   await expect(main.getByText("Comments go to")).toBeVisible()
-  await expect(main.locator(".project-browser-target")).toContainText(path.basename(gitFixtureRoot))
-  await expect(main.locator(".project-browser-target")).toContainText("feature")
+  await expect(main.locator(".comment-target")).toContainText(path.basename(gitFixtureRoot))
+  await expect(main.locator(".comment-target")).toContainText("feature")
   await expect(main.getByRole("button", { name: "Back" })).toHaveAttribute("aria-disabled", "true")
 
   await address(page).fill("localhost:5173/settings")
