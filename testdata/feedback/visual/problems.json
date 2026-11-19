@@ -1,0 +1,4 @@
+{
+  "error": "invalid feedback: path: doesn't apply with visual, which excludes path, side, lines, and compare; visual.attachment: is not an upload of this repository, or it expired after 1 hour; visual.rect: 96,96 420×240 ends at y 336, past the image's height 288; visual.page.clip: is 600×288, but the image is 612×288; visual.element.box: 96,96 420×240 ends at y 336, past the image's height 288",
+  "code": "invalidFeedback"
+}
