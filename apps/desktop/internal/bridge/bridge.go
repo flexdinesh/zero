@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/flexdinesh/zero/apps/desktop/internal/appearance"
+	"github.com/flexdinesh/zero/apps/desktop/internal/review"
 	"github.com/flexdinesh/zero/pkg/logfile"
 )
 
@@ -303,4 +304,50 @@ func NewDiagnostics(version, commit, logDir string, lines, crash []string, home 
 		return logfile.RedactLines(lines, home)
 	}
 	return Diagnostics{Version: version, Commit: commit, LogDir: logfile.Redact(logDir, home), LogLines: redact(lines), CrashLines: redact(crash)}
+}
+
+// OpenReview is a request to review a project's page in its guest window
+// (decisions 0175, 0177): an absolute http or https URL.
+type OpenReview struct {
+	Project string
+	URL     string
+}
+
+// ParseOpenReview validates openReview's payload: an absolute project
+// directory and a page URL review.CheckURL accepts.
+func ParseOpenReview(project, pageURL any) (OpenReview, bool) {
+	p, okP := project.(string)
+	u, okU := pageURL.(string)
+	if !okP || !okU || !isPlainAbsolute(p) {
+		return OpenReview{}, false
+	}
+	checked, ok := review.CheckURL(u)
+	if !ok {
+		return OpenReview{}, false
+	}
+	return OpenReview{Project: p, URL: checked}, true
+}
+
+// ScreenElement is screenElement's payload: a screen capture's ID and a
+// point in its page's viewport, in CSS pixels.
+type ScreenElement struct {
+	ID   string
+	X, Y float64
+}
+
+// ParseScreenElement validates screenElement's payload: an ID review.IsCaptureID
+// accepts and finite, non-negative coordinates.
+func ParseScreenElement(id, x, y any) (ScreenElement, bool) {
+	text, okID := id.(string)
+	fx, okX := x.(float64)
+	fy, okY := y.(float64)
+	if !okID || !okX || !okY || !review.IsCaptureID(text) {
+		return ScreenElement{}, false
+	}
+	for _, value := range []float64{fx, fy} {
+		if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > review.MaxViewportSide {
+			return ScreenElement{}, false
+		}
+	}
+	return ScreenElement{ID: text, X: fx, Y: fy}, true
 }

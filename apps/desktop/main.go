@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"image/color"
 	"log"
+	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
@@ -70,6 +71,8 @@ type host struct {
 	// logDir holds desktop.log and its crash output; "" keeps none
 	// (decision 0152).
 	logDir string
+	// reviews holds the guest windows and their screen captures (decision 0177).
+	reviews *reviews
 }
 
 func main() {
@@ -92,6 +95,7 @@ func main() {
 		logDir:         logs,
 	}
 	app.notify = app.showWarning
+	app.reviews = newReviews(app)
 	storePath, err := connection.DefaultStorePath()
 	if err != nil {
 		log.Printf("zero-app: %v", err)
@@ -112,6 +116,12 @@ func main() {
 	mygo.App.OnNotificationClick(app.noticeClicked)
 
 	pages := proxy.New(app.connections)
+	// Only Zero's own windows reach the daemon: a guest page's no-cors
+	// requests carry no Origin to refuse (decision 0175).
+	pages.Admit(func(r *http.Request) bool {
+		page := mygo.CallerPage(r.Context())
+		return page != nil && !app.reviews.isGuestPage(page)
+	})
 	if err := mygo.Protocol.Handle(proxy.Scheme, pages); err != nil {
 		log.Fatal(err)
 	}
@@ -152,9 +162,10 @@ func (h *host) raise() {
 	}
 }
 
-// frontWindow is the focused window, else the local one, else any.
+// frontWindow is the focused window, else the local one, else any. A review
+// window is never one: its page is not the app's.
 func (h *host) frontWindow() *mygo.Window {
-	if focused := mygo.FocusedWindow(); focused != nil {
+	if focused := mygo.FocusedWindow(); focused != nil && !h.reviews.isReview(focused) {
 		return focused
 	}
 	h.mu.Lock()

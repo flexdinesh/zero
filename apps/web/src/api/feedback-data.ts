@@ -1,9 +1,10 @@
 import {
-  isFeedback, isFeedbackSummary, isFeedbackThread,
-  type Feedback, type FeedbackAuthor, type FeedbackCompare, type FeedbackSide, type FeedbackStatus, type FeedbackSummary, type FeedbackThread,
+  isFeedback, isFeedbackSummary, isFeedbackThread, isFeedbackUpload,
+  type Feedback, type FeedbackAuthor, type FeedbackCompare, type FeedbackElement, type FeedbackRect, type FeedbackScroll, type FeedbackSide,
+  type FeedbackStatus, type FeedbackSummary, type FeedbackThread, type FeedbackUpload, type FeedbackViewport,
 } from "@zero/contracts"
 
-import { deleteResource, failureReason, fetchJSON, postJSON, RequestError, type RequestFailure } from "./http.ts"
+import { deleteResource, failureReason, fetchJSON, postBytes, postJSON, RequestError, type RequestFailure } from "./http.ts"
 
 // Transport for review feedback threads (decision 0120). Reads validate with
 // the generated guards; the write bodies are Go-only request shapes
@@ -12,18 +13,41 @@ import { deleteResource, failureReason, fetchJSON, postJSON, RequestError, type 
 // feedbackUnavailableCode marks a 404 for an id the repository lacks.
 export const feedbackUnavailableCode = "feedbackUnavailable"
 
-// FeedbackThreadDraft is POST /api/feedback-threads (contract.FeedbackThreadDraft).
-export interface FeedbackThreadDraft {
+// FeedbackPageDraft is a captured page as a client sends it
+// (contract.FeedbackPageDraft): FeedbackPage without localhost, which the
+// server derives from the transport.
+export interface FeedbackPageDraft {
+  url: string
+  title?: string
+  viewport: FeedbackViewport
+  scroll: FeedbackScroll
+  clip?: FeedbackRect
+}
+
+// FeedbackVisualDraft is a visual thread's target (contract.FeedbackVisualDraft,
+// decision 0176): a staged upload, a rectangle in its pixels, and
+// optionally the page and an element hint, which needs the page.
+export interface FeedbackVisualDraft {
+  attachment: string
+  rect: FeedbackRect
+  page?: FeedbackPageDraft
+  element?: FeedbackElement
+}
+
+interface FeedbackDraftBase {
   project: string
   id?: string
-  compare?: FeedbackCompare
-  path: string
-  side?: FeedbackSide
-  lines?: [number, number]
   body: string
   author?: FeedbackAuthor
   name?: string
 }
+
+// FeedbackThreadDraft is POST /api/feedback-threads (contract.FeedbackThreadDraft):
+// code lines or a whole file, or a visual target, which excludes path,
+// side, lines, and compare.
+export type FeedbackThreadDraft =
+  | FeedbackDraftBase & { compare?: FeedbackCompare; path: string; side?: FeedbackSide; lines?: [number, number] }
+  | FeedbackDraftBase & { visual: FeedbackVisualDraft }
 
 // FeedbackMessageDraft is POST /api/feedback-messages (contract.FeedbackMessageDraft).
 export interface FeedbackMessageDraft {
@@ -86,6 +110,13 @@ function writeError(action: string): (failure: RequestFailure) => string {
 
 export function createFeedbackThread(draft: FeedbackThreadDraft): Promise<FeedbackThread> {
   return postJSON("/api/feedback-threads", draft, {}, isFeedbackThread, writeError("add the comment"))
+}
+
+// uploadFeedbackAttachment stages a PNG for the project's next visual
+// thread: POST /api/feedback-attachments, raw bytes.
+export function uploadFeedbackAttachment(project: string, png: Blob): Promise<FeedbackUpload> {
+  const url = `/api/feedback-attachments?${new URLSearchParams({ project }).toString()}`
+  return postBytes(url, png, "image/png", {}, isFeedbackUpload, writeError("upload the screenshot"))
 }
 
 export function postFeedbackMessage(draft: FeedbackMessageDraft): Promise<FeedbackThread> {

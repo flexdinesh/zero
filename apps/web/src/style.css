@@ -53,6 +53,8 @@
 @import "./features/source-control/source-control.css" layer(features);
 @import "./features/walkthrough/walkthrough.css" layer(features);
 @import "./features/feedback/feedback.css" layer(features);
+@import "./features/feedback/visual.css" layer(features);
+@import "./features/review/review.css" layer(features);
 @import "./features/blame/blame.css" layer(features);
 @import "./features/welcome/welcome.css" layer(features);
 @import "./features/diagnostics/report-problem.css" layer(features);

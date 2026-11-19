@@ -101,7 +101,9 @@ func serveFixtureWith(t *testing.T, root string, servers *lsp.Manager) fixture {
 		Feedback: webApp.Application().Feedback,
 	})
 
-	tcp := httptest.NewServer(webApp)
+	// The TCP listener is loopback and the socket is the daemon's: both
+	// share the project's host (decision 0176).
+	tcp := httptest.NewServer(web.Local(webApp))
 	dir, err := os.MkdirTemp("", "zero-client-")
 	if err != nil {
 		t.Fatal(err)
@@ -111,7 +113,7 @@ func serveFixtureWith(t *testing.T, root string, servers *lsp.Manager) fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	unix := &http.Server{Handler: control.Handler(webApp)}
+	unix := &http.Server{Handler: control.Handler(web.Local(webApp))}
 	go func() { _ = unix.Serve(listener) }()
 	identity, err := remote.LoadOrCreateIdentity(filepath.Join(dir, "identity.json"))
 	if err != nil {

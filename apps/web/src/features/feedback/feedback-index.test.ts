@@ -3,10 +3,11 @@ import test from "node:test"
 
 import type { Feedback, FeedbackCompare, FeedbackThread } from "@zero/contracts"
 import { emptyFeedbackFile, indexFeedback, type FeedbackIndex } from "./feedback-index.ts"
+import type { CodeThread } from "./feedback-model.ts"
 
 const date = "2026-11-10T09:12:00Z"
 
-function thread(number: number, path = "a.go"): FeedbackThread {
+function thread(number: number, path = "a.go"): CodeThread {
   return {
     number, status: "open", awaiting: "agent", createdAt: date, updatedAt: date,
     anchor: { path, side: "new", lines: [1, 1], text: ["package main"], before: [], after: [""], blob: "abc", language: "go" },
@@ -143,7 +144,7 @@ test("each contract field participates in thread identity", () => {
   const compare: FeedbackCompare = { kind: "branch", base: "main", head: "next", uncommitted: false }
   original.anchor.compare = compare
   const first = indexFeedback(feedback(original))
-  const edits: Record<string, (t: FeedbackThread) => void> = {
+  const edits: Record<string, (t: CodeThread) => void> = {
     number: t => { t.number++ },
     status: t => { t.status = "resolved" },
     awaiting: t => { t.awaiting = "user" },
@@ -196,4 +197,37 @@ test("equal threads in another feedback ID or project start a fresh index", () =
     assert.notEqual(file(next), file(first))
     assert.notEqual(next.counts, first.counts)
   }
+})
+
+function screenshot(number: number): FeedbackThread {
+  return {
+    number, status: "open", awaiting: "agent", createdAt: date, updatedAt: date,
+    visual: {
+      attachment: { id: "at-7hq2mx4kpa", mediaType: "image/png", width: 612, height: 288, bytes: 1, sha256: "a" },
+      rect: { x: 96, y: 96, width: 420, height: 96 },
+      available: true,
+    },
+    messages: [{ number: 1, author: "user", body: "Comment", bodyHTML: "<p>Comment</p>", createdAt: date }],
+  }
+}
+
+test("visual threads join no file; their open ones count apart, and their target is identity", () => {
+  const code = thread(1)
+  const shot = screenshot(2)
+  const closed = screenshot(3)
+  closed.status = "resolved"
+  const first = indexFeedback(feedback(code, shot, closed))
+  assert.deepEqual([...first.files.keys()], ["a.go"])
+  assert.deepEqual(file(first).all, [code])
+  assert.deepEqual(first.counts, new Map([["a.go", 1]]))
+  assert.equal(first.visualOpen, 1)
+  assert.equal(first.byNumber.get(2), shot)
+
+  const same = indexFeedback(structuredClone(feedback(code, shot, closed)), first)
+  assert.equal(same, first)
+  const gone = structuredClone(shot)
+  if (gone.visual) gone.visual.available = false
+  const next = indexFeedback(feedback(code, gone, closed), first)
+  assert.equal(next.byNumber.get(2), gone)
+  assert.equal(file(next), file(first))
 })

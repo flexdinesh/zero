@@ -231,3 +231,40 @@ func TestNewDiagnosticsRedacts(t *testing.T) {
 		t.Errorf("build = %q %q", got.Version, got.Commit)
 	}
 }
+
+func TestParseOpenReview(t *testing.T) {
+	request, ok := ParseOpenReview("/home/u/app", "localhost:5173/settings")
+	if !ok || request != (OpenReview{Project: "/home/u/app", URL: "http://localhost:5173/settings"}) {
+		t.Errorf("ParseOpenReview = %+v, %v", request, ok)
+	}
+	for name, args := range map[string][2]any{
+		"relative project": {"app", "http://a.test/"},
+		"script URL":       {"/p", "javascript:alert(1)"},
+		"file URL":         {"/p", "file:///etc/passwd"},
+		"app URL":          {"/p", "zero-app://local/"},
+		"not text":         {"/p", 3.0},
+	} {
+		if request, ok := ParseOpenReview(args[0], args[1]); ok {
+			t.Errorf("%s: accepted %+v", name, request)
+		}
+	}
+}
+
+func TestParseScreenElement(t *testing.T) {
+	got, ok := ParseScreenElement("0123456789ab", 12.5, 40.0)
+	if !ok || got != (ScreenElement{ID: "0123456789ab", X: 12.5, Y: 40}) {
+		t.Errorf("ParseScreenElement = %+v, %v", got, ok)
+	}
+	for name, args := range map[string][3]any{
+		"bad id":    {"../x", 1.0, 1.0},
+		"short id":  {"0123", 1.0, 1.0},
+		"negative":  {"0123456789ab", -1.0, 1.0},
+		"infinite":  {"0123456789ab", math.Inf(1), 1.0},
+		"not a num": {"0123456789ab", "1", 1.0},
+		"huge":      {"0123456789ab", 1e9, 1.0},
+	} {
+		if got, ok := ParseScreenElement(args[0], args[1], args[2]); ok {
+			t.Errorf("%s: accepted %+v", name, got)
+		}
+	}
+}

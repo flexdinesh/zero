@@ -130,3 +130,40 @@ test("diagnostics resolves a valid report and null for an invalid one, a refusal
   assert.equal(await readDesktopBridge({ version: 2, diagnostics: () => Promise.reject(new Error("refused")) })?.diagnostics?.(), null)
   assert.equal(readDesktopBridge({ version: 2 })?.diagnostics, null)
 })
+
+test("openReview passes the project and URL through and swallows refusals", () => {
+  const calls: unknown[][] = []
+  const bridge = readDesktopBridge({ version: 2, openReview(...args: unknown[]) { calls.push(args); return Promise.reject(new Error("refused")) } })
+  bridge?.openReview?.("/p", "http://a.test/")
+  assert.deepEqual(calls, [["/p", "http://a.test/"]])
+  assert.equal(readDesktopBridge({ version: 2 })?.openReview, null)
+})
+
+const capture = {
+  id: "cap-1", project: "/p", png: "iVBORw0KGgo=",
+  page: { url: "http://localhost:5173/settings", title: "Settings", viewport: { width: 1440, height: 900, deviceScaleFactor: 2 }, scroll: { x: 0, y: 1320 } },
+}
+
+test("screenCapture resolves a valid capture and null for junk, refusals, or none", async () => {
+  assert.deepEqual(await readDesktopBridge({ version: 2, screenCapture: () => Promise.resolve(capture) })?.screenCapture?.(), capture)
+  assert.equal(await readDesktopBridge({ version: 2, screenCapture: () => Promise.resolve(null) })?.screenCapture?.(), null)
+  const junk = { ...capture, page: { ...capture.page, viewport: { width: 1440, height: 900, deviceScaleFactor: 0 } } }
+  assert.equal(await readDesktopBridge({ version: 2, screenCapture: () => Promise.resolve(junk) })?.screenCapture?.(), null)
+  assert.equal(await readDesktopBridge({ version: 2, screenCapture: () => Promise.resolve({ ...capture, png: 1 }) })?.screenCapture?.(), null)
+  assert.equal(await readDesktopBridge({ version: 2, screenCapture: () => Promise.reject(new Error("x")) })?.screenCapture?.(), null)
+  assert.equal(readDesktopBridge({ version: 2 })?.screenCapture, null)
+})
+
+test("screenElement passes the capture and point, keeps the known fields, and refuses junk", async () => {
+  const calls: unknown[][] = []
+  const hint = { selector: "main > button", tag: "button", role: "button", name: "Save changes", box: { x: 605, y: 320, width: 210, height: 48 }, extra: "dropped" }
+  const bridge = readDesktopBridge({ version: 2, screenElement(...args: unknown[]) { calls.push(args); return Promise.resolve(hint) } })
+  assert.deepEqual(await bridge?.screenElement?.("cap-1", 710, 344), {
+    selector: "main > button", tag: "button", role: "button", name: "Save changes", box: { x: 605, y: 320, width: 210, height: 48 },
+  })
+  assert.deepEqual(calls, [["cap-1", 710, 344]])
+  assert.equal(await readDesktopBridge({ version: 2, screenElement: () => Promise.resolve({ selector: "a", tag: 1 }) })?.screenElement?.("c", 0, 0), null)
+  assert.equal(await readDesktopBridge({ version: 2, screenElement: () => Promise.resolve({ ...hint, box: { x: 0, y: 0, width: 0, height: 4 } }) })?.screenElement?.("c", 0, 0), null)
+  assert.equal(await readDesktopBridge({ version: 2, screenElement: () => Promise.resolve(null) })?.screenElement?.("c", 0, 0), null)
+  assert.equal(readDesktopBridge({ version: 2 })?.screenElement, null)
+})

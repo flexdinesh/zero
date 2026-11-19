@@ -1,0 +1,22 @@
+/* UI review in the desktop app (decision 0177): the Review URL palette's
+   rows. */
+
+/* Palette rows: a page's address leads, its origin after. */
+.review-url-icon {
+  width: var(--icon-md);
+  height: var(--icon-md);
+  flex: none;
+  color: var(--color-text-muted);
+}
+
+.review-url-title {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+}
+
+.review-url-enter {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  flex: none;
+  color: var(--color-text-muted);
+}

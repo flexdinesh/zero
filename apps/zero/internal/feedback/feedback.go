@@ -1,9 +1,11 @@
 // Package feedback owns review feedback threads (decision 0120): one feedback
 // per repository and branch, holding threads of user and agent messages,
-// each anchored to lines of a file side. It validates drafts, captures and
-// re-anchors line anchors by content, and stores feedback in the user's
-// state directory behind a Service every transport shares. It knows no HTTP
-// and no git: internal/app reads file sides and maps the model to contracts.
+// each anchored to lines of a file side or to a screenshot (decision 0176).
+// It validates drafts, captures and re-anchors line anchors by content,
+// checks and stores screenshot attachments, and stores feedback in the
+// user's state directory behind a Service every transport shares. It knows
+// no HTTP and no git: internal/app reads file sides and maps the model to
+// contracts.
 package feedback
 
 import (
@@ -85,12 +87,14 @@ type Feedback struct {
 	UpdatedAt  time.Time `json:"updatedAt"`
 }
 
-// Thread is one conversation at an anchor. Numbers count from 1 within the
-// feedback and are never reused.
+// Thread is one conversation at a code Anchor or a Visual target, exactly
+// one of them. Numbers count from 1 within the feedback and are never
+// reused.
 type Thread struct {
 	Number    int       `json:"number"`
 	Status    string    `json:"status"`
-	Anchor    Anchor    `json:"anchor"`
+	Anchor    *Anchor   `json:"anchor,omitempty"`
+	Visual    *Visual   `json:"visual,omitempty"`
 	Messages  []Message `json:"messages"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
@@ -225,7 +229,8 @@ func ValidID(id string) bool { return idPattern.MatchString(id) }
 
 // ThreadDraft is a new thread with its first message. Project is an
 // absolute directory; ID is optional. Author has a transport's default
-// applied before Normalize.
+// applied before Normalize. Visual makes a visual thread and excludes
+// Compare, Path, Side, and Lines.
 type ThreadDraft struct {
 	Project string
 	ID      string
@@ -236,6 +241,7 @@ type ThreadDraft struct {
 	Body    string
 	Author  string
 	Name    string
+	Visual  *VisualDraft
 }
 
 // MessageDraft is a reply to thread Thread of feedback ID, a status change,
@@ -258,18 +264,16 @@ func collector(problems *Problems) addProblem {
 	}
 }
 
-// Normalize trims text, lowercases hashes, and defaults the side to new,
-// then checks the draft's structure. Paths and lines are not checked
-// against the project.
+// Normalize trims text, lowercases hashes, defaults a code thread's side
+// to new, and normalizes a visual target's URL, then checks the draft's
+// structure. Paths and lines are not checked against the project, nor a
+// visual target against its image (CheckVisualImage).
 func (d ThreadDraft) Normalize() (ThreadDraft, error) {
 	d.Project = strings.TrimSpace(d.Project)
 	d.ID = strings.TrimSpace(d.ID)
 	d.Path = strings.TrimSpace(d.Path)
 	d.Body = strings.TrimSpace(d.Body)
 	d.Name = strings.TrimSpace(d.Name)
-	if d.Side == "" {
-		d.Side = SideNew
-	}
 	if d.Compare != nil {
 		compare := d.Compare.normalize()
 		d.Compare = &compare
@@ -278,6 +282,35 @@ func (d ThreadDraft) Normalize() (ThreadDraft, error) {
 	add := collector(&problems)
 	checkProject(add, d.Project)
 	checkID(add, d.ID, false)
+	if d.Visual != nil {
+		for _, field := range []struct {
+			name string
+			set  bool
+		}{{"compare", d.Compare != nil}, {"path", d.Path != ""}, {"side", d.Side != ""}, {"lines", d.Lines != nil}} {
+			if field.set {
+				add(field.name, excludedByVisual)
+			}
+		}
+		visual := d.Visual.normalize()
+		d.Visual = &visual
+		checkVisual(add, visual)
+	} else {
+		d.checkCode(add)
+	}
+	checkBody(add, d.Body, true)
+	checkAuthor(add, d.Author, d.Name)
+	if len(problems) > 0 {
+		return d, problems
+	}
+	return d, nil
+}
+
+// checkCode defaults the side and checks a code thread's compare, path,
+// side, and lines.
+func (d *ThreadDraft) checkCode(add addProblem) {
+	if d.Side == "" {
+		d.Side = SideNew
+	}
 	if d.Compare != nil {
 		checkCompare(add, "compare", *d.Compare)
 	}
@@ -298,12 +331,6 @@ func (d ThreadDraft) Normalize() (ThreadDraft, error) {
 			add("lines", "end %d is before start %d", d.Lines[1], d.Lines[0])
 		}
 	}
-	checkBody(add, d.Body, true)
-	checkAuthor(add, d.Author, d.Name)
-	if len(problems) > 0 {
-		return d, problems
-	}
-	return d, nil
 }
 
 // LinesRange returns the draft's lines as a range, nil for a file-level

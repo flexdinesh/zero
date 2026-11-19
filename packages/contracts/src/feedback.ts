@@ -105,6 +105,178 @@ export function isFeedbackAnchor(value: unknown): value is FeedbackAnchor {
     && (value.language === undefined || isString(value.language))
 }
 
+// FeedbackRect is a rectangle of whole pixels from a top-left origin, x
+// right and y down. Inside a visual target (decision 0176) it is in
+// screenshot image pixels, wholly inside the image; a page's clip is in
+// frame pixels.
+export interface FeedbackRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export function isFeedbackRect(value: unknown): value is FeedbackRect {
+  return isRecord(value)
+    && isNumber(value.x)
+    && isNumber(value.y)
+    && isNumber(value.width)
+    && isNumber(value.height)
+}
+
+// FeedbackViewport is a captured page's layout viewport in CSS pixels.
+// DeviceScaleFactor is the guest's zoom factor times devicePixelRatio; the
+// frame is round(width × it) by round(height × it).
+export interface FeedbackViewport {
+  width: number
+  height: number
+  deviceScaleFactor: number
+}
+
+export function isFeedbackViewport(value: unknown): value is FeedbackViewport {
+  return isRecord(value)
+    && isNumber(value.width)
+    && isNumber(value.height)
+    && isNumber(value.deviceScaleFactor)
+}
+
+// FeedbackScroll is a captured page's scroll position in CSS pixels.
+export interface FeedbackScroll {
+  x: number
+  y: number
+}
+
+export function isFeedbackScroll(value: unknown): value is FeedbackScroll {
+  return isRecord(value)
+    && isNumber(value.x)
+    && isNumber(value.y)
+}
+
+// FeedbackLocalhost says what a loopback page URL refers to: the project's
+// host (the agent can open it as written) or the reviewer's machine.
+export type FeedbackLocalhost = "project" | "viewer"
+
+export function isFeedbackLocalhost(value: unknown): value is FeedbackLocalhost {
+  return value === "project" || value === "viewer"
+}
+
+// FeedbackPage is the page a screenshot was captured from. URL is http or
+// https as the server normalized and redacted it; Clip, in frame pixels, is
+// the part of the frame kept as the image, absent when the image is the
+// whole frame. Localhost is the server's, from the transport the thread
+// arrived on, and absent for a host that is not loopback.
+export interface FeedbackPage {
+  url: string
+  title?: string
+  viewport: FeedbackViewport
+  scroll: FeedbackScroll
+  clip?: FeedbackRect
+  localhost?: FeedbackLocalhost
+}
+
+export function isFeedbackPage(value: unknown): value is FeedbackPage {
+  return isRecord(value)
+    && isString(value.url)
+    && (value.title === undefined || isString(value.title))
+    && isFeedbackViewport(value.viewport)
+    && isFeedbackScroll(value.scroll)
+    && (value.clip === undefined || isFeedbackRect(value.clip))
+    && (value.localhost === undefined || isFeedbackLocalhost(value.localhost))
+}
+
+// FeedbackElement is the page's own word on the element at a visual
+// target's center when it was captured: advisory, bounded, never trusted.
+// Box is its border box clipped to the viewport, in image pixels.
+export interface FeedbackElement {
+  selector: string
+  tag: string
+  role?: string
+  name?: string
+  text?: string
+  box?: FeedbackRect
+}
+
+export function isFeedbackElement(value: unknown): value is FeedbackElement {
+  return isRecord(value)
+    && isString(value.selector)
+    && isString(value.tag)
+    && (value.role === undefined || isString(value.role))
+    && (value.name === undefined || isString(value.name))
+    && (value.text === undefined || isString(value.text))
+    && (value.box === undefined || isFeedbackRect(value.box))
+}
+
+// FeedbackAttachment is an image the server holds for one feedback (at-
+// and ten lowercase base32 characters), PNG only. Path is its absolute
+// file path, filled only by the CLI; HTTP never sends host paths.
+export interface FeedbackAttachment {
+  id: string
+  mediaType: string
+  width: number
+  height: number
+  bytes: number
+  sha256: string
+  path?: string
+}
+
+export function isFeedbackAttachment(value: unknown): value is FeedbackAttachment {
+  return isRecord(value)
+    && isString(value.id)
+    && isString(value.mediaType)
+    && isNumber(value.width)
+    && isNumber(value.height)
+    && isNumber(value.bytes)
+    && isString(value.sha256)
+    && (value.path === undefined || isString(value.path))
+}
+
+// FeedbackUpload is POST /api/feedback-attachments: an image staged for the
+// project's repository until ExpiresAt (an RFC 3339 time) or a thread takes
+// it.
+export interface FeedbackUpload {
+  id: string
+  mediaType: string
+  width: number
+  height: number
+  bytes: number
+  sha256: string
+  expiresAt: string
+}
+
+export function isFeedbackUpload(value: unknown): value is FeedbackUpload {
+  return isRecord(value)
+    && isString(value.id)
+    && isString(value.mediaType)
+    && isNumber(value.width)
+    && isNumber(value.height)
+    && isNumber(value.bytes)
+    && isString(value.sha256)
+    && isString(value.expiresAt)
+}
+
+// FeedbackVisual is a visual thread's target (decision 0176): one
+// screenshot, one rectangle on it, and optionally the page and an element
+// hint. Head is the project's HEAD commit when the thread was created,
+// absent without git. Available is false once the screenshot is gone.
+export interface FeedbackVisual {
+  attachment: FeedbackAttachment
+  rect: FeedbackRect
+  page?: FeedbackPage
+  element?: FeedbackElement
+  head?: string
+  available: boolean
+}
+
+export function isFeedbackVisual(value: unknown): value is FeedbackVisual {
+  return isRecord(value)
+    && isFeedbackAttachment(value.attachment)
+    && isFeedbackRect(value.rect)
+    && (value.page === undefined || isFeedbackPage(value.page))
+    && (value.element === undefined || isFeedbackElement(value.element))
+    && (value.head === undefined || isString(value.head))
+    && isBoolean(value.available)
+}
+
 // FeedbackLocation is a thread's anchor resolved against what a request
 // views: a compare's sides, or else the working tree (new side) and the
 // thread's own compare (old side). Path follows renames; Lines is absent for
@@ -149,14 +321,16 @@ export function isFeedbackMessage(value: unknown): value is FeedbackMessage {
     && isString(value.createdAt)
 }
 
-// FeedbackThread is one conversation at an anchor. Number counts from 1
+// FeedbackThread is one conversation at an anchor: code (Anchor and its
+// Location) or visual (decision 0176), never both. Number counts from 1
 // within the feedback and never repeats.
 export interface FeedbackThread {
   number: number
   status: FeedbackStatus
   awaiting: FeedbackAwaiting
-  anchor: FeedbackAnchor
-  location: FeedbackLocation
+  anchor?: FeedbackAnchor
+  location?: FeedbackLocation
+  visual?: FeedbackVisual
   messages: FeedbackMessage[]
   // createdAt is an RFC 3339 time.
   createdAt: string
@@ -169,11 +343,16 @@ export function isFeedbackThread(value: unknown): value is FeedbackThread {
     && isNumber(value.number)
     && isFeedbackStatus(value.status)
     && isFeedbackAwaiting(value.awaiting)
-    && isFeedbackAnchor(value.anchor)
-    && isFeedbackLocation(value.location)
+    && (value.anchor === undefined || isFeedbackAnchor(value.anchor))
+    && (value.location === undefined || isFeedbackLocation(value.location))
+    && (value.visual === undefined || isFeedbackVisual(value.visual))
     && isArrayOf(value.messages, isFeedbackMessage)
     && isString(value.createdAt)
     && isString(value.updatedAt)
+    && ((value.anchor ?? null) !== null || (value.visual ?? null) !== null)
+    && ((value.anchor ?? null) === null || (value.visual ?? null) === null)
+    && ((value.anchor ?? null) !== null || (value.location ?? null) === null)
+    && ((value.anchor ?? null) === null || (value.location ?? null) !== null)
 }
 
 // Feedback is GET /api/feedback: a branch's threads, oldest first. ID is

@@ -20,3 +20,7 @@ const (
 	ImageUnavailableMessage = "That image is unavailable."
 	ImageTooLargeMessage    = "That image is over 32 MiB."
 )
+
+// MaxFeedbackAttachmentBytes bounds one feedback attachment upload
+// (decision 0176).
+const MaxFeedbackAttachmentBytes = 8 << 20

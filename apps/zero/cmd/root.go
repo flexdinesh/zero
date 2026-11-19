@@ -285,7 +285,12 @@ func run(ctx context.Context, opts options, stdin io.Reader, stdout, stderr io.W
 		case <-serveCtx.Done():
 		}
 	}()
-	return rt.Serve(serveCtx, listener, instance.Handler(rt.Handler()))
+	// A loopback listener's clients share this host; any other may not.
+	handler := rt.Handler()
+	if loopbackHost(host) {
+		handler = rt.LocalHandler()
+	}
+	return rt.Serve(serveCtx, listener, instance.Handler(handler))
 }
 
 func listen(host string, port int) (net.Listener, error) {

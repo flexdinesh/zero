@@ -128,11 +128,11 @@ func (f *Feedback) Get(ctx context.Context, request contract.FeedbackRequest) (c
 	}
 	threads := make([]contract.FeedbackThread, 0, len(stored.Threads))
 	for _, thread := range stored.Threads {
-		location, err := sides.locate(thread.Anchor, compare)
+		location, err := sides.locateThread(thread, compare)
 		if err != nil {
 			return contract.Feedback{}, fail(contract.KindInternal, "Couldn't read the feedback's files: "+err.Error())
 		}
-		threads = append(threads, threadContract(f.config.Types, project.Root, thread, location))
+		threads = append(threads, f.threadContract(project.Root, stored, thread, location))
 	}
 	return contract.Feedback{ID: stored.ID, Project: project.Root, Branch: stored.Branch, Threads: threads, CreatedAt: formatTime(stored.CreatedAt), UpdatedAt: formatTime(stored.UpdatedAt)}, nil
 }
@@ -160,12 +160,15 @@ func (f *Feedback) List(request contract.FeedbackListRequest) ([]contract.Feedba
 // within a text side of at most 8 MiB; the anchor records the side's text,
 // context, and blob. The feedback is ID's, or else the compare's head
 // branch's, or HEAD's, created when missing. The thread's location resolves
-// against Compare.
+// against Compare. A visual draft makes a visual thread (createVisual).
 func (f *Feedback) CreateThread(ctx context.Context, draft contract.FeedbackThreadDraft) (contract.FeedbackThread, error) {
 	if draft.Author == "" {
 		draft.Author = contract.FeedbackAuthorUser
 	}
 	model, err := threadDraftModel(draft).Normalize()
+	if model.Visual != nil {
+		return f.createVisual(ctx, model, err)
+	}
 	if err != nil {
 		return contract.FeedbackThread{}, rejected(err)
 	}
@@ -191,16 +194,156 @@ func (f *Feedback) CreateThread(ctx context.Context, draft contract.FeedbackThre
 	if err != nil {
 		return contract.FeedbackThread{}, err
 	}
-	stored, thread, err := f.service.AddThread(feedback.Target{Repository: repository, Branch: branch, ID: model.ID, Project: project.Root}, feedback.NewThread{Anchor: anchor, Author: model.Author, Name: model.Name, Body: model.Body})
+	stored, thread, err := f.service.AddThread(feedback.Target{Repository: repository, Branch: branch, ID: model.ID, Project: project.Root}, feedback.NewThread{Anchor: &anchor, Author: model.Author, Name: model.Name, Body: model.Body})
 	if err != nil {
 		return contract.FeedbackThread{}, f.writeFailure(model.ID, err)
 	}
-	location, err := sides.locate(thread.Anchor, model.Compare)
+	location, err := sides.locateThread(thread, model.Compare)
 	if err != nil {
 		return contract.FeedbackThread{}, fail(contract.KindInternal, "Couldn't read the thread's file: "+err.Error())
 	}
 	f.announce(repository, project.Root, stored, contract.FeedbackAuthor(model.Author))
-	return threadContract(f.config.Types, project.Root, thread, location), nil
+	return f.threadContract(project.Root, stored, thread, location), nil
+}
+
+// createVisual starts a visual thread (decision 0176) from a draft
+// Normalize checked, with normalized its outcome: every problem, the
+// structure's and the image's, is reported at once. The attachment must be
+// a live upload of the project's repository, the rectangle and element box
+// inside its image, and the image the page's clip or frame. The target
+// records HEAD's commit and, for a loopback URL, what the transport says
+// loopback is. The feedback is ID's, or else HEAD's branch's.
+func (f *Feedback) createVisual(ctx context.Context, model feedback.ThreadDraft, normalized error) (contract.FeedbackThread, error) {
+	var problems feedback.Problems
+	if normalized != nil && !errors.As(normalized, &problems) {
+		return contract.FeedbackThread{}, normalized
+	}
+	project, err := f.resolve(model.Project)
+	if err != nil {
+		if len(problems) > 0 {
+			return contract.FeedbackThread{}, &FeedbackRejected{Problems: problems}
+		}
+		return contract.FeedbackThread{}, err
+	}
+	repository := FeedbackRepository(project.Root)
+	image, live, found := f.service.Staged(repository, model.Visual.Attachment)
+	var staged *feedback.Attachment
+	if found {
+		staged = &image
+	}
+	problems = append(problems, feedback.CheckVisualImage(*model.Visual, staged, live)...)
+	if len(problems) > 0 {
+		return contract.FeedbackThread{}, &FeedbackRejected{Problems: problems}
+	}
+	branch := requestBranch(project.Root, nil)
+	if model.ID != "" {
+		existing, err := f.service.Get(repository, model.ID)
+		if err != nil {
+			return contract.FeedbackThread{}, f.readFailure(model.ID, err)
+		}
+		branch = existing.Branch
+	}
+	visual := feedback.Visual{Attachment: image, Rect: model.Visual.Rect, Page: model.Visual.Page, Element: model.Visual.Element}
+	if head, err := git.ReadHead(project.Root); err == nil {
+		visual.Head = head.Commit
+	}
+	if visual.Page != nil && feedback.IsLoopbackURL(visual.Page.URL) {
+		visual.Page.Localhost = feedback.LocalhostViewer
+		if TransportOf(ctx) == TransportLocal {
+			visual.Page.Localhost = feedback.LocalhostProject
+		}
+	}
+	stored, thread, err := f.service.AddThread(feedback.Target{Repository: repository, Branch: branch, ID: model.ID, Project: project.Root}, feedback.NewThread{Visual: &visual, Author: model.Author, Name: model.Name, Body: model.Body})
+	if err != nil {
+		return contract.FeedbackThread{}, f.writeFailure(model.ID, err)
+	}
+	f.announce(repository, project.Root, stored, contract.FeedbackAuthor(model.Author))
+	return f.threadContract(project.Root, stored, thread, resolvedLocation{}), nil
+}
+
+// UploadAttachment stages a PNG for the project's repository's next visual
+// thread (decision 0176): at most contract.MaxFeedbackAttachmentBytes, each
+// side at most 8192 px and 16 MP; metadata chunks are dropped. It expires
+// after an hour unless a thread takes it.
+func (f *Feedback) UploadAttachment(project string, data []byte) (contract.FeedbackUpload, error) {
+	resolved, err := f.resolve(project)
+	if err != nil {
+		return contract.FeedbackUpload{}, err
+	}
+	if len(data) > contract.MaxFeedbackAttachmentBytes {
+		return contract.FeedbackUpload{}, &Error{Kind: contract.KindTooLarge, Code: contract.CodeInvalidFeedback, Message: AttachmentTooLargeMessage}
+	}
+	upload, err := f.service.Stage(FeedbackRepository(resolved.Root), data)
+	switch {
+	case errors.Is(err, feedback.ErrInvalidImage):
+		return contract.FeedbackUpload{}, &Error{Kind: contract.KindInvalid, Code: contract.CodeInvalidFeedback, Message: err.Error()}
+	case err != nil:
+		return contract.FeedbackUpload{}, fail(contract.KindInternal, "Couldn't save the screenshot: "+err.Error())
+	}
+	attachment := attachmentContract(upload.Attachment)
+	return contract.FeedbackUpload{ID: attachment.ID, MediaType: attachment.MediaType, Width: attachment.Width, Height: attachment.Height, Bytes: attachment.Bytes, SHA256: attachment.SHA256, ExpiresAt: formatTime(upload.ExpiresAt)}, nil
+}
+
+// Attachment messages.
+const (
+	AttachmentTooLargeMessage    = "A screenshot is at most 8 MiB."
+	AttachmentUnavailableMessage = "That screenshot is gone: its thread or feedback was deleted, or it was dropped to stay within the storage budget."
+)
+
+// AttachmentPath returns the file of an attachment a thread of the
+// project's feedback names. Only the CLI shows it; HTTP never sends host
+// paths.
+func (f *Feedback) AttachmentPath(request contract.FeedbackAttachmentRequest) (string, error) {
+	resolved, err := f.resolve(request.Project)
+	if err != nil {
+		return "", err
+	}
+	unavailable := &Error{Kind: contract.KindNotFound, Code: contract.CodeFeedbackUnavailable, Message: AttachmentUnavailableMessage}
+	stored, err := f.service.Get(FeedbackRepository(resolved.Root), request.ID)
+	if errors.Is(err, feedback.ErrNotFound) {
+		return "", unavailable
+	}
+	if err != nil {
+		return "", f.readFailure(request.ID, err)
+	}
+	name, _, err := f.service.AttachmentFile(stored, request.Attachment)
+	if err != nil {
+		return "", unavailable
+	}
+	return name, nil
+}
+
+// OpenAttachment opens an attachment as AttachmentPath finds it: its PNG
+// bytes and size.
+func (f *Feedback) OpenAttachment(request contract.FeedbackAttachmentRequest) (io.ReadCloser, int64, error) {
+	name, err := f.AttachmentPath(request)
+	if err != nil {
+		return nil, 0, err
+	}
+	file, err := os.Open(name)
+	if err != nil {
+		return nil, 0, &Error{Kind: contract.KindNotFound, Code: contract.CodeFeedbackUnavailable, Message: AttachmentUnavailableMessage}
+	}
+	info, err := file.Stat()
+	if err != nil {
+		_ = file.Close()
+		return nil, 0, fail(contract.KindInternal, "Couldn't read the screenshot: "+err.Error())
+	}
+	return file, info.Size(), nil
+}
+
+// ReadAttachment reads an attachment whole, as OpenAttachment finds it.
+func (f *Feedback) ReadAttachment(request contract.FeedbackAttachmentRequest) (contract.Image, error) {
+	content, _, err := f.OpenAttachment(request)
+	if err != nil {
+		return contract.Image{}, err
+	}
+	defer func() { _ = content.Close() }()
+	data, err := io.ReadAll(io.LimitReader(content, contract.MaxFeedbackAttachmentBytes+1))
+	if err != nil {
+		return contract.Image{}, fail(contract.KindInternal, "Couldn't read the screenshot: "+err.Error())
+	}
+	return contract.Image{MediaType: feedback.MediaTypePNG, Content: data}, nil
 }
 
 // PostMessage replies to a thread, changes its status, or both: Author
@@ -227,12 +370,12 @@ func (f *Feedback) PostMessage(ctx context.Context, draft contract.FeedbackMessa
 	defer cancel()
 	sides := f.sides(ctx, project.Root)
 	defer sides.close()
-	location, err := sides.locate(thread.Anchor, nil)
+	location, err := sides.locateThread(thread, nil)
 	if err != nil {
 		return contract.FeedbackThread{}, fail(contract.KindInternal, "Couldn't read the thread's file: "+err.Error())
 	}
 	f.announce(repository, project.Root, stored, contract.FeedbackAuthor(model.Author))
-	return threadContract(f.config.Types, project.Root, thread, location), nil
+	return f.threadContract(project.Root, stored, thread, location), nil
 }
 
 // DeleteThread removes one thread of a feedback; its number is not reused.
@@ -407,7 +550,53 @@ func threadDraftModel(draft contract.FeedbackThreadDraft) feedback.ThreadDraft {
 		compare := compareModel(*draft.Compare)
 		model.Compare = &compare
 	}
+	if visual := draft.Visual; visual != nil {
+		model.Visual = &feedback.VisualDraft{Attachment: visual.Attachment, Rect: feedback.Rect(visual.Rect), Element: elementModel(visual.Element)}
+		if page := visual.Page; page != nil {
+			model.Visual.Page = &feedback.Page{URL: page.URL, Title: page.Title, Viewport: feedback.Viewport(page.Viewport), Scroll: feedback.Scroll(page.Scroll), Clip: rectModel(page.Clip)}
+		}
+	}
 	return model
+}
+
+func rectModel(rect *contract.FeedbackRect) *feedback.Rect {
+	if rect == nil {
+		return nil
+	}
+	model := feedback.Rect(*rect)
+	return &model
+}
+
+func rectContract(rect *feedback.Rect) *contract.FeedbackRect {
+	if rect == nil {
+		return nil
+	}
+	answered := contract.FeedbackRect(*rect)
+	return &answered
+}
+
+func elementModel(element *contract.FeedbackElement) *feedback.Element {
+	if element == nil {
+		return nil
+	}
+	return &feedback.Element{Selector: element.Selector, Tag: element.Tag, Role: element.Role, Name: element.Name, Text: element.Text, Box: rectModel(element.Box)}
+}
+
+func attachmentContract(attachment feedback.Attachment) contract.FeedbackAttachment {
+	return contract.FeedbackAttachment{ID: attachment.ID, MediaType: attachment.MediaType, Width: attachment.Width, Height: attachment.Height, Bytes: int(attachment.Bytes), SHA256: attachment.SHA256}
+}
+
+// visualContract is a stored visual target; available says whether its
+// screenshot is still there.
+func visualContract(visual feedback.Visual, available bool) *contract.FeedbackVisual {
+	answered := &contract.FeedbackVisual{Attachment: attachmentContract(visual.Attachment), Rect: contract.FeedbackRect(visual.Rect), Head: visual.Head, Available: available}
+	if page := visual.Page; page != nil {
+		answered.Page = &contract.FeedbackPage{URL: page.URL, Title: page.Title, Viewport: contract.FeedbackViewport(page.Viewport), Scroll: contract.FeedbackScroll(page.Scroll), Clip: rectContract(page.Clip), Localhost: contract.FeedbackLocalhost(page.Localhost)}
+	}
+	if element := visual.Element; element != nil {
+		answered.Element = &contract.FeedbackElement{Selector: element.Selector, Tag: element.Tag, Role: element.Role, Name: element.Name, Text: element.Text, Box: rectContract(element.Box)}
+	}
+	return answered
 }
 
 func linesSlice(lines *feedback.Lines) []int {
@@ -417,10 +606,19 @@ func linesSlice(lines *feedback.Lines) []int {
 	return []int{lines[0], lines[1]}
 }
 
-// threadContract is a stored thread with its location, rendered messages,
-// and its current path's highlight language; Markdown renders as walkthrough
-// narration does, links resolving from the project root.
-func threadContract(types *document.Registry, root string, thread feedback.Thread, location resolvedLocation) contract.FeedbackThread {
+// threadContract is threadContractOf with a visual thread's screenshot
+// looked up in stored.
+func (f *Feedback) threadContract(root string, stored feedback.Feedback, thread feedback.Thread, location resolvedLocation) contract.FeedbackThread {
+	available := thread.Visual != nil && f.service.HasAttachment(stored.Repository, stored.ID, thread.Visual.Attachment.ID)
+	return threadContractOf(f.config.Types, root, thread, location, available)
+}
+
+// threadContractOf is a stored thread with its rendered messages and its
+// target: a code anchor with its location and its current path's highlight
+// language, or a visual target, whose screenshot available says is still
+// there. Markdown renders as walkthrough narration does, links resolving
+// from the project root.
+func threadContractOf(types *document.Registry, root string, thread feedback.Thread, location resolvedLocation, available bool) contract.FeedbackThread {
 	context := document.Context{Project: root}
 	messages := make([]contract.FeedbackMessage, len(thread.Messages))
 	for i, message := range thread.Messages {
@@ -430,21 +628,27 @@ func threadContract(types *document.Registry, root string, thread feedback.Threa
 		}
 		messages[i] = contract.FeedbackMessage{Number: message.Number, Author: contract.FeedbackAuthor(message.Author), Name: message.Name, Body: message.Body, BodyHTML: rendered, Status: contract.FeedbackStatus(message.Status), CreatedAt: formatTime(message.CreatedAt)}
 	}
-	anchor := thread.Anchor
-	return contract.FeedbackThread{
-		Number:   thread.Number,
-		Status:   contract.FeedbackStatus(thread.Status),
-		Awaiting: contract.FeedbackAwaiting(thread.Awaiting()),
-		Anchor: contract.FeedbackAnchor{
-			Path: anchor.Path, Side: contract.FeedbackSide(anchor.Side), Lines: linesSlice(anchor.Lines),
-			Text: anchor.Text, Before: anchor.Before, After: anchor.After, Blob: anchor.Blob, Compare: compareContract(anchor.Compare),
-			Language: highlightLanguage(types, location.Path),
-		},
-		Location:  contract.FeedbackLocation{State: contract.FeedbackAnchorState(location.State), Path: location.Path, Side: contract.FeedbackSide(anchor.Side), Lines: linesSlice(location.Lines)},
+	answered := contract.FeedbackThread{
+		Number:    thread.Number,
+		Status:    contract.FeedbackStatus(thread.Status),
+		Awaiting:  contract.FeedbackAwaiting(thread.Awaiting()),
 		Messages:  messages,
 		CreatedAt: formatTime(thread.CreatedAt),
 		UpdatedAt: formatTime(thread.UpdatedAt),
 	}
+	switch {
+	case thread.Anchor != nil:
+		anchor := thread.Anchor
+		answered.Anchor = &contract.FeedbackAnchor{
+			Path: anchor.Path, Side: contract.FeedbackSide(anchor.Side), Lines: linesSlice(anchor.Lines),
+			Text: anchor.Text, Before: anchor.Before, After: anchor.After, Blob: anchor.Blob, Compare: compareContract(anchor.Compare),
+			Language: highlightLanguage(types, location.Path),
+		}
+		answered.Location = &contract.FeedbackLocation{State: contract.FeedbackAnchorState(location.State), Path: location.Path, Side: contract.FeedbackSide(anchor.Side), Lines: linesSlice(location.Lines)}
+	case thread.Visual != nil:
+		answered.Visual = visualContract(*thread.Visual, available)
+	}
+	return answered
 }
 
 // highlightLanguage is the registry's highlight language for a path, "" for
@@ -650,6 +854,15 @@ func (s *feedbackSides) content(size int64, open func() (io.ReadCloser, error)) 
 		return feedback.Side{Exists: true, TooLarge: true}, nil
 	}
 	return feedback.Side{Exists: true, Content: content}, nil
+}
+
+// locateThread resolves a code thread's anchor (locate); a visual thread
+// has no location: pixels do not drift with code.
+func (s *feedbackSides) locateThread(thread feedback.Thread, compare *feedback.Compare) (resolvedLocation, error) {
+	if thread.Anchor == nil {
+		return resolvedLocation{}, nil
+	}
+	return s.locate(*thread.Anchor, compare)
 }
 
 // locate resolves an anchor against compare's sides, or else, new sides in

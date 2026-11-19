@@ -80,6 +80,8 @@ import { QuickOpen, type QuickOpenOptions } from "./features/quick-open/QuickOpe
 import type { NavigationKind } from "./features/navigation/code-navigation.ts"
 import type { CommandAction } from "./workspace/commands.ts"
 import { ReportProblemDialog } from "./features/diagnostics/ReportProblemDialog.tsx"
+import { ReviewURLDialog } from "./features/review/ReviewURLDialog.tsx"
+import { useDesktopReviewURL } from "./features/review/use-desktop-review-url.ts"
 import type { SourceChanges } from "./features/documents/SourceDocument.tsx"
 import { NavigationProvider, NavigationStatus, type NavigationCaret } from "./features/navigation/NavigationProvider.tsx"
 import { useSettings } from "./settings/SettingsProvider.tsx"
@@ -128,6 +130,8 @@ import type { SourceAnnotation } from "./features/documents/SourceDocument.tsx"
 import { FeedbackSidebarView } from "./features/feedback/FeedbackView.tsx"
 import { routeFeedback, type ThreadRoute } from "./features/feedback/feedback-model.ts"
 import { useFeedbackView } from "./features/feedback/use-feedback-view.ts"
+import { ScreenCommentDialog } from "./features/feedback/ScreenCommentDialog.tsx"
+import { useDesktopScreenComment, type ScreenSource } from "./features/feedback/use-screen-comment.ts"
 import { useReviewFeedback } from "./features/feedback/use-review-feedback.tsx"
 import { useSourceFeedback } from "./features/feedback/use-source-feedback.tsx"
 import { useSourceBlame } from "./features/blame/use-source-blame.tsx"
@@ -225,6 +229,7 @@ export function App({ project }: AppProps) {
   const openColorTheme = useRef<() => void>(() => {})
   const openRecent = useRef<() => void>(() => {})
   const openReport = useRef<() => void>(() => {})
+  const openReviewURL = useRef<() => void>(() => {})
   const stepHunk = useRef<HunkStep>(() => {})
   const [lastPage, setLastPage] = useState<PageData | null>(() => result ? initialPage(result) : null)
   useEffect(() => {
@@ -279,6 +284,11 @@ export function App({ project }: AppProps) {
   }, [])
   const reportProblem = useCallback(() => openReport.current(), [])
   useDesktopReportProblem(reportProblem)
+  const registerReviewURL = useCallback((open: (() => void) | null) => {
+    openReviewURL.current = open ?? (() => {})
+  }, [])
+  const reviewURL = useCallback(() => openReviewURL.current(), [])
+  useDesktopReviewURL(reviewURL)
   const runNavigation = useRef<(kind: NavigationKind) => void>(() => {})
   const registerNavigation = useCallback((command: ((kind: NavigationKind) => void) | null) => {
     runNavigation.current = command ?? (() => {})
@@ -310,6 +320,18 @@ export function App({ project }: AppProps) {
     showFeedback(id, path)
     revealSidebar("feedback")
   }, [revealSidebar, showFeedback])
+  // The desktop app's Comment on Screen opens the composer on the checkout's
+  // branch's feedback, in the capture's project (decision 0176).
+  const { openComposer } = feedbackView
+  const commentOnScreen = useCallback((source: ScreenSource) => {
+    showFeedback("")
+    revealSidebar("feedback")
+    openComposer(source)
+  }, [openComposer, revealSidebar, showFeedback])
+  const switchToProject = useCallback((next: string) => {
+    void navigate({ to: "/view", search: { project: next }, hash: "" })
+  }, [navigate])
+  useDesktopScreenComment(project, commentOnScreen, switchToProject)
   const revealExplorer = useCallback(() => revealSidebar("explorer"), [revealSidebar])
   const revealSearch = useCallback(() => revealSidebar("search"), [revealSidebar])
   const sourceControlActive = sidebar.visibleView === "source-control"
@@ -396,6 +418,7 @@ export function App({ project }: AppProps) {
     else if (action.kind === "recent-locations") openRecent.current()
     else if (action.kind === "select-color-theme") openColorTheme.current()
     else if (action.kind === "report-problem") openReport.current()
+    else if (action.kind === "review-url") openReviewURL.current()
     else if (action.kind === "toggle-word-wrap") {
       if (wordWrap !== null) toggleWordWrap(pageKey, defaultWordWrap)
     } else if (action.kind === "find") findCommands.current?.open()
@@ -1071,6 +1094,9 @@ export function App({ project }: AppProps) {
       <ColorThemePicker registerOpen={registerColorTheme} />
       <RecentLocations log={historyLog} project={project} registerOpen={registerRecent} onOpen={navigateToHref} />
       <ReportProblemDialog registerOpen={registerReport} />
+      <ReviewURLDialog project={project} registerOpen={registerReviewURL} />
+      <ScreenCommentDialog composer={feedbackView.composer} actions={feedbackView.session.actions}
+        onSource={openComposer} onClose={feedbackView.closeComposer} onSent={feedbackView.closeComposer} />
       <OverlayScrollbars />
     </FindProvider>
     </SearchProvider>

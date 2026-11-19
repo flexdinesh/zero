@@ -145,6 +145,7 @@ const (
 //
 //contract:rule enabled == true => name != ""
 //contract:rule enabled == true => note != ""
+//contract:rule parent == null => enabled == true
 type Thing struct {
 	// Name names it.
 	Name    string   ` + "`json:\"name\"`" + `
@@ -188,6 +189,7 @@ type Thing struct {
 		"&& (value.next === null || isThing(value.next))",
 		"&& (value.note === undefined || isString(value.note))",
 		`&& (value.enabled !== true || value.name !== "")`,
+		"&& ((value.parent ?? null) !== null || value.enabled === true)",
 	} {
 		if !strings.Contains(b, want) {
 			t.Errorf("b.ts lacks %q:\n%s", want, b)
@@ -216,7 +218,7 @@ func TestGeneratorRejectsWhatGuardsCannotExpress(t *testing.T) {
 		"optional number":     "type T struct {\n\tN int `json:\"n,omitempty\"`\n}\n",
 		"optional struct":     "type U struct{}\ntype T struct {\n\tU U `json:\"u,omitempty\"`\n}\n",
 		"optional enum ptr":   "type E string\n\nconst EOn E = \"on\"\n\ntype T struct {\n\tE *E `json:\"e,omitempty\"`\n}\n",
-		"optional ptr rule":   "type U struct{}\n\n//contract:rule u == null => s != \"\"\ntype T struct {\n\tU *U `json:\"u,omitempty\"`\n\tS string `json:\"s\"`\n}\n",
+		"optional ptr rule":   "type U struct{}\n\n//contract:rule u == true => s != \"\"\ntype T struct {\n\tU *U `json:\"u,omitempty\"`\n\tS string `json:\"s\"`\n}\n",
 		"optional rule":       "//contract:rule n == true => s != \"\"\ntype T struct {\n\tN *bool `json:\"n,omitempty\"`\n\tS string `json:\"s\"`\n}\n",
 		"optional slice rule": "//contract:rule n == null => s != \"\"\ntype T struct {\n\tN []string `json:\"n,omitempty\"`\n\tS string `json:\"s\"`\n}\n",
 		"pointer to slice":    "type T struct {\n\tN *[]string `json:\"n\"`\n}\n",

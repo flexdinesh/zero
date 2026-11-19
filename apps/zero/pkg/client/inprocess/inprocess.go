@@ -191,7 +191,9 @@ func (c *Client) FeedbackList(ctx context.Context, request contract.FeedbackList
 }
 
 func (c *Client) CreateFeedbackThread(ctx context.Context, draft contract.FeedbackThreadDraft) (contract.FeedbackThread, error) {
-	return call(ctx, func() (contract.FeedbackThread, error) { return c.app.Feedback.CreateThread(ctx, draft) })
+	// An in-process caller shares the project's host (decision 0176).
+	local := app.WithTransport(ctx, app.TransportLocal)
+	return call(ctx, func() (contract.FeedbackThread, error) { return c.app.Feedback.CreateThread(local, draft) })
 }
 
 func (c *Client) PostFeedbackMessage(ctx context.Context, draft contract.FeedbackMessageDraft) (contract.FeedbackThread, error) {
@@ -201,6 +203,14 @@ func (c *Client) PostFeedbackMessage(ctx context.Context, draft contract.Feedbac
 func (c *Client) DeleteFeedbackThread(ctx context.Context, request contract.FeedbackDeleteRequest) error {
 	_, err := call(ctx, func() (struct{}, error) { return struct{}{}, c.app.Feedback.DeleteThread(request) })
 	return err
+}
+
+func (c *Client) UploadFeedbackAttachment(ctx context.Context, project string, png []byte) (contract.FeedbackUpload, error) {
+	return call(ctx, func() (contract.FeedbackUpload, error) { return c.app.Feedback.UploadAttachment(project, png) })
+}
+
+func (c *Client) FeedbackAttachment(ctx context.Context, request contract.FeedbackAttachmentRequest) (contract.Image, error) {
+	return call(ctx, func() (contract.Image, error) { return c.app.Feedback.ReadAttachment(request) })
 }
 
 func (c *Client) DeleteFeedback(ctx context.Context, request contract.FeedbackDeleteRequest) error {

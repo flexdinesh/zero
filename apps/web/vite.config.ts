@@ -74,17 +74,19 @@ async function readJSONFixture(name: string): Promise<unknown> {
 }
 
 // loadFeedbackStore seeds the in-memory feedback from the fixtures.
+// The one stored screenshot, thread 5's (decision 0176).
 async function loadFeedbackStore(): Promise<MockFeedbackStore> {
   const current = await readJSONFixture("feedback.json")
   const listed = await readJSONFixture("feedback-list.json")
   if (!isFeedback(current) || !Array.isArray(listed) || !listed.every(isFeedbackSummary)) throw new Error("invalid feedback fixtures")
-  return mockFeedbackStore(current, listed)
+  const screenshot = await readFile(join(mockFixturesDirectory, "feedback-attachment.png"))
+  return mockFeedbackStore(current, listed, undefined, new Map([["at-7hq2mx4kpa", new Uint8Array(screenshot)]]))
 }
 
-async function readRequestBody(request: IncomingMessage): Promise<string> {
+async function readRequestBody(request: IncomingMessage): Promise<Buffer> {
   const chunks: Buffer[] = []
   for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)))
-  return Buffer.concat(chunks).toString("utf8")
+  return Buffer.concat(chunks)
 }
 
 function mockApi(enabled: boolean): Plugin {
@@ -98,10 +100,17 @@ function mockApi(enabled: boolean): Plugin {
         if (request.url?.startsWith("/feedback")) {
           try {
             feedback ??= loadFeedbackStore()
-            const answer = (await feedback).handle({ method: request.method ?? "", url: request.url, body: await readRequestBody(request) })
+            const bytes = await readRequestBody(request)
+            const answer = (await feedback).handle({ method: request.method ?? "", url: request.url, body: bytes.toString("utf8"), bytes })
             if (answer !== undefined) {
               response.statusCode = answer.status
               response.setHeader("Cache-Control", "no-store")
+              if (answer.bytes) {
+                response.setHeader("Content-Type", answer.contentType ?? "application/octet-stream")
+                response.setHeader("X-Content-Type-Options", "nosniff")
+                response.end(Buffer.from(answer.bytes))
+                return
+              }
               if (answer.body) response.setHeader("Content-Type", "application/json; charset=utf-8")
               response.end(answer.body)
               return

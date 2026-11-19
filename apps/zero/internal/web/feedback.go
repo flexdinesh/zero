@@ -3,6 +3,7 @@ package web
 import (
 	"errors"
 	"fmt"
+	"io"
 	"mime"
 	"net/http"
 	"net/url"
@@ -14,7 +15,8 @@ import (
 
 // Review feedback (decision 0120) is read and written by the browser and by
 // agents through app.Feedback. Writes take the walkthrough guards: JSON
-// only, at most 1 MiB, and no foreign Origin.
+// only, at most 1 MiB, and no foreign Origin. Screenshot uploads (decision
+// 0176) take a PNG body of at most 8 MiB instead.
 
 // compareQueryNames are the query parameters a compare takes, as
 // /api/compare-stats reads them.
@@ -132,4 +134,66 @@ func (a *App) serveDeleteFeedback(w http.ResponseWriter, r *http.Request, thread
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// Local marks every request next serves as arriving on a transport that
+// shares the project's host (app.TransportLocal): wrap only the daemon's
+// Unix socket and `zero browser`'s loopback listener with it. Every other
+// listener stays remote, so a visual target's loopback URL names the
+// reviewer's machine (decision 0176).
+func Local(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, r.WithContext(app.WithTransport(r.Context(), app.TransportLocal)))
+	})
+}
+
+// serveUploadFeedbackAttachment stages a screenshot: POST
+// /api/feedback-attachments?project=, a PNG body of at most 8 MiB, from no
+// foreign Origin. It answers 201 with the upload.
+func (a *App) serveUploadFeedbackAttachment(w http.ResponseWriter, r *http.Request) {
+	if !sameOrigin(r) {
+		writeJSON(w, http.StatusForbidden, errorResponse{Error: "Feedback can't be changed from another site.", Code: contract.CodeForeignOrigin})
+		return
+	}
+	if mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err != nil || mediaType != "image/png" {
+		writeJSON(w, http.StatusUnsupportedMediaType, errorResponse{Error: "Send a screenshot as Content-Type: image/png.", Code: contract.CodeUnsupportedMediaType})
+		return
+	}
+	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, contract.MaxFeedbackAttachmentBytes))
+	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			writeJSON(w, http.StatusRequestEntityTooLarge, errorResponse{Error: app.AttachmentTooLargeMessage, Code: contract.CodeInvalidFeedback})
+			return
+		}
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "Couldn't read the screenshot: " + err.Error(), Code: contract.CodeInvalidFeedback})
+		return
+	}
+	upload, err := a.app.Feedback.UploadAttachment(r.URL.Query().Get("project"), data)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, upload)
+}
+
+// serveFeedbackAttachment answers a screenshot's PNG, sandboxed as
+// /api/image answers a commit's image. An attachment never changes, so it
+// is cached privately.
+func (a *App) serveFeedbackAttachment(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+	content, size, err := a.app.Feedback.OpenAttachment(contract.FeedbackAttachmentRequest{Project: query.Get("project"), ID: query.Get("id"), Attachment: query.Get("attachment")})
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		writeError(w, err)
+		return
+	}
+	defer func() { _ = content.Close() }()
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
+	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	w.Header().Set("Content-Security-Policy", "sandbox; default-src 'none'; style-src 'unsafe-inline'")
+	_, _ = io.Copy(w, content)
 }

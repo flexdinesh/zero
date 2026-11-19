@@ -1,0 +1,450 @@
+/* Visual feedback targets (decision 0176): screenshot rows and their
+   thread's image in the Feedback view, the zoom viewer, and New screen
+   comment's composer. Images sit on canvas inside a hairline; the
+   rectangle is a 2px accent ring outside a 1px surface halo, with a light
+   accent fill; the element hint is a dashed accent box. */
+
+.feedback-view {
+  position: relative;
+}
+
+/* A dragged image over the view: the drop target names itself. */
+.feedback-drop {
+  position: absolute;
+  z-index: var(--z-raised);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: var(--space-4);
+  color: var(--color-text-primary);
+  background: color-mix(in srgb, var(--color-surface) 92%, transparent);
+  font-size: var(--text-sm);
+  gap: var(--space-2);
+  inset: 0;
+  text-align: center;
+  outline: 2px dashed var(--color-accent);
+  outline-offset: -2px;
+  pointer-events: none;
+}
+
+.feedback-drop svg {
+  width: var(--icon-lg);
+  height: var(--icon-lg);
+  flex: none;
+  color: var(--color-accent);
+}
+
+/* The screenshots' header row, after every file's. */
+.feedback-group-icon {
+  width: var(--icon-md);
+  height: var(--icon-md);
+  flex: none;
+  color: var(--color-text-secondary);
+}
+
+.feedback-group-name {
+  min-width: 0;
+  font-size: var(--text-xs);
+}
+
+/* A row's crop: 3:2 (VisualTarget.tsx thumbAspect), as tall as the row's
+   two lines. */
+.visual-thumb {
+  position: relative;
+  display: grid;
+  width: calc((var(--text-sm--line-height) + var(--text-xs--line-height)) * 1.5);
+  height: calc(var(--text-sm--line-height) + var(--text-xs--line-height));
+  flex: none;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  background: var(--color-canvas);
+  place-items: center;
+}
+
+.visual-thumb img {
+  position: absolute;
+  max-width: none;
+}
+
+.visual-thumb svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+/* The thread's screenshot, at the view's width, zooms on click. */
+.visual-target {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-2);
+  margin-block-end: var(--space-2);
+}
+
+.visual-frame.ui-button {
+  display: block;
+  width: 100%;
+  height: auto;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  background: var(--color-canvas);
+  cursor: zoom-in;
+}
+
+.visual-shot {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+
+.visual-image {
+  position: absolute;
+  display: block;
+  width: 100%;
+  height: 100%;
+  inset: 0;
+}
+
+/* The rectangle rings its pixels from outside, a surface hairline then
+   the accent, so it reads on any screenshot and hides none of it. */
+.visual-mark,
+.screen-mark {
+  position: absolute;
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  box-shadow: 0 0 0 1px var(--color-surface);
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+  pointer-events: none;
+}
+
+.visual-element-box,
+.screen-element-box {
+  position: absolute;
+  border: 1px dashed var(--color-accent);
+  pointer-events: none;
+}
+
+.visual-missing {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  background: var(--color-canvas);
+  font-size: var(--text-xs);
+  gap: var(--space-2);
+  line-height: var(--text-xs--line-height);
+}
+
+.visual-missing svg {
+  width: var(--icon-md);
+  height: var(--icon-md);
+  flex: none;
+}
+
+/* The page and element lines: mono address and tag, muted context that
+   wraps under them when the view is narrow. */
+.visual-line {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  gap: 0 var(--space-1);
+  line-height: var(--text-xs--line-height);
+}
+
+.visual-line-icon {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  flex: none;
+}
+
+.visual-url,
+.visual-element-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The address keeps to its icon's line; its note wraps first. */
+.visual-url {
+  max-width: calc(100% - var(--icon-sm) - var(--space-1));
+}
+
+.visual-where {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.visual-element .visual-where {
+  font-family: var(--font-mono);
+}
+
+.visual-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+/* Zoom: fitted to the window or at the page's size, on canvas. */
+.visual-zoom[open] {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.visual-zoom-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.visual-zoom-stage {
+  display: flex;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-4);
+  background: var(--color-canvas);
+  container-type: size;
+}
+
+.visual-zoom-stage[data-scale="actual"] {
+  container-type: normal;
+}
+
+.visual-zoom-frame {
+  flex: none;
+  margin: auto;
+  outline: 1px solid var(--color-border);
+}
+
+/* New screen comment: the frozen image beside the form. */
+.screen-dialog[open] {
+  display: grid;
+}
+
+.screen-composer {
+  display: grid;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.screen-body {
+  display: grid;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem);
+}
+
+.screen-stage-pane {
+  display: grid;
+  min-height: 0;
+  border-inline-end: 1px solid var(--color-border);
+  background: var(--color-canvas);
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.screen-stage {
+  display: flex;
+  min-height: 0;
+  padding: var(--space-4);
+  container-type: size;
+}
+
+.screen-frame {
+  position: relative;
+  flex: none;
+  margin: auto;
+  overflow: clip;
+  cursor: crosshair;
+  outline: 1px solid var(--color-border);
+  touch-action: none;
+  user-select: none;
+}
+
+.screen-frame:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
+
+.screen-image {
+  position: absolute;
+  display: block;
+  width: 100%;
+  height: 100%;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* What a region attaches stays bright; the rest never leaves the page. */
+.screen-keep {
+  position: absolute;
+  box-shadow: 0 0 0 100vmax var(--color-overlay);
+  outline: 1px dashed var(--color-accent);
+  pointer-events: none;
+}
+
+.screen-readout {
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  font-size: var(--text-xs);
+  line-height: var(--text-xs--line-height);
+}
+
+.screen-figure {
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Waiting for an image: a dashed target that takes a paste or a drop. */
+.screen-drop {
+  display: grid;
+  min-height: 0;
+  align-content: center;
+  justify-items: center;
+  margin: var(--space-4);
+  padding: var(--space-5);
+  border: 1px dashed var(--color-border-strong);
+  color: var(--color-text-muted);
+  gap: var(--space-2);
+  text-align: center;
+}
+
+.screen-drop:focus-visible {
+  border-color: var(--color-focus);
+  outline: 1px solid var(--color-focus);
+}
+
+.screen-drop-icon {
+  width: var(--icon-lg);
+  height: var(--icon-lg);
+}
+
+.screen-drop-title {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+}
+
+.screen-drop-hint {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  font-size: var(--text-xs);
+  gap: var(--space-1);
+}
+
+.screen-form {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  overflow: auto;
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  gap: var(--space-2);
+}
+
+.screen-facts {
+  display: grid;
+  margin: 0 0 var(--space-2);
+  gap: var(--space-2) var(--space-3);
+  grid-template-columns: max-content minmax(0, 1fr);
+}
+
+.screen-facts dt,
+.screen-label {
+  display: flex;
+  min-height: var(--field-height);
+  align-items: center;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+.screen-label {
+  min-height: 0;
+}
+
+.screen-facts dd {
+  display: grid;
+  min-width: 0;
+  min-height: var(--field-height);
+  align-content: center;
+  margin: 0;
+  gap: var(--space-1);
+}
+
+.screen-element {
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.screen-muted {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  line-height: var(--text-xs--line-height);
+}
+
+.screen-attach {
+  justify-self: start;
+}
+
+.screen-source {
+  margin: 0 0 var(--space-2);
+}
+
+.screen-problem {
+  color: var(--color-destructive);
+  font-size: var(--text-xs);
+}
+
+.screen-error {
+  margin: 0;
+}
+
+.screen-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.screen-footer,
+.screen-confirm {
+  margin-top: auto;
+}
+
+.screen-confirm {
+  justify-content: space-between;
+}
+
+@media (max-width: 48rem) {
+  /* Phones stack the image over the form and scroll them together. */
+  .screen-body {
+    overflow: auto;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(14rem, 45dvh) auto;
+  }
+
+  .screen-stage-pane {
+    border-inline-end: 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .screen-form {
+    overflow: visible;
+  }
+}

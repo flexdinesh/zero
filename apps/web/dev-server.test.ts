@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import test from "node:test"
 
-import { isErrorResponse, isFeedback, isFeedbackSummary, isFeedbackThread, type Feedback, type FeedbackSummary } from "@zero/contracts"
+import { isErrorResponse, isFeedback, isFeedbackSummary, isFeedbackThread, isFeedbackUpload, type Feedback, type FeedbackSummary } from "@zero/contracts"
 
 import {
   devServerPort,
@@ -10,6 +10,7 @@ import {
   formatDevServerUrl,
   mockFeedbackStore,
   mockFixtureName,
+  pngSize,
   primaryLanIpv4,
   shouldOpenBrowser,
 } from "./dev-server.ts"
@@ -216,9 +217,11 @@ function feedbackFixtures(): { current: Feedback, listed: FeedbackSummary[] } {
   return { current, listed: listed.filter(isFeedbackSummary) }
 }
 
+const screenshot = new Uint8Array(readFileSync(new URL("../../testdata/api/default/feedback-attachment.png", import.meta.url)))
+
 function feedbackStore() {
   const { current, listed } = feedbackFixtures()
-  return mockFeedbackStore(current, listed, () => "2026-11-10T12:00:00Z")
+  return mockFeedbackStore(current, listed, () => "2026-11-10T12:00:00Z", new Map([["at-7hq2mx4kpa", screenshot]]))
 }
 
 function answer(store: ReturnType<typeof feedbackStore>, method: string, url: string, body: unknown = undefined) {
@@ -236,7 +239,7 @@ test("mock feedback reads the checkout's branch, lists, and rejects unknown ids"
   assert.equal(current.status, 200)
   assert.ok(isFeedback(current.value))
   assert.equal(current.value.id, "fb-3k2q8m")
-  assert.equal(current.value.threads.length, 4)
+  assert.equal(current.value.threads.length, 6)
 
   const listed = answer(store, "GET", `/feedback-list?${feedbackProject}`)
   assert.ok(Array.isArray(listed.value) && listed.value.every(isFeedbackSummary))
@@ -260,22 +263,22 @@ test("mock feedback starts threads, replies, resolves, and reopens", () => {
   })
   assert.equal(started.status, 200)
   assert.ok(isFeedbackThread(started.value))
-  assert.equal(started.value.number, 5)
+  assert.equal(started.value.number, 7)
   assert.equal(started.value.awaiting, "agent")
-  assert.deepEqual(started.value.location.lines, [1, 2])
+  assert.deepEqual(started.value.location?.lines, [1, 2])
   assert.equal(started.value.messages[0]?.bodyHTML, "<p>Use &lt;strong&gt;</p>\n")
 
-  const replied = answer(store, "POST", "/feedback-messages", { project: "/home/user/markdown", id: "fb-3k2q8m", thread: 5, body: "Done.", author: "agent", name: "codex" })
+  const replied = answer(store, "POST", "/feedback-messages", { project: "/home/user/markdown", id: "fb-3k2q8m", thread: 7, body: "Done.", author: "agent", name: "codex" })
   assert.ok(isFeedbackThread(replied.value))
   assert.equal(replied.value.awaiting, "user")
   assert.equal(replied.value.messages[1]?.name, "codex")
 
-  const resolved = answer(store, "POST", "/feedback-messages", { project: "/home/user/markdown", id: "fb-3k2q8m", thread: 5, status: "resolved" })
+  const resolved = answer(store, "POST", "/feedback-messages", { project: "/home/user/markdown", id: "fb-3k2q8m", thread: 7, status: "resolved" })
   assert.ok(isFeedbackThread(resolved.value))
   assert.equal(resolved.value.status, "resolved")
   assert.equal(resolved.value.awaiting, "none")
 
-  const reopened = answer(store, "POST", "/feedback-messages", { project: "/home/user/markdown", id: "fb-3k2q8m", thread: 5, body: "Not quite." })
+  const reopened = answer(store, "POST", "/feedback-messages", { project: "/home/user/markdown", id: "fb-3k2q8m", thread: 7, body: "Not quite." })
   assert.ok(isFeedbackThread(reopened.value))
   assert.equal(reopened.value.status, "open")
   assert.equal(reopened.value.awaiting, "agent")
@@ -301,7 +304,7 @@ test("mock feedback deletes a thread, then the feedback", () => {
   assert.equal(answer(store, "DELETE", `/feedback-threads?${feedbackProject}&id=fb-3k2q8m&thread=1`).status, 204)
   const read = answer(store, "GET", `/feedback?${feedbackProject}`)
   assert.ok(isFeedback(read.value))
-  assert.deepEqual(read.value.threads.map((thread) => thread.number), [2, 3, 4])
+  assert.deepEqual(read.value.threads.map((thread) => thread.number), [2, 3, 4, 5, 6])
 
   assert.equal(answer(store, "DELETE", `/feedback?${feedbackProject}&id=fb-3k2q8m`).status, 204)
   assert.equal(answer(store, "DELETE", `/feedback?${feedbackProject}&id=fb-3k2q8m`).status, 404)
@@ -309,4 +312,51 @@ test("mock feedback deletes a thread, then the feedback", () => {
   assert.ok(isFeedback(fresh.value))
   assert.equal(fresh.value.id, "")
   assert.deepEqual(fresh.value.threads, [])
+})
+
+test("pngSize reads a PNG's IHDR and refuses anything else", () => {
+  assert.deepEqual(pngSize(screenshot), { width: 612, height: 288 })
+  assert.equal(pngSize(new TextEncoder().encode("GIF89a and more bytes than that")), null)
+  assert.equal(pngSize(screenshot.subarray(0, 20)), null)
+})
+
+test("mock feedback serves a stored screenshot and stages uploads that a visual thread takes", () => {
+  const store = feedbackStore()
+  const stored = store.handle({ method: "GET", url: `/feedback-attachment?${feedbackProject}&id=fb-3k2q8m&attachment=at-7hq2mx4kpa`, body: "" })
+  assert.equal(stored?.status, 200)
+  assert.equal(stored?.contentType, "image/png")
+  assert.equal(stored?.bytes, screenshot)
+  // Thread 6's screenshot is gone.
+  assert.equal(store.handle({ method: "GET", url: `/feedback-attachment?${feedbackProject}&id=fb-3k2q8m&attachment=at-q3v6ne2wjd`, body: "" })?.status, 404)
+
+  assert.equal(store.handle({ method: "POST", url: `/feedback-attachments?${feedbackProject}`, body: "", bytes: new TextEncoder().encode("not a png") })?.status, 400)
+  const uploaded = store.handle({ method: "POST", url: `/feedback-attachments?${feedbackProject}`, body: "", bytes: screenshot })
+  assert.equal(uploaded?.status, 201)
+  const upload: unknown = JSON.parse(uploaded?.body ?? "")
+  assert.ok(isFeedbackUpload(upload))
+  assert.deepEqual([upload.width, upload.height, upload.bytes], [612, 288, screenshot.length])
+
+  const outside = answer(store, "POST", "/feedback-threads", {
+    project: "/home/user/markdown", visual: { attachment: upload.id, rect: { x: 600, y: 0, width: 20, height: 20 } }, body: "Off the edge",
+  })
+  assert.equal(outside.status, 400)
+  const started = answer(store, "POST", "/feedback-threads", {
+    project: "/home/user/markdown",
+    visual: {
+      attachment: upload.id, rect: { x: 96, y: 96, width: 420, height: 96 },
+      page: { url: "http://localhost:5173/settings", viewport: { width: 1440, height: 900, deviceScaleFactor: 2 }, scroll: { x: 0, y: 0 } },
+    },
+    body: "Too wide",
+  })
+  assert.equal(started.status, 200)
+  assert.ok(isFeedbackThread(started.value))
+  assert.equal(started.value.number, 7)
+  assert.equal(started.value.anchor, undefined)
+  assert.equal(started.value.visual?.page?.localhost, "project")
+  assert.equal(started.value.visual?.attachment.id, upload.id)
+  const read = store.handle({ method: "GET", url: `/feedback-attachment?${feedbackProject}&id=fb-3k2q8m&attachment=${upload.id}`, body: "" })
+  assert.equal(read?.bytes, screenshot)
+  // An upload belongs to one thread.
+  const again = answer(store, "POST", "/feedback-threads", { project: "/home/user/markdown", visual: { attachment: upload.id, rect: { x: 0, y: 0, width: 1, height: 1 } }, body: "x" })
+  assert.equal(again.status, 400)
 })

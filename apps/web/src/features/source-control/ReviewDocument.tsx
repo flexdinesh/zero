@@ -22,7 +22,7 @@ import { Chevron } from "../../components/ui/section-toggle.tsx"
 import { IconButton } from "../../components/ui/icon-button.tsx"
 import { SegmentedControl, SegmentedItem } from "../../components/ui/segmented-control.tsx"
 import { ToggleButton } from "../../components/ui/toggle-button.tsx"
-import type { FeedbackThread, FileStats, LineDiff } from "@zero/contracts"
+import type { FileStats, LineDiff } from "@zero/contracts"
 import { formatBytes } from "../../lib/format-bytes.ts"
 import { shortHash } from "../../lib/commit-hash.ts"
 import { lineReference } from "../../lib/line-selection.ts"
@@ -32,6 +32,7 @@ import { useTheme } from "../../settings/ThemeProvider.tsx"
 import { uiScale } from "../../settings/settings.ts"
 import { LineCopyButton } from "../documents/SourceDocument.tsx"
 import { emptyFeedbackFile, type FeedbackFileThreads } from "../feedback/feedback-index.ts"
+import type { CodeThread } from "../feedback/feedback-model.ts"
 import { commitDate, type Compare, type CompareName } from "./compare.ts"
 import { displayOrder, statusLetters, statusNames, type CompareFile } from "./compare-files.ts"
 import { binaryChangeLabel } from "./diff-content.ts"
@@ -122,7 +123,7 @@ export interface ReviewZone {
 export interface ReviewComments {
   files: ReadonlyMap<string, FeedbackFileThreads> | undefined
   showResolved: boolean
-  renderThread(thread: FeedbackThread): ReviewZone
+  renderThread(thread: CodeThread): ReviewZone
   composer: (ReviewZone & { path: string }) | undefined
   onShowOutdated(path: string): void
   // onComment opens the composer at lines of a side, or for the whole file.
@@ -850,7 +851,7 @@ interface ReviewFileProps {
   scrollRoot: RefObject<HTMLElement | null>
   lines: SelectedLineRange | null
   annotation: ReviewAnnotation | undefined
-  threads: readonly FeedbackThread[]
+  threads: readonly CodeThread[]
   renderThread: ReviewComments["renderThread"] | undefined
   composer: ReviewZone | undefined
   outdated: number

@@ -331,6 +331,8 @@ func selected(group, name string) bool {
 	if name == "scripts/check.ts" || name == "scripts/browser-process.ts" {
 		return true
 	}
+	// browser takes the desktop app's guest page script, which its tests run
+	// in a stand-in page (decision 0177).
 	prefixes := map[string][]string{
 		"repo":           {"apps/zero/", "apps/desktop/", "tools/", "packages/contracts/"},
 		"web-static":     {"apps/web/", "packages/contracts/"},
@@ -340,7 +342,7 @@ func selected(group, name string) bool {
 		"frontend":       {"apps/web/", "testdata/", "packages/contracts/"},
 		"tooling":        {"scripts/", "tests/", "tools/validate/", "testdata/"},
 		"docs":           {"apps/site/"},
-		"browser":        {"apps/zero/", "testdata/", "apps/web/", "tests/", "scripts/", "packages/contracts/"},
+		"browser":        {"apps/zero/", "testdata/", "apps/web/", "tests/", "scripts/", "packages/contracts/", "apps/desktop/internal/review/guest.js"},
 		"desktop":        {"apps/desktop/", "apps/zero/", "apps/web/", "packages/contracts/"},
 	}
 	for _, prefix := range prefixes[group] {

@@ -1,14 +1,23 @@
 import type { SelectionSide } from "@pierre/diffs"
 
-import type { Feedback, FeedbackCompare, FeedbackMessage, FeedbackSide, FeedbackStatus, FeedbackThread } from "@zero/contracts"
+import type { Feedback, FeedbackAnchor, FeedbackCompare, FeedbackLocation, FeedbackMessage, FeedbackSide, FeedbackStatus, FeedbackThread } from "@zero/contracts"
 import { isCommitHash } from "../../lib/commit-hash.ts"
 import { lineAnchor } from "../../lib/line-selection.ts"
 import { branchCompare, compareKey, compareSearch, reviewFragment, workingCompare, type Compare, type CompareSearch } from "../source-control/compare.ts"
+import { isVisualThread, visualHeading, visualLines, visualPlace } from "./visual-model.ts"
 
 // Pure model of review feedback threads (decision 0120): where a new thread
 // anchors, how threads are labelled, grouped, filtered, and opened, which
 // agent replies this browser has not seen, and the text copied for agents.
-// The Markdown export matches `zero feedback show`'s output.
+// The Markdown export matches `zero feedback show`'s output. A thread is on
+// code (anchor and location) or on a screenshot (visual, decision 0176).
+
+// CodeThread is a thread anchored in code.
+export type CodeThread = FeedbackThread & { anchor: FeedbackAnchor; location: FeedbackLocation }
+
+export function isCodeThread(thread: FeedbackThread): thread is CodeThread {
+  return thread.anchor !== undefined && thread.location !== undefined
+}
 
 // FeedbackAnchorInput is where a new thread goes: lines of one side of a
 // compare, or of the working tree in Source (compare null). lines is an
@@ -86,7 +95,7 @@ function span(lines: readonly [number, number]): string {
 // locationLabel is a thread's place as the CLI prints it: "code/main.go:7",
 // with " (old side)", " (moved from 38-40)", and " · outdated, code no longer
 // present" as they apply; "path (file)" for a whole file.
-export function locationLabel(thread: FeedbackThread): string {
+export function locationLabel(thread: CodeThread): string {
   const { anchor, location } = thread
   const outdated = location.state === "outdated"
   const anchored = lineRange(anchor.lines)
@@ -107,8 +116,11 @@ export function anchorLabel(anchor: FeedbackAnchorInput): string {
 }
 
 // placeLabel is a thread's place for the UI: "code/main.go:7", "a.go:4-5
-// (old)", or the path alone for a whole file or outdated lines.
+// (old)", or the path alone for a whole file or outdated lines; a visual
+// thread's page address, or "Screenshot".
 export function placeLabel(thread: FeedbackThread): string {
+  if (isVisualThread(thread)) return visualPlace(thread.visual)
+  if (!isCodeThread(thread)) return ""
   const lines = lineRange(thread.location.lines)
   if (!lines) return thread.location.path
   return `${thread.location.path}:${span(lines)}${thread.location.side === "old" ? " (old)" : ""}`
@@ -206,21 +218,30 @@ export function matchesFilter(thread: FeedbackThread, filter: FeedbackFilter): b
   return true
 }
 
-export interface FileGroup {
-  path: string
-  threads: FeedbackThread[]
-}
+// FileGroup is one file's threads, or (screens) the visual threads.
+export type FileGroup =
+  | { kind: "file"; path: string; threads: CodeThread[] }
+  | { kind: "screens"; threads: FeedbackThread[] }
 
-// groupByFile groups threads under their current path, paths in order and
-// threads by number.
+// groupByFile groups code threads under their current path, paths in order
+// and threads by number, then the visual threads after every file.
 export function groupByFile(threads: readonly FeedbackThread[]): FileGroup[] {
-  const groups = new Map<string, FeedbackThread[]>()
+  const files = new Map<string, CodeThread[]>()
+  const screens: FeedbackThread[] = []
   for (const thread of [...threads].sort((left, right) => left.number - right.number)) {
-    const group = groups.get(thread.location.path)
+    if (!isCodeThread(thread)) {
+      screens.push(thread)
+      continue
+    }
+    const group = files.get(thread.location.path)
     if (group) group.push(thread)
-    else groups.set(thread.location.path, [thread])
+    else files.set(thread.location.path, [thread])
   }
-  return [...groups].sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0).map(([path, grouped]) => ({ path, threads: grouped }))
+  const groups: FileGroup[] = [...files]
+    .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
+    .map(([path, grouped]) => ({ kind: "file", path, threads: grouped }))
+  if (screens.length > 0) groups.push({ kind: "screens", threads: screens })
+  return groups
 }
 
 // FeedbackSeen is what this browser has seen, as zero-feedback-seen stores
@@ -297,8 +318,10 @@ export interface ThreadRoute {
 
 // threadRoute opens a thread where it was written: its compare's review at
 // the file and lines (#f=<path>&R7-R9, L for the old side), or Source at its
-// lines. Outdated threads have no lines to open; null.
+// lines. Outdated threads have no lines to open, and visual threads no
+// document; null.
 export function threadRoute(project: string, thread: FeedbackThread): ThreadRoute | null {
+  if (!isCodeThread(thread)) return null
   const { anchor, location } = thread
   if (location.state === "outdated") return null
   const lines = lineRange(location.lines)
@@ -363,7 +386,8 @@ export function utcTime(time: string): string {
   return `${date.getUTCFullYear()}-${two(date.getUTCMonth() + 1)}-${two(date.getUTCDate())} ${two(date.getUTCHours())}:${two(date.getUTCMinutes())} UTC`
 }
 
-const markdownStatus: Readonly<Record<FeedbackStatus, string>> = { open: "open", resolved: "resolved", wontfix: "won't fix" }
+// statusWords are statuses as the CLI prints them: open, resolved, won't fix.
+export const statusWords: Readonly<Record<FeedbackStatus, string>> = { open: "open", resolved: "resolved", wontfix: "won't fix" }
 const messageStatus: Readonly<Record<FeedbackStatus, string>> = { open: "reopened", resolved: "resolved", wontfix: "won't fix" }
 
 function messageMarkdown(message: FeedbackMessage): string {
@@ -384,18 +408,23 @@ function longestRun(text: string, character: string): number {
   return longest
 }
 
-// threadMarkdown is one thread as `zero feedback show` prints it: heading,
-// the anchored text fenced in the anchor's language (bare without one) by a
-// fence longer than any backtick run inside, then each message, a blank line
-// between messages.
-export function threadMarkdown(thread: FeedbackThread): string {
-  const parts = [`## Thread ${thread.number} · ${markdownStatus[thread.status]} · ${locationLabel(thread)}`]
+// threadMarkdown is one thread of feedback id as `zero feedback show`
+// prints it: heading, the anchored text fenced in the anchor's language
+// (bare without one) by a fence longer than any backtick run inside, then
+// each message, a blank line between messages. A visual thread lists its
+// screenshot's facts instead of code, then a blank line.
+export function threadMarkdown(id: string, thread: FeedbackThread): string {
+  const messages = thread.messages.map(messageMarkdown).join("\n\n")
+  const heading = `## Thread ${thread.number} · ${statusWords[thread.status]}`
+  if (isVisualThread(thread)) return `${[`${heading} · ${visualHeading(thread.visual)}`, ...visualLines(id, thread.visual)].join("\n")}\n\n${messages}`
+  if (!isCodeThread(thread)) return `${heading}\n${messages}`
+  const parts = [`${heading} · ${locationLabel(thread)}`]
   const text = (thread.anchor.text ?? []).join("\n")
   if (thread.anchor.text && thread.anchor.text.length > 0) {
     const fence = "`".repeat(Math.max(3, longestRun(text, "`") + 1))
     parts.push(`${fence}${thread.anchor.language ?? ""}\n${text}\n${fence}`)
   }
-  parts.push(thread.messages.map(messageMarkdown).join("\n\n"))
+  parts.push(messages)
   return parts.join("\n")
 }
 
@@ -411,13 +440,13 @@ export function feedbackMarkdown(feedback: Feedback, threads: readonly FeedbackT
   const header = `# Feedback ${feedback.id}\n${branch} · ${feedback.project} · ${awaiting}\n`
   if (threads.length === 0) return `${header}\nNo threads yet.\n`
   const reply = `Reply: zero feedback reply ${feedback.id} <thread> -m "<what you did>" [--resolve | --wontfix]`
-  return `${header}\n${[reply, ...threads.map(threadMarkdown)].join("\n\n")}\n`
+  return `${header}\n${[reply, ...threads.map((thread) => threadMarkdown(feedback.id, thread))].join("\n\n")}\n`
 }
 
 // threadPrompt is what a thread's Copy Thread for Agent copies.
 export function threadPrompt(feedback: Pick<Feedback, "id" | "project">, thread: FeedbackThread): string {
   return `Feedback ${feedback.id} thread ${thread.number} in ${feedback.project}. Reply with: zero feedback reply ${feedback.id} ${thread.number} -m "…" [--resolve | --wontfix]
 
-${threadMarkdown(thread)}
+${threadMarkdown(feedback.id, thread)}
 `
 }

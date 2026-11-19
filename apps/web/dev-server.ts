@@ -1,5 +1,9 @@
+import { createHash } from "node:crypto"
+
 import {
-  isFeedbackCompare, type Feedback, type FeedbackStatus, type FeedbackSummary, type FeedbackThread,
+  isFeedbackCompare, isFeedbackElement, isFeedbackRect, isFeedbackScroll, isFeedbackViewport,
+  type Feedback, type FeedbackAttachment, type FeedbackPage, type FeedbackRect, type FeedbackStatus, type FeedbackSummary, type FeedbackThread,
+  type FeedbackVisual,
 } from "@zero/contracts"
 
 export interface NetworkAddress {
@@ -287,16 +291,49 @@ export function mockFixtureName(method: string, rawURL: string): MockFixture | u
   }
 }
 
-// MockResponse is an in-memory mock's answer: JSON, or 204 with no body.
+// MockResponse is an in-memory mock's answer: JSON, 204 with no body, or
+// bytes of contentType (an attachment).
 export interface MockResponse {
   status: number
   body: string
+  bytes?: Uint8Array
+  contentType?: string
 }
 
 export interface MockFeedbackRequest {
   method: string
   url: string
   body: string
+  // bytes is the raw body, for uploads.
+  bytes?: Uint8Array
+}
+
+// mockUploadLimit is the attachment upload limit (decision 0176).
+const mockUploadLimit = 8 << 20
+const pngSignature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
+
+// pngSize reads a PNG's IHDR size; null for anything else.
+export function pngSize(bytes: Uint8Array): { width: number; height: number } | null {
+  if (bytes.length < 24 || !pngSignature.every((byte, index) => bytes[index] === byte)) return null
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  if (String.fromCharCode(...bytes.subarray(12, 16)) !== "IHDR") return null
+  const width = view.getUint32(16)
+  const height = view.getUint32(20)
+  return width > 0 && height > 0 ? { width, height } : null
+}
+
+function inside(rect: FeedbackRect, image: { width: number; height: number }): boolean {
+  return [rect.x, rect.y, rect.width, rect.height].every(Number.isSafeInteger) && rect.x >= 0 && rect.y >= 0 && rect.width >= 1 && rect.height >= 1
+    && rect.x + rect.width <= image.width && rect.y + rect.height <= image.height
+}
+
+function isLoopbackURL(url: string): boolean {
+  try {
+    const host = new URL(url).hostname
+    return host === "localhost" || host.endsWith(".localhost") || host.startsWith("127.") || host === "[::1]"
+  } catch {
+    return false
+  }
 }
 
 function jsonResponse(status: number, value: unknown): MockResponse {
@@ -355,8 +392,19 @@ function isMockStatus(value: unknown): value is FeedbackStatus {
 // dev:mock (decision 0120), seeded with the fixtures: current is the
 // checkout's branch's feedback; listed summarizes other branches', which read
 // as empty until written. Locations stay as written; the server resolves them.
-export function mockFeedbackStore(current: Feedback, listed: readonly FeedbackSummary[], now: () => string = () => new Date().toISOString()) {
+// attachments seeds screenshots by attachment id; uploads join them when a
+// visual thread takes them (decision 0176). The mock is the project's own
+// host, so loopback pages read as the project's.
+export function mockFeedbackStore(
+  current: Feedback,
+  listed: readonly FeedbackSummary[],
+  now: () => string = () => new Date().toISOString(),
+  attachments: ReadonlyMap<string, Uint8Array> = new Map(),
+) {
   const store = new Map<string, Feedback>([[current.id, current]])
+  const images = new Map(attachments)
+  const staged = new Map<string, FeedbackAttachment>()
+  let uploads = 0
   const summaries = new Map(listed.filter((summary) => summary.id !== current.id).map((summary): [string, FeedbackSummary] => [summary.id, summary]))
   let currentId = current.id
   const currentBranch = current.branch
@@ -375,7 +423,55 @@ export function mockFeedbackStore(current: Feedback, listed: readonly FeedbackSu
   }
   const unavailable = (id: string) => jsonResponse(404, { error: `no feedback ${id} for this repository`, code: "feedbackUnavailable" })
 
+  function upload(bytes: Uint8Array | undefined): MockResponse {
+    if (!bytes || bytes.length === 0) return invalidFeedback(["body: is empty"])
+    if (bytes.length > mockUploadLimit) return jsonResponse(413, { error: "the image is larger than 8 MiB" })
+    const size = pngSize(bytes)
+    if (!size) return invalidFeedback(["body: is not a PNG image"])
+    uploads++
+    const id = `at-mockup${"abcdefghijklmnopqrstuvwxyz"[uploads % 26] ?? "a"}${"abcdefghijklmnopqrstuvwxyz"[Math.floor(uploads / 26) % 26] ?? "a"}`
+    const attachment: FeedbackAttachment = {
+      id, mediaType: "image/png", ...size, bytes: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex"),
+    }
+    staged.set(id, attachment)
+    images.set(id, bytes)
+    return jsonResponse(201, { ...attachment, expiresAt: new Date(Date.parse(now()) + 3_600_000).toISOString() })
+  }
+
+  // visualOf reads a draft's visual target against the staged uploads.
+  function visualOf(draft: unknown, problems: string[]): FeedbackVisual | undefined {
+    if (typeof draft !== "object" || draft === null) {
+      problems.push("visual: must be an object")
+      return undefined
+    }
+    const value = Object.fromEntries(Object.entries(draft))
+    const attachment = typeof value.attachment === "string" ? staged.get(value.attachment) : undefined
+    if (!attachment) problems.push("visual.attachment: is not a live upload of this repository")
+    if (!isFeedbackRect(value.rect) || (attachment && !inside(value.rect, attachment))) problems.push("visual.rect: must lie inside the image")
+    let page: FeedbackPage | undefined
+    if (value.page !== undefined) {
+      const raw = typeof value.page === "object" && value.page !== null ? Object.fromEntries(Object.entries(value.page)) : {}
+      const url = typeof raw.url === "string" ? raw.url : ""
+      if (!/^https?:\/\//.test(url)) problems.push("visual.page.url: must be http or https")
+      if (!isFeedbackViewport(raw.viewport) || !isFeedbackScroll(raw.scroll)) problems.push("visual.page: needs a viewport and scroll")
+      else {
+        page = {
+          url, ...(typeof raw.title === "string" && raw.title ? { title: raw.title } : {}), viewport: raw.viewport, scroll: raw.scroll,
+          ...(isFeedbackRect(raw.clip) ? { clip: raw.clip } : {}), ...(isLoopbackURL(url) ? { localhost: "project" as const } : {}),
+        }
+      }
+    }
+    if (value.element !== undefined && (!isFeedbackElement(value.element) || !page)) problems.push("visual.element: needs a page")
+    if (!attachment || !isFeedbackRect(value.rect) || problems.length > 0) return undefined
+    staged.delete(attachment.id)
+    return {
+      attachment, rect: value.rect, ...(page ? { page } : {}), ...(isFeedbackElement(value.element) ? { element: value.element } : {}),
+      head: "4e1d8c2b7a9f0e3d5c6b1a2f8e7d9c0b3a4f5e6d", available: true,
+    }
+  }
+
   function createThread(draft: Record<string, unknown>): MockResponse {
+    if (draft.visual !== undefined) return createVisualThread(draft)
     const problems: string[] = []
     const project = typeof draft.project === "string" ? draft.project : ""
     const id = typeof draft.id === "string" ? draft.id : ""
@@ -399,6 +495,32 @@ export function mockFeedbackStore(current: Feedback, listed: readonly FeedbackSu
       awaiting: "agent",
       anchor: { path, side, ...(lines ? { lines } : {}), ...(compare ? { compare } : {}) },
       location: { state: "anchored", path, side, ...(lines ? { lines } : {}) },
+      messages: [{ number: 1, author: "user", body, bodyHTML: mockBodyHTML(body), createdAt: time }],
+      createdAt: time,
+      updatedAt: time,
+    }
+    save({ ...existing, id: existing.id || "fb-mockcu", threads: [...existing.threads, thread], createdAt: existing.createdAt || time, updatedAt: time })
+    return jsonResponse(200, thread)
+  }
+
+  function createVisualThread(draft: Record<string, unknown>): MockResponse {
+    const problems: string[] = []
+    const project = typeof draft.project === "string" ? draft.project : ""
+    const id = typeof draft.id === "string" ? draft.id : ""
+    const body = typeof draft.body === "string" ? draft.body.trim() : ""
+    if (!project) problems.push("project: is required")
+    if (!body) problems.push("body: is empty")
+    for (const field of ["path", "side", "lines", "compare"]) if (draft[field] !== undefined) problems.push(`${field}: a visual thread has none`)
+    const existing = find(id, project)
+    if (!existing) return unavailable(id)
+    const visual = visualOf(draft.visual, problems)
+    if (!visual || problems.length > 0) return invalidFeedback(problems)
+    const time = now()
+    const thread: FeedbackThread = {
+      number: Math.max(0, ...existing.threads.map((entry) => entry.number)) + 1,
+      status: "open",
+      awaiting: "agent",
+      visual,
       messages: [{ number: 1, author: "user", body, bodyHTML: mockBodyHTML(body), createdAt: time }],
       createdAt: time,
       updatedAt: time,
@@ -432,7 +554,7 @@ export function mockFeedbackStore(current: Feedback, listed: readonly FeedbackSu
   }
 
   return {
-    handle({ body, method, url: rawURL }: MockFeedbackRequest): MockResponse | undefined {
+    handle({ body, bytes, method, url: rawURL }: MockFeedbackRequest): MockResponse | undefined {
       const url = new URL(rawURL, "http://localhost")
       const params = url.searchParams
       const project = params.get("project") ?? ""
@@ -448,6 +570,13 @@ export function mockFeedbackStore(current: Feedback, listed: readonly FeedbackSu
         case "POST /feedback-threads": {
           const draft = parseJSONObject(body)
           return draft ? createThread(draft) : invalidFeedback(["body: is not a JSON object"])
+        }
+        case "POST /feedback-attachments":
+          return upload(bytes)
+        case "GET /feedback-attachment": {
+          const image = images.get(params.get("attachment") ?? "")
+          const known = find(id, project)?.threads.some((thread) => thread.visual?.available && thread.visual.attachment.id === params.get("attachment"))
+          return image && known ? { status: 200, body: "", bytes: image, contentType: "image/png" } : unavailable(id)
         }
         case "POST /feedback-messages": {
           const draft = parseJSONObject(body)

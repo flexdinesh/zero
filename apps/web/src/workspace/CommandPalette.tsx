@@ -5,7 +5,7 @@ import { DialogShell } from "../components/ui/dialog-shell.tsx"
 import { Kbd } from "../components/ui/kbd.tsx"
 import { ListRow } from "../components/ui/list-row.tsx"
 import { TextField } from "../components/ui/text-field.tsx"
-import { notificationsAvailable } from "../lib/desktop-bridge.ts"
+import { desktopBridge, notificationsAvailable } from "../lib/desktop-bridge.ts"
 
 import { availableCommands, matchCommands, type CommandAction } from "./commands.ts"
 import type { HighlightRange } from "../features/search/search-engine.ts"
@@ -79,7 +79,7 @@ function CommandPaletteBody({ initialQuery, dialog, input, close, onRun, onExitT
   const { values } = useSettingValues()
   const [query, setQuery] = useState(initialQuery)
   const [activeIndex, setActiveIndex] = useState(0)
-  const matches = matchCommands(availableCommands(notificationsAvailable(), wordWrap !== null), query)
+  const matches = matchCommands(availableCommands(notificationsAvailable(), wordWrap !== null, Boolean(desktopBridge()?.openReview)), query)
   const active = matches[Math.min(activeIndex, matches.length - 1)]
   const list = usePickerScroll(dialog, "data-command", active?.command.id, query)
 

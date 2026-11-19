@@ -53,6 +53,9 @@ func OriginOf(host string) string { return Scheme + "://" + host }
 // its own origin, so what a page stores and reaches stays with its server.
 type Proxy struct {
 	resolver Resolver
+	// admit decides whether the page asking may reach the scheme at all;
+	// nil admits every request.
+	admit func(*http.Request) bool
 	// keepalive is KeepaliveEvery, shorter in tests.
 	keepalive time.Duration
 }
@@ -62,11 +65,19 @@ func New(resolver Resolver) *Proxy {
 	return &Proxy{resolver: resolver, keepalive: KeepaliveEvery}
 }
 
+// Admit sets who may reach the scheme: the app admits its own windows'
+// pages and refuses guest pages (decision 0175). Call it before serving.
+func (p *Proxy) Admit(admit func(*http.Request) bool) { p.admit = admit }
+
 // Close drops idle connections to every server.
 func (p *Proxy) Close() { p.resolver.Close() }
 
 // ServeHTTP refuses what pages may not reach, then forwards to the connection.
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if p.admit != nil && !p.admit(r) {
+		writeError(w, http.StatusForbidden, "forbidden", "This page may not reach zero.")
+		return
+	}
 	// WebKit omits Origin on same-origin requests, so the guard applies only
 	// when present.
 	if origin := r.Header.Get("Origin"); origin != "" && origin != OriginOf(r.URL.Host) {

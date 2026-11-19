@@ -5,9 +5,9 @@ import test from "node:test"
 import { isFeedback, type Feedback, type FeedbackThread } from "@zero/contracts"
 import { indexFeedback } from "./feedback-index.ts"
 import {
-  activity, anchorKey, anchorLabel, authorLabel, feedbackCompare, feedbackMarkdown, feedbackMeta, feedbackPrompt, groupByFile, isUnseen,
+  activity, anchorKey, anchorLabel, authorLabel, feedbackCompare, feedbackMarkdown, feedbackMeta, feedbackPrompt, groupByFile, isCodeThread, isUnseen,
   locationLabel, markSeen, plainLine, matchesFilter, parseSeen, placeLabel, reviewCompareOf, routeFeedback, statusChange,
-  threadPrompt, threadRoute, threadTitle, unseenCount, utcTime,
+  threadPrompt, threadRoute, threadTitle, unseenCount, utcTime, type CodeThread,
 } from "./feedback-model.ts"
 
 async function repositoryFile(path: string): Promise<string> {
@@ -26,6 +26,12 @@ function thread(feedback: Feedback, number: number): FeedbackThread {
   return found
 }
 
+function codeThread(feedback: Feedback, number: number): CodeThread {
+  const found = thread(feedback, number)
+  assert.ok(isCodeThread(found), `code thread ${number}`)
+  return found
+}
+
 test("Markdown export matches the CLI's output for every thread", async () => {
   const feedback = await fixture()
   const expected = await repositoryFile("testdata/feedback/markdown.md")
@@ -34,7 +40,7 @@ test("Markdown export matches the CLI's output for every thread", async () => {
 
 test("Markdown fences outlast backtick runs and go bare without a language", async () => {
   const feedback = await fixture()
-  const first = thread(feedback, 1)
+  const first = codeThread(feedback, 1)
   const ticks = { ...first, anchor: { ...first.anchor, text: ["const fence = `````"], language: "" } }
   assert.ok(threadPrompt(feedback, ticks).includes("\n``````\nconst fence = `````\n``````\n"))
   const bare = { ...first, anchor: { ...first.anchor, language: undefined } }
@@ -69,12 +75,14 @@ test("titles read the first line of Markdown as plain text", async () => {
 
 test("location labels follow lines, sides, moves, and outdated text", async () => {
   const feedback = await fixture()
-  assert.equal(locationLabel(thread(feedback, 1)), "code/main.go:7")
-  assert.equal(locationLabel(thread(feedback, 2)), "code/app.js:4-5 (moved from 2-3)")
-  assert.equal(locationLabel(thread(feedback, 3)), "config/zero.toml:4 (old side) · outdated, code no longer present")
-  assert.equal(locationLabel(thread(feedback, 4)), "guides/getting-started.md (file)")
+  assert.equal(locationLabel(codeThread(feedback, 1)), "code/main.go:7")
+  assert.equal(locationLabel(codeThread(feedback, 2)), "code/app.js:4-5 (moved from 2-3)")
+  assert.equal(locationLabel(codeThread(feedback, 3)), "config/zero.toml:4 (old side) · outdated, code no longer present")
+  assert.equal(locationLabel(codeThread(feedback, 4)), "guides/getting-started.md (file)")
   assert.equal(placeLabel(thread(feedback, 2)), "code/app.js:4-5")
   assert.equal(placeLabel(thread(feedback, 3)), "config/zero.toml")
+  assert.equal(placeLabel(thread(feedback, 5)), "localhost:5173/settings")
+  assert.equal(placeLabel(thread(feedback, 6)), "Screenshot")
 })
 
 test("messages name their author and the status they set", async () => {
@@ -96,14 +104,18 @@ test("messages name their author and the status they set", async () => {
 test("filters and groups threads by file", async () => {
   const feedback = await fixture()
   const numbers = (filter: Parameters<typeof matchesFilter>[1]) => feedback.threads.filter((entry) => matchesFilter(entry, filter)).map((entry) => entry.number)
-  assert.deepEqual(numbers("open"), [1, 3])
-  assert.deepEqual(numbers("awaiting"), [1, 3])
-  assert.deepEqual(numbers("resolved"), [2, 4])
-  assert.deepEqual(numbers("all"), [1, 2, 3, 4])
-  assert.deepEqual(groupByFile([...feedback.threads].reverse()).map((group) => [group.path, group.threads.map((entry) => entry.number)]), [
-    ["code/app.js", [2]], ["code/main.go", [1]], ["config/zero.toml", [3]], ["guides/getting-started.md", [4]],
+  assert.deepEqual(numbers("open"), [1, 3, 5])
+  assert.deepEqual(numbers("awaiting"), [1, 3, 5])
+  assert.deepEqual(numbers("resolved"), [2, 4, 6])
+  assert.deepEqual(numbers("all"), [1, 2, 3, 4, 5, 6])
+  // Visual threads group after every file (decision 0176).
+  assert.deepEqual(groupByFile([...feedback.threads].reverse()).map((group) => [group.kind === "file" ? group.path : "screens", group.threads.map((entry) => entry.number)]), [
+    ["code/app.js", [2]], ["code/main.go", [1]], ["config/zero.toml", [3]], ["guides/getting-started.md", [4]], ["screens", [5, 6]],
   ])
-  assert.deepEqual([...indexFeedback(feedback).counts], [["code/main.go", 1], ["config/zero.toml", 1]])
+  // Files count code threads only; the badge adds open visual threads.
+  const index = indexFeedback(feedback)
+  assert.deepEqual([...index.counts], [["code/main.go", 1], ["config/zero.toml", 1]])
+  assert.equal(index.visualOpen, 1)
 })
 
 test("inline threads leave outdated ones to the band, and closed ones to the option", async () => {
@@ -117,10 +129,10 @@ test("inline threads leave outdated ones to the band, and closed ones to the opt
 
 test("agent replies stay unseen until shown at their version", async () => {
   const feedback = await fixture()
-  assert.equal(unseenCount({}, feedback), 2)
+  assert.equal(unseenCount({}, feedback), 3)
   assert.equal(isUnseen({}, feedback.id, thread(feedback, 1)), false)
   const seen = markSeen({}, feedback.id, [thread(feedback, 2)])
-  assert.equal(unseenCount(seen, feedback), 1)
+  assert.equal(unseenCount(seen, feedback), 2)
   assert.equal(markSeen(seen, feedback.id, [thread(feedback, 2)]), seen)
   const updated = { ...thread(feedback, 2), updatedAt: "2026-11-10T10:00:00Z" }
   assert.equal(isUnseen(seen, feedback.id, updated), true)
@@ -132,8 +144,8 @@ test("agent replies stay unseen until shown at their version", async () => {
 
 test("the meta line counts threads, the agent's queue, and new replies", async () => {
   const feedback = await fixture()
-  assert.equal(feedbackMeta(feedback, 1), "4 threads · 2 awaiting agent · 1 new reply")
-  assert.equal(feedbackMeta(feedback, 2), "4 threads · 2 awaiting agent · 2 new replies")
+  assert.equal(feedbackMeta(feedback, 1), "6 threads · 3 awaiting agent · 1 new reply")
+  assert.equal(feedbackMeta(feedback, 2), "6 threads · 3 awaiting agent · 2 new replies")
   assert.equal(feedbackMeta({ ...feedback, threads: [thread(feedback, 2)] }, 0), "1 thread")
 })
 
@@ -144,13 +156,15 @@ test("a thread opens its compare's review at its lines, or Source", async () => 
     search: { project: "/p", review: "branch", base: "main", head: "feature/greeting" }, hash: "f=code/app.js&R4-R5",
   })
   assert.equal(threadRoute("/p", thread(feedback, 3)), null)
+  // Visual threads open in place.
+  assert.equal(threadRoute("/p", thread(feedback, 5)), null)
   // Thread 4 was written on a whole file in Source.
   assert.deepEqual(threadRoute("/p", thread(feedback, 4)), { search: { project: "/p", path: "guides/getting-started.md" }, hash: "" })
-  const fileInReview = { ...thread(feedback, 4), anchor: { ...thread(feedback, 4).anchor, compare: thread(feedback, 1).anchor.compare } }
+  const fileInReview = { ...codeThread(feedback, 4), anchor: { ...codeThread(feedback, 4).anchor, compare: codeThread(feedback, 1).anchor.compare } }
   assert.deepEqual(threadRoute("/p", fileInReview), { search: { project: "/p", review: "working" }, hash: "f=guides/getting-started.md" })
   const old = { ...thread(feedback, 1), location: { state: "anchored" as const, path: "code/main.go", side: "old" as const, lines: [3, 4] } }
   assert.equal(threadRoute("/p", old)?.hash, "f=code/main.go&L3-L4")
-  const { compare: _compare, ...sourceAnchor } = thread(feedback, 1).anchor
+  const { compare: _compare, ...sourceAnchor } = codeThread(feedback, 1).anchor
   assert.deepEqual(threadRoute("/p", { ...thread(feedback, 1), anchor: sourceAnchor }), { search: { project: "/p", path: "code/main.go" }, hash: "L7" })
 })
 
