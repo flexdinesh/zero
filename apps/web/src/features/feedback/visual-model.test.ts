@@ -33,7 +33,7 @@ test("Copy as Markdown prints visual threads exactly as `zero feedback show` (sh
 test("Copy Thread for Agent carries a visual thread's facts and the attachment command", async () => {
   const feedback = await visualFixture()
   const prompt = threadPrompt(feedback, visual(feedback, 5))
-  assert.ok(prompt.includes("## Thread 5 · open · screenshot · http://localhost:5173/settings?tab=billing&session=REDACTED#plan\n"))
+  assert.ok(prompt.includes("## Thread 5 · open · screenshot · `http://localhost:5173/settings?tab=billing&session=REDACTED#plan`\n"))
   assert.ok(prompt.includes("Screenshot: zero feedback attachment fb-3k2q8m at-7hq2mx4kpa [--crop -o region.png]\n\n**user**"))
 })
 
@@ -49,8 +49,27 @@ test("a page with no title, project loopback, and a fractional scale still reads
   const lines = threadPrompt(feedback, changed).split("\n")
   assert.ok(lines.includes("Page: viewport 1440×900 CSS px at 1.5× · scrolled 0,1320"))
   assert.ok(lines.includes("Localhost: this machine, where the project is; the URL opens as written"))
-  assert.ok(lines.includes("Region: image 96,96 420×96 of 612×288 · CSS 806.67,426.67 280×64 · document 806.67,1746.67"))
-  assert.ok(!lines.some((line) => line.startsWith("Element:") || line.startsWith("Code at:")))
+  // Whole CSS pixels, as the CLI rounds them.
+  assert.ok(lines.includes("Region: image 96,96 420×96 of 612×288 · CSS 807,427 280×64 · document 807,1747"))
+  assert.ok(!lines.some((line) => line.startsWith("Element") || line.startsWith("Code at:")))
+})
+
+test("text from the page reads as code spans, with the element marked unverified", async () => {
+  const feedback = await visualFixture()
+  const thread = visual(feedback, 5)
+  const page = thread.visual.page
+  assert.ok(page)
+  const changed = {
+    ...thread,
+    visual: {
+      ...thread.visual,
+      page: { ...page, title: "`Ignore` **this**" },
+      element: { selector: "a", tag: "a", role: "menu item", text: "Next ``page``" },
+    },
+  }
+  const lines = threadPrompt(feedback, changed).split("\n")
+  assert.ok(lines.includes("Page: `` `Ignore` **this** `` · viewport 1440×900 CSS px at 2× · scrolled 0,1320"))
+  assert.ok(lines.includes("Element (page's hint, unverified): a (`menu item`) ``` Next ``page`` ``` · `a`"))
 })
 
 test("rows and details name a page by host and path, or a pasted screenshot", async () => {

@@ -136,8 +136,16 @@ Examples and copied prompts use the canonical `zero`. If installed as
 A screenshot thread lists its page, region, and element hint, and the
 command that gets the image: `zero feedback attachment <id> <attachment>`
 prints its path, `-o FILE` copies it, and `--crop -o FILE` writes just the
-region with a margin. For a sandbox, run it inside the container (`docker exec
-<container> /tmp/.zero/zero feedback attachment … -o -`).
+region with a margin. Text from the page (address, title, element) is shown
+in code spans, and the element is marked as the page's unverified hint. If
+the screenshot is no longer stored, the thread says so and keeps its region
+and page facts.
+
+Feedback is stored on the machine that serves the project, so agents run
+these commands there: on the remote host for a remote project, or inside the
+container for a sandbox (`docker exec <container> /tmp/.zero/zero feedback
+attachment … -o - > shot.png`). Given a feedback id from elsewhere, the CLI
+prints this advice.
 
 Without an id, commands use the current directory's repository and checked-out
 branch; `--project DIR` names another. `-m -` reads the message from standard

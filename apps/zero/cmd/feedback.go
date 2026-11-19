@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -145,7 +146,7 @@ func showFeedback(ctx context.Context, opts feedbackOptions, args []string, _ io
 	}
 	stored, err := session.app.Feedback.Get(ctx, contract.FeedbackRequest{Project: session.root, ID: id})
 	if err != nil {
-		return reportFeedbackError(err, stderr)
+		return notHere(opts, id, "show "+id, reportFeedbackError(err, stderr), err)
 	}
 	shown := stored
 	if !opts.all {
@@ -191,7 +192,7 @@ func replyFeedback(ctx context.Context, opts feedbackOptions, args []string, std
 	}
 	thread, err := session.app.Feedback.PostMessage(ctx, contract.FeedbackMessageDraft{Project: session.root, ID: id, Thread: number, Body: body, Status: status, Author: contract.FeedbackAuthorAgent, Name: opts.name})
 	if err != nil {
-		return reportFeedbackError(err, stderr)
+		return notHere(opts, id, fmt.Sprintf("reply %s %d -m \"<what you did>\"", id, number), reportFeedbackError(err, stderr), err)
 	}
 	announceFeedbackToDaemon(ctx, opts.socket, session.root, id, stderr)
 	if opts.json {
@@ -224,7 +225,7 @@ func commentFeedback(ctx context.Context, opts feedbackOptions, args []string, s
 	}
 	thread, err := session.app.Feedback.CreateThread(ctx, contract.FeedbackThreadDraft{Project: session.root, ID: id, Path: opts.path, Side: contract.FeedbackSideNew, Lines: lines, Body: body, Author: contract.FeedbackAuthorAgent, Name: opts.name})
 	if err != nil {
-		return reportFeedbackError(err, stderr)
+		return notHere(opts, id, "comment "+id+" --path <path> -m \"<text>\"", reportFeedbackError(err, stderr), err)
 	}
 	if id == "" {
 		// The thread joined the branch's feedback, created if missing.
@@ -273,7 +274,7 @@ func attachmentFeedback(_ context.Context, opts feedbackOptions, args []string, 
 	service := feedback.NewService(feedback.NewStore(directory))
 	stored, err := service.Locate(id)
 	if errors.Is(err, feedback.ErrNotFound) {
-		return fmt.Errorf("no feedback %s in %s", id, directory)
+		return elsewhere(fmt.Sprintf("no feedback %s in %s", id, directory), "attachment "+id+" "+attachment+" -o - > shot.png")
 	}
 	if err != nil {
 		return err
@@ -289,7 +290,7 @@ func attachmentFeedback(_ context.Context, opts feedbackOptions, args []string, 
 	}
 	name, metadata, err := service.AttachmentFile(stored, attachment)
 	if err != nil {
-		return fmt.Errorf("screenshot %s of %s was removed to stay within the storage budget", attachment, id)
+		return fmt.Errorf("screenshot %s of %s is not stored: zero dropped it for the storage budget, or its file is missing. The thread's region and page facts remain: zero feedback show %s --all", attachment, id, id)
 	}
 	data, err := os.ReadFile(name)
 	if err != nil {
@@ -323,6 +324,30 @@ func attachmentFeedback(_ context.Context, opts feedbackOptions, args []string, 
 	rect := visual.Rect
 	_, err = fmt.Fprintf(stdout, "wrote %s (%d×%d: region %d,%d %d×%d plus %d px margin)\n", opts.output, bounds.Dx(), bounds.Dy(), rect.X, rect.Y, rect.Width, rect.Height, opts.crop)
 	return err
+}
+
+// notHere returns shown, the error a command reports for cause, with where
+// to run the command added when feedback id is in no repository of this
+// machine's store: feedback is stored where the project is served (decision
+// 0178).
+func notHere(opts feedbackOptions, id, command string, shown, cause error) error {
+	if id == "" || app.AsError(cause).Code != contract.CodeFeedbackUnavailable {
+		return shown
+	}
+	directory, err := feedbackDirectory(opts)
+	if err != nil {
+		return shown
+	}
+	if _, err := feedback.NewStore(directory).Locate(id); !errors.Is(err, feedback.ErrNotFound) {
+		return shown
+	}
+	return elsewhere(shown.Error(), command)
+}
+
+// elsewhere is message plus where feedback is stored and how to run command
+// (the arguments after `zero feedback`) there.
+func elsewhere(message, command string) error {
+	return fmt.Errorf("%s\n  Feedback is stored on the machine that serves the project. Served remotely: run this there. In a sandbox, run it inside:\n    docker exec <container> /tmp/.zero/zero feedback %s", message, command)
 }
 
 // writeOutput writes data to the file output, or standard output for -.
@@ -626,26 +651,30 @@ func writeThreadMarkdown(out *strings.Builder, name cliName, id string, thread c
 // CSS, and document pixels, the element hint, the commit, and the command
 // that reads the screenshot, never its path, so the CLI and Copy as
 // Markdown write one text. A blank line separates the facts from the
-// messages.
+// messages. Text from the reviewed page (URL, title, element) is in code
+// spans and the element is marked unverified (decision 0178).
 func writeVisualMarkdown(out *strings.Builder, name cliName, id string, thread contract.FeedbackThread) {
 	visual := thread.Visual
 	label := "screenshot"
 	if !visual.Available {
-		label += " (removed)"
+		label += " (not stored)"
 	}
 	if visual.Page != nil {
-		label += " · " + visual.Page.URL
+		label += " · " + codeSpan(visual.Page.URL)
 	}
 	fmt.Fprintf(out, "## Thread %d · %s · %s\n", thread.Number, statusLabel(thread.Status), label)
 	rect, shot := visual.Rect, visual.Attachment
 	region := fmt.Sprintf("Region: image %s of %d×%d", rectText(rect), shot.Width, shot.Height)
+	if visual.Page == nil {
+		out.WriteString("Page: none (pasted image)\n")
+	}
 	if page := visual.Page; page != nil {
 		viewport := page.Viewport
 		facts := []string{}
 		if page.Title != "" {
-			facts = append(facts, `"`+page.Title+`"`)
+			facts = append(facts, codeSpan(page.Title))
 		}
-		facts = append(facts, fmt.Sprintf("viewport %d×%d CSS px at %s×", viewport.Width, viewport.Height, strconv.FormatFloat(viewport.DeviceScaleFactor, 'f', -1, 64)))
+		facts = append(facts, fmt.Sprintf("viewport %d×%d CSS px at %s×", viewport.Width, viewport.Height, strconv.FormatFloat(math.Round(viewport.DeviceScaleFactor*100)/100, 'f', -1, 64)))
 		facts = append(facts, fmt.Sprintf("scrolled %d,%d", page.Scroll.X, page.Scroll.Y))
 		fmt.Fprintf(out, "Page: %s\n", strings.Join(facts, " · "))
 		switch page.Localhost {
@@ -669,15 +698,19 @@ func writeVisualMarkdown(out *strings.Builder, name cliName, id string, thread c
 	if element := visual.Element; element != nil {
 		hint := element.Tag
 		if element.Role != "" && element.Role != element.Tag {
-			hint += " (" + element.Role + ")"
+			role := element.Role
+			if !plainWord.MatchString(role) {
+				role = codeSpan(role)
+			}
+			hint += " (" + role + ")"
 		}
 		switch {
 		case element.Name != "":
-			hint += ` "` + element.Name + `"`
+			hint += " " + codeSpan(element.Name)
 		case element.Text != "":
-			hint += ` "` + element.Text + `"`
+			hint += " " + codeSpan(element.Text)
 		}
-		fmt.Fprintf(out, "Element: %s · %s\n", hint, element.Selector)
+		fmt.Fprintf(out, "Element (page's hint, unverified): %s · %s\n", hint, codeSpan(element.Selector))
 	}
 	if visual.Head != "" {
 		fmt.Fprintf(out, "Code at: %s\n", visual.Head)
@@ -685,11 +718,26 @@ func writeVisualMarkdown(out *strings.Builder, name cliName, id string, thread c
 	if visual.Available {
 		fmt.Fprintf(out, "Screenshot: %s feedback attachment %s %s [--crop -o region.png]\n", name, id, shot.ID)
 	} else {
-		out.WriteString("Screenshot: removed to stay within the storage budget\n")
+		out.WriteString("Screenshot: not stored (dropped for the storage budget, or its file is missing); the region and page facts above still apply\n")
 	}
 	if len(thread.Messages) > 0 {
 		out.WriteString("\n")
 	}
+}
+
+// plainWord is a role that reads safely outside a code span: an ARIA-like
+// lowercase word.
+var plainWord = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
+
+// codeSpan is text as a Markdown code span, fenced by one backtick more
+// than its longest backtick run and padded when it starts or ends with one,
+// so text from the reviewed page can't restyle the Markdown.
+func codeSpan(text string) string {
+	fence := strings.Repeat("`", longestRun(text, '`')+1)
+	if strings.HasPrefix(text, "`") || strings.HasSuffix(text, "`") {
+		text = " " + text + " "
+	}
+	return fence + text + fence
 }
 
 func rectText(rect contract.FeedbackRect) string {

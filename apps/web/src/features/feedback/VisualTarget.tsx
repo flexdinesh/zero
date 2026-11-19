@@ -100,7 +100,7 @@ export function VisualTarget({ feedbackId, number, project, visual }: VisualProp
         </Button>
         : <p className="visual-frame visual-missing">
           <ImageOffIcon aria-hidden="true" />
-          {failed ? "The screenshot couldn't be read." : "The screenshot was removed to stay within the storage budget. The thread stays."}
+          {failed ? "The screenshot couldn't be read." : "The screenshot isn't stored: it was dropped for the storage budget, or its file is missing. The thread stays."}
         </p>}
       {page && (
         <p className="visual-line">

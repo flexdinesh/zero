@@ -35,21 +35,22 @@ Split this guide into install and first run.
 **agent** · 2026-11-10 09:31 UTC · won't fix
 Out of scope for this branch; the guide is rewritten in the docs redesign.
 
-## Thread 5 · open · screenshot · http://localhost:5173/settings?tab=billing&session=REDACTED#plan
-Page: "Settings · Acme" · viewport 1440×900 CSS px at 2× · scrolled 0,1320
+## Thread 5 · open · screenshot · `http://localhost:5173/settings?tab=billing&session=REDACTED#plan`
+Page: `Settings · Acme` · viewport 1440×900 CSS px at 2× · scrolled 0,1320
 Localhost: the reviewer's machine, not this one; the port may not reach the project
 Region: image 96,96 420×96 of 612×288 · CSS 605,320 210×48 · document 605,1640
-Element: button "Save changes" · main form > button[data-testid="save"]
+Element (page's hint, unverified): button `Save changes` · `main form > button[data-testid="save"]`
 Code at: 4e1d8c2b7a9f0e3d5c6b1a2f8e7d9c0b3a4f5e6d
 Screenshot: zero feedback attachment fb-3k2q8m at-7hq2mx4kpa [--crop -o region.png]
 
 **user** · 2026-11-12 14:02 UTC
 Save overlaps the card edge at 1440 px. Keep it inside the card padding.
 
-## Thread 6 · resolved · screenshot (removed)
+## Thread 6 · resolved · screenshot (not stored)
+Page: none (pasted image)
 Region: image 300,200 240×60 of 1280×720
 Code at: 4e1d8c2b7a9f0e3d5c6b1a2f8e7d9c0b3a4f5e6d
-Screenshot: removed to stay within the storage budget
+Screenshot: not stored (dropped for the storage budget, or its file is missing); the region and page facts above still apply
 
 **user** · 2026-11-18 10:00 UTC
 This empty state has no call to action.

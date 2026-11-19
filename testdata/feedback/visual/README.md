@@ -14,11 +14,11 @@ against `FeedbackUpload`, compare a created thread's `visual` with
 | `draft-minimal.json` | `POST /api/feedback-threads`: pasted image, rectangle only |
 | `draft-page.json` | `POST /api/feedback-threads`: page capture, region clip, element hint |
 | `upload.json` | `POST /api/feedback-attachments` response (`FeedbackUpload`) |
-| `feedback.json` | `GET /api/feedback`: an unchanged code thread beside two visual threads |
+| `feedback.json` | `GET /api/feedback`: an unchanged code thread beside four visual threads: a page capture (5), a pasted screenshot no longer stored (6), a capture at 1.25× with the project's loopback, a role that differs from its tag, and a title with backticks (7), and a stored paste (8) |
 | `feedback-cli.json` | `zero feedback show --json`: the same thread with the CLI-only `attachment.path` |
 | `stored.json` | `<state>/zero/feedback/<repo hash>/fb-3k2q8m.json` on disk |
 | `problems.json` | A rejected visual draft (400 `invalidFeedback`) |
-| `show.md` | `zero feedback show --all` and Copy as Markdown for `feedback.json` |
+| `show.md` | `zero feedback show --all` and Copy as Markdown for `feedback.json` ([decision 0178](../../../docs/decisions/0178-agent-facing-visual-thread-output.md)) |
 
 Coordinates in `visual` are screenshot image pixels. In `draft-page.json` the
 viewport is 1440×900 CSS px at 2×, so the frame is 2880×1800; the kept clip is
