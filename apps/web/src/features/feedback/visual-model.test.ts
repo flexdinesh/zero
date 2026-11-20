@@ -5,7 +5,7 @@ import test from "node:test"
 import { isFeedback, type Feedback, type FeedbackPage } from "@zero/contracts"
 import { feedbackMarkdown, threadPrompt } from "./feedback-model.ts"
 import {
-  attachmentURL, canOpenPage, elementDraft, elementLabel, isLoopback, isVisualThread, pageAddress, pageOpener, pageURLProblem, pageWhere, planVisual,
+  attachmentURL, canOpenPage, elementDraft, elementLabel, isLoopback, isVisualThread, pageAddress, pageOpener, pageWhere, planVisual,
   visualPlace, type VisualThread,
 } from "./visual-model.ts"
 
@@ -81,7 +81,7 @@ test("rows and details name a page by host and path, or a pasted screenshot", as
   assert.equal(elementLabel({ tag: "button", name: "Save changes" }), "button \"Save changes\"")
   assert.equal(elementLabel({ tag: "div", text: "Empty" }), "div \"Empty\"")
   assert.equal(elementLabel({ tag: "img" }), "img")
-  // The role names it as the composer's readout does: an li that is a menu item.
+  // The role names it: an li that is a menu item.
   assert.equal(elementLabel({ tag: "li", role: "menuitem", name: "Export data" }), "menuitem \"Export data\"")
   assert.equal(elementLabel({ tag: "div", role: "listbox" }), "listbox")
   assert.equal(attachmentURL("/home/user/markdown", "fb-3k2q8m", "at-7hq2mx4kpa"),
@@ -100,20 +100,13 @@ test("Open URL is for the project's loopback or a host that is not loopback", ()
   // The server always marks loopback; a page without the mark is not trusted to be open.
   assert.equal(canOpenPage(page("http://127.0.0.1:3000/")), false)
   assert.equal(canOpenPage(page("javascript:alert(1)", "project")), false)
-  // Open page uses the desktop app's review window when it has one.
+  // Open page uses the project's Browser tab where the desktop app hosts it.
   assert.equal(pageOpener(page("http://localhost:5173/", "project"), true), "review")
   assert.equal(pageOpener(page("http://localhost:5173/", "project"), false), "browser")
   assert.equal(pageOpener(page("https://staging.acme.test/settings"), false), "browser")
   assert.equal(pageOpener(page("http://localhost:5173/", "viewer"), true), null)
   for (const host of ["localhost", "app.localhost", "127.0.0.1", "127.9.8.7", "[::1]"]) assert.equal(isLoopback(host), true, host)
   for (const host of ["example.test", "128.0.0.1", "localhost.example"]) assert.equal(isLoopback(host), false, host)
-})
-
-test("edited URLs must stay http or https", () => {
-  assert.equal(pageURLProblem(" http://localhost:5173/a "), "")
-  assert.equal(pageURLProblem("file:///etc/passwd"), "Enter an http or https URL.")
-  assert.equal(pageURLProblem("settings"), "Enter an http or https URL.")
-  assert.match(pageURLProblem(`http://a.test/${"x".repeat(2048)}`), /2048/)
 })
 
 // The README's worked example: 1440×900 CSS px at 2×, scrolled 1320; the

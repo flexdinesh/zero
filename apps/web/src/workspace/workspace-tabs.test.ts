@@ -3,7 +3,7 @@ import test from "node:test"
 
 import type { CompareContext } from "../features/source-control/compare.ts"
 import {
-  browserTab, documentKey, documentTab, includesTab, parseStoredTab, placeTab, reviewTab, routeAt, sameTab, screenTab, storedTab, tabKey, tabName,
+  browserTab, documentKey, documentTab, includesTab, offeredTab, parseStoredTab, placeTab, reviewTab, routeAt, sameTab, screenTab, storedTab, tabKey, tabName,
   tabSearch, walkthroughTab, welcomeTab,
 } from "./workspace-tabs.ts"
 
@@ -190,4 +190,13 @@ test("a screen tab opened as preview replaces the preview tab, as walkthrough st
   // Once pinned, the next thread joins the end as the new preview.
   placed = placeTab({ ...placed, preview: null }, five, true)
   assert.deepEqual(placed, { tabs: [welcome, six, five], preview: five })
+})
+
+test("a window offers the Browser tab and screen tabs only with their features", () => {
+  const off = { browser: false, screens: false }
+  assert.equal(offeredTab(browserTab(), off), false)
+  assert.equal(offeredTab(screenTab("fb-3k2q8m", 5), off), false)
+  assert.equal(offeredTab(browserTab(), { browser: true, screens: true }), true)
+  assert.equal(offeredTab(screenTab("fb-3k2q8m", 5), { browser: false, screens: true }), true)
+  for (const tab of [documentTab("a.md"), reviewTab({ kind: "working" }), walkthroughTab("w1"), welcomeTab()]) assert.equal(offeredTab(tab, off), true)
 })

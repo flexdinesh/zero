@@ -1,6 +1,7 @@
 import { Popover } from "@base-ui/react/popover"
 import { cn } from "cn"
 import { useId, type ReactNode, type Ref, type RefObject } from "react"
+import { OverlayLayer } from "../../lib/overlay-layers.ts"
 
 // A pointer resting on the trigger opens the card after hoverCardDelay; it
 // closes hoverCardCloseDelay after the pointer leaves both, so the pointer can
@@ -49,6 +50,7 @@ export function HoverCard({
         <Popover.Positioner className="ui-hover-card-positioner" side={side} align="start" sideOffset={4} collisionPadding={8}>
           <Popover.Popup className={cn("ui-popover ui-hover-card", className)} aria-label={label} initialFocus={initialFocus}>
             {children}
+            <OverlayLayer />
           </Popover.Popup>
         </Popover.Positioner>
       </Popover.Portal>

@@ -25,10 +25,10 @@ test("the palette offers notification settings only where they exist", () => {
   assert.ok(ids(availableCommands(false, false, false)).includes("help.welcome"))
 })
 
-test("the palette offers Review URL only where the desktop app opens one", () => {
+test("the palette offers the Browser's Open Location only where the desktop app hosts the Browser", () => {
   const ids = (list: readonly Command[]) => list.map((command) => command.id)
-  assert.ok(ids(availableCommands(true, false, true)).includes("review.reviewURL"))
-  assert.ok(!ids(availableCommands(true, false, false)).includes("review.reviewURL"))
+  assert.ok(ids(availableCommands(true, false, true)).includes("browser.openLocation"))
+  assert.ok(!ids(availableCommands(true, false, false)).includes("browser.openLocation"))
 })
 
 test("the active tab’s wrap toggle comes before the default setting when searching", () => {

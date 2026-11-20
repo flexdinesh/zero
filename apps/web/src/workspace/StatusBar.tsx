@@ -5,6 +5,7 @@ import { projectUrl } from "../api/project-url.ts"
 import { useProcessMetrics } from "./process-metrics.ts"
 import { CheckIcon, CopyIcon, SearchIcon, SettingsIcon } from "lucide-react"
 import { useClipboardCopy } from "../lib/clipboard.ts"
+import { useDisclosureLayer } from "../lib/overlay-layers.ts"
 import { BrandMark } from "../components/ui/brand-mark.tsx"
 import { Button } from "../components/ui/button.tsx"
 import { IconButton } from "../components/ui/icon-button.tsx"
@@ -49,6 +50,7 @@ export function StatusBar({ detail, diff, isLoading, error, lines, live, navigat
   const metrics = useProcessMetrics()
   const liveState = live ? liveIndicator(live) : null
   const pathCopy = useClipboardCopy()
+  const processLayer = useDisclosureLayer()
   const processTitle = metrics
     ? [
         "Zero process",
@@ -68,7 +70,7 @@ export function StatusBar({ detail, diff, isLoading, error, lines, live, navigat
           event.preventDefault()
           onHome()
         }}><BrandMark /></a>
-        <details className="status-process" onKeyDown={(event) => {
+        <details className="status-process" onToggle={processLayer} onKeyDown={(event) => {
           if (event.key === "Escape") event.currentTarget.open = false
         }}>
           <summary className={`status-state${isLoading ? " loading" : error ? " failed" : ""}`} title="Process information">

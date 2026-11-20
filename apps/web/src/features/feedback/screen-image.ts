@@ -1,8 +1,8 @@
 import type { FeedbackRect } from "@zero/contracts"
 import type { Size } from "./visual-geometry.ts"
 
-// Browser image work for visual feedback (decision 0176): decoding a pasted
-// or captured image, cropping and encoding PNG in a canvas, and copying an
+// Browser image work for visual feedback (decision 0176): decoding a
+// captured frame, cropping and encoding PNG in a canvas, and copying an
 // image to the clipboard. Pixels never leave the page except as the PNG a
 // thread uploads.
 
@@ -40,11 +40,6 @@ export async function cropPNG(source: Blob | HTMLImageElement, rect: FeedbackRec
   }
 }
 
-// pngOf is blob as PNG: itself when it is one, else re-encoded.
-export async function pngOf(blob: Blob): Promise<Blob> {
-  return blob.type === "image/png" ? blob : cropPNG(blob, null)
-}
-
 // decodeBase64PNG reads the desktop app's base64 frame as a PNG blob.
 export function decodeBase64PNG(base64: string): Blob | null {
   try {
@@ -52,23 +47,6 @@ export function decodeBase64PNG(base64: string): Blob | null {
   } catch {
     return null
   }
-}
-
-// imageFile is the first image among files or clipboard items, or null.
-export function imageFile(transfer: DataTransfer | null): File | null {
-  if (!transfer) return null
-  for (const file of Array.from(transfer.files)) if (file.type.startsWith("image/")) return file
-  for (const item of Array.from(transfer.items)) {
-    if (item.kind !== "file" || !item.type.startsWith("image/")) continue
-    const file = item.getAsFile()
-    if (file) return file
-  }
-  return null
-}
-
-// hasImage reports a drag that carries an image file, before it drops.
-export function hasImage(transfer: DataTransfer | null): boolean {
-  return Boolean(transfer && Array.from(transfer.items).some((item) => item.kind === "file" && item.type.startsWith("image/")))
 }
 
 // copyImage writes png to the clipboard. It must start inside the click

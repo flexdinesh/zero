@@ -3,6 +3,7 @@ import { CheckIcon, CopyIcon } from "lucide-react"
 import { Button } from "../../components/ui/button.tsx"
 import { IconButton } from "../../components/ui/icon-button.tsx"
 import { useClipboardCopy } from "../../lib/clipboard.ts"
+import { useDisclosureLayer } from "../../lib/overlay-layers.ts"
 import type { LanguageServerInstall, NavigationStatus } from "@zero/contracts"
 import { providerLabel, serverSummary } from "./navigation-status.ts"
 
@@ -40,8 +41,9 @@ export interface NavigationStatusPanelProps {
 export function NavigationStatusPanel({ status, onCheck, onOpenSetting }: NavigationStatusPanelProps) {
   const server = status?.server
   const enabled = status?.enabled ?? true
+  const layer = useDisclosureLayer()
   return (
-    <details className="status-process status-navigation" onKeyDown={(event) => {
+    <details className="status-process status-navigation" onToggle={layer} onKeyDown={(event) => {
       if (event.key === "Escape") event.currentTarget.open = false
     }}>
       <summary className="status-navigation-provider" title="Language server status" data-state={server?.state}>

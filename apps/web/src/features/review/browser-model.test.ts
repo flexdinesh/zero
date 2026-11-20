@@ -1,23 +1,35 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { browserPhase, browserTabName, currentPage, failureText, isLoopback } from "./browser-model.ts"
+import { blockingFailure, browserTabName, currentPage, failureText, isLoopback, refusedFailure, stageView } from "./browser-model.ts"
 import type { BrowserState } from "../../lib/desktop-bridge.ts"
 
-const shown: BrowserState = { url: "http://localhost:5173/settings", loading: false, canGoBack: true, canGoForward: false, failure: null }
+const shown: BrowserState = {
+  url: "http://localhost:5173/settings", title: "Settings", loading: false, canGoBack: true, canGoForward: false, failure: null,
+  commenting: false, composing: false,
+}
 
-test("browserPhase is empty before any page, and closed when the window has gone", () => {
-  assert.equal(browserPhase(null, ""), "empty")
-  assert.equal(browserPhase(null, "http://localhost:5173/"), "closed")
+test("the stage is empty without a guest and holds the page otherwise", () => {
+  assert.equal(stageView(null), "empty")
+  assert.equal(stageView(shown), "page")
+  assert.equal(stageView({ ...shown, loading: true, url: "" }), "page")
 })
 
-test("browserPhase follows the window, and a failure wins over loading", () => {
-  assert.equal(browserPhase(shown, ""), "shown")
-  assert.equal(browserPhase({ ...shown, loading: true }, ""), "loading")
-  assert.equal(browserPhase({ ...shown, loading: true, failure: { kind: "load", url: shown.url, description: "" } }, ""), "failed")
+test("a failure takes the stage unless the guest only refused a scheme and kept its page", () => {
+  for (const kind of ["load", "certificate", "crashed"] as const) {
+    const state = { ...shown, loading: true, failure: { kind, url: shown.url, description: "" } }
+    assert.equal(stageView(state), "failed", kind)
+    assert.equal(blockingFailure(state), state.failure)
+    assert.equal(refusedFailure(state), null)
+  }
+  const refused = { ...shown, failure: { kind: "refused" as const, url: "file:", description: "" } }
+  assert.equal(stageView(refused), "page")
+  assert.equal(blockingFailure(refused), null)
+  assert.equal(refusedFailure(refused), refused.failure)
+  assert.equal(refusedFailure(null), null)
 })
 
-test("currentPage is the window's page, else the last one reviewed", () => {
+test("currentPage is the guest's page, else the last one opened", () => {
   assert.equal(currentPage(shown, "http://localhost:3000/"), shown.url)
   assert.equal(currentPage({ ...shown, url: "" }, "http://localhost:3000/"), "http://localhost:3000/")
   assert.equal(currentPage(null, ""), "")
@@ -26,6 +38,14 @@ test("currentPage is the window's page, else the last one reviewed", () => {
 test("browserTabName names the page's host, with the page in the title", () => {
   assert.deepEqual(browserTabName("http://localhost:5173/settings?tab=2"), { label: "localhost:5173", title: "Browser: localhost:5173/settings?tab=2" })
   assert.deepEqual(browserTabName("https://example.com/"), { label: "example.com", title: "Browser: example.com/" })
+})
+
+test("browserTabName adds the page's title on one bounded line", () => {
+  assert.deepEqual(browserTabName("http://localhost:5173/settings", "  Settings\n · Acme "), {
+    label: "localhost:5173", title: "Browser: Settings · Acme · localhost:5173/settings",
+  })
+  assert.equal(browserTabName("http://localhost:5173/", "x".repeat(400)).title, `Browser: ${"x".repeat(120)} · localhost:5173/`)
+  assert.equal(browserTabName("", "Settings").title, "Browser")
 })
 
 test("browserTabName is Browser without a page", () => {

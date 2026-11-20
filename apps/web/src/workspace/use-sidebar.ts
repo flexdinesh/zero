@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 
-export type SidebarView = "explorer" | "search" | "source-control" | "walkthroughs" | "feedback"
+import { browserAvailable } from "../lib/desktop-bridge.ts"
+
+export type SidebarView = "explorer" | "search" | "source-control" | "walkthroughs" | "feedback" | "browser"
 
 const storageKey = "zero-sidebar"
 const mobileQuery = "(max-width: 48rem)"
@@ -14,20 +16,22 @@ const defaultSidebar: StoredSidebar = { view: "explorer", hidden: false }
 
 function isSidebarView(value: unknown): value is SidebarView {
   return value === "explorer" || value === "search" || value === "source-control" || value === "walkthroughs" || value === "feedback"
+    || value === "browser"
 }
 
-// parseSidebar reads stored sidebar state; unknown views open the Explorer.
-export function parseSidebar(value: unknown): StoredSidebar {
+// parseSidebar reads stored sidebar state; unknown views open the Explorer,
+// as does Browser in a window that does not host it (decision 0184).
+export function parseSidebar(value: unknown, browser: boolean): StoredSidebar {
   if (typeof value !== "object" || value === null || !("view" in value) || !("hidden" in value)) return defaultSidebar
   return {
-    view: isSidebarView(value.view) ? value.view : "explorer",
+    view: isSidebarView(value.view) && (value.view !== "browser" || browser) ? value.view : "explorer",
     hidden: value.hidden === true,
   }
 }
 
 function readSidebar(): StoredSidebar {
   try {
-    return parseSidebar(JSON.parse(window.localStorage.getItem(storageKey) ?? "null"))
+    return parseSidebar(JSON.parse(window.localStorage.getItem(storageKey) ?? "null"), browserAvailable())
   } catch {
     // Fall back to the defaults when storage is unavailable or malformed.
     return defaultSidebar

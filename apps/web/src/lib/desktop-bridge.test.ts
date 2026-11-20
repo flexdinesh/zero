@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { desktopBridge, readDesktopBridge, type NativeMenuItem } from "./desktop-bridge.ts"
+import { browserAvailable, desktopBridge, hostsBrowser, readDesktopBridge, type NativeMenuItem } from "./desktop-bridge.ts"
 
 test("a version 1 bridge is read; folders open in the page, not through it (decision 0146)", () => {
   const bridge = readDesktopBridge({ version: 1, openFolder() {} })
@@ -131,85 +131,77 @@ test("diagnostics resolves a valid report and null for an invalid one, a refusal
   assert.equal(readDesktopBridge({ version: 2 })?.diagnostics, null)
 })
 
-test("openReview passes the project and URL through and swallows refusals", () => {
+test("browserOpen passes the project and URL through and swallows refusals", async () => {
   const calls: unknown[][] = []
-  const bridge = readDesktopBridge({ version: 2, openReview(...args: unknown[]) { calls.push(args); return Promise.reject(new Error("refused")) } })
-  bridge?.openReview?.("/p", "http://a.test/")
+  const bridge = readDesktopBridge({ version: 2, browserOpen(...args: unknown[]) { calls.push(args); return Promise.reject(new Error("refused")) } })
+  await bridge?.browserOpen?.("/p", "http://a.test/")
   assert.deepEqual(calls, [["/p", "http://a.test/"]])
-  assert.equal(readDesktopBridge({ version: 2 })?.openReview, null)
-})
-
-const capture = {
-  id: "cap-1", project: "/p", png: "iVBORw0KGgo=",
-  page: { url: "http://localhost:5173/settings", title: "Settings", viewport: { width: 1440, height: 900, deviceScaleFactor: 2 }, scroll: { x: 0, y: 1320 } },
-}
-
-test("screenCapture resolves a valid capture and null for junk, refusals, or none", async () => {
-  assert.deepEqual(await readDesktopBridge({ version: 2, screenCapture: () => Promise.resolve(capture) })?.screenCapture?.(), { ...capture, hits: null, drift: false })
-  assert.equal(await readDesktopBridge({ version: 2, screenCapture: () => Promise.resolve(null) })?.screenCapture?.(), null)
-  const junk = { ...capture, page: { ...capture.page, viewport: { width: 1440, height: 900, deviceScaleFactor: 0 } } }
-  assert.equal(await readDesktopBridge({ version: 2, screenCapture: () => Promise.resolve(junk) })?.screenCapture?.(), null)
-  assert.equal(await readDesktopBridge({ version: 2, screenCapture: () => Promise.resolve({ ...capture, png: 1 }) })?.screenCapture?.(), null)
-  assert.equal(await readDesktopBridge({ version: 2, screenCapture: () => Promise.reject(new Error("x")) })?.screenCapture?.(), null)
-  assert.equal(readDesktopBridge({ version: 2 })?.screenCapture, null)
-})
-
-test("screenCapture keeps a sound hit map and the drift mark, and drops a broken map alone", async () => {
-  // A 16 × 8 viewport in 8 px cells: 2 × 1.
-  const hits = {
-    step: 8, columns: 2, rows: 1, grid: [1, -1],
-    elements: [
-      { parent: -1, tag: "body", box: { x: 0, y: 0, width: 16, height: 8 } },
-      { parent: 0, tag: "button", selector: "#save", role: "button", name: "Save", meaningful: true, box: { x: 0, y: 0, width: 8, height: 8 }, extra: "dropped" },
-    ],
-  }
-  const small = { ...capture, page: { ...capture.page, viewport: { width: 16, height: 8, deviceScaleFactor: 1 } }, hits, drift: true }
-  const read = await readDesktopBridge({ version: 2, screenCapture: () => Promise.resolve(small) })?.screenCapture?.()
-  assert.deepEqual(read?.hits, {
-    step: 8, columns: 2, rows: 1, grid: [1, -1],
-    elements: [
-      { parent: -1, tag: "body", meaningful: false, box: { x: 0, y: 0, width: 16, height: 8 } },
-      { parent: 0, tag: "button", selector: "#save", role: "button", name: "Save", meaningful: true, box: { x: 0, y: 0, width: 8, height: 8 } },
-    ],
-  })
-  assert.equal(read?.drift, true)
-  for (const broken of [
-    { ...hits, columns: 3 },
-    { ...hits, grid: [1] },
-    { ...hits, grid: [2, -1] },
-    { ...hits, elements: [{ parent: 0, tag: "body" }] },
-    { ...hits, elements: [hits.elements[0], { parent: 0, tag: 1 }] },
-    { ...hits, elements: [hits.elements[0], { parent: 0, box: { x: 0, y: 0, width: 0, height: 1 } }] },
-  ]) {
-    const capture = await readDesktopBridge({ version: 2, screenCapture: () => Promise.resolve({ ...small, hits: broken }) })?.screenCapture?.()
-    assert.notEqual(capture, null)
-    assert.equal(capture?.hits, null)
-  }
+  assert.equal(readDesktopBridge({ version: 2 })?.browserOpen, null)
 })
 
 test("browserState passes the project and keeps a well-formed state only", async () => {
   const calls: unknown[][] = []
-  const state = { url: "http://localhost:5173/", loading: false, canGoBack: true, canGoForward: false, failure: { kind: "load", url: "http://localhost:5173/", description: "refused" }, extra: 1 }
+  const state = {
+    url: "http://localhost:5173/", title: "Home", loading: false, canGoBack: true, canGoForward: false,
+    failure: { kind: "load", url: "http://localhost:5173/", description: "refused" }, commenting: true, composing: false, extra: 1,
+  }
   const bridge = readDesktopBridge({ version: 2, browserState(...args: unknown[]) { calls.push(args); return Promise.resolve(state) } })
   assert.deepEqual(await bridge?.browserState?.("/p"), {
-    url: "http://localhost:5173/", loading: false, canGoBack: true, canGoForward: false, failure: { kind: "load", url: "http://localhost:5173/", description: "refused" },
+    url: "http://localhost:5173/", title: "Home", loading: false, canGoBack: true, canGoForward: false,
+    failure: { kind: "load", url: "http://localhost:5173/", description: "refused" }, commenting: true, composing: false,
   })
   assert.deepEqual(calls, [["/p"]])
   const answer = (value: unknown) => readDesktopBridge({ version: 2, browserState: () => Promise.resolve(value) })?.browserState?.("/p")
   assert.equal(await answer(null), null)
   assert.equal(await answer({ ...state, loading: "no" }), null)
   assert.equal(await answer({ ...state, failure: { kind: "boom", url: "", description: "" } }), null)
-  assert.deepEqual(await answer({ ...state, failure: null, extra: undefined }), { url: state.url, loading: false, canGoBack: true, canGoForward: false, failure: null })
   assert.equal(await readDesktopBridge({ version: 2, browserState: () => Promise.reject(new Error("refused")) })?.browserState?.("/p"), null)
   assert.equal(readDesktopBridge({ version: 2 })?.browserState, null)
 })
 
-test("browserAction passes the project and action through and swallows refusals", () => {
+test("browserState reads a missing title as empty and missing comment state as off", async () => {
+  const state = { url: "http://localhost:5173/", loading: true, canGoBack: false, canGoForward: false, failure: null }
+  assert.deepEqual(await readDesktopBridge({ version: 2, browserState: () => Promise.resolve(state) })?.browserState?.("/p"), {
+    ...state, title: "", commenting: false, composing: false,
+  })
+})
+
+test("browserAction passes the project and action through and swallows refusals", async () => {
   const calls: unknown[][] = []
   const bridge = readDesktopBridge({ version: 2, browserAction(...args: unknown[]) { calls.push(args); return Promise.reject(new Error("refused")) } })
-  bridge?.browserAction?.("/p", "back")
+  await bridge?.browserAction?.("/p", "back")
   assert.deepEqual(calls, [["/p", "back"]])
   assert.equal(readDesktopBridge({ version: 2 })?.browserAction, null)
+})
+
+test("browserFrame passes a frame or null and swallows refusals", () => {
+  const calls: unknown[][] = []
+  const bridge = readDesktopBridge({ version: 2, browserFrame(...args: unknown[]) { calls.push(args); return Promise.reject(new Error("refused")) } })
+  bridge?.browserFrame?.("/p", { x: 240, y: 64, width: 800, height: 600 })
+  bridge?.browserFrame?.("/p", null)
+  assert.deepEqual(calls, [["/p", { x: 240, y: 64, width: 800, height: 600 }], ["/p", null]])
+  assert.equal(readDesktopBridge({ version: 2 })?.browserFrame, null)
+})
+
+test("browserSnapshot resolves a base64 PNG, and null for anything else or a refusal", async () => {
+  const snapshot = (value: unknown) => readDesktopBridge({ version: 2, browserSnapshot: () => Promise.resolve(value) })?.browserSnapshot?.("/p")
+  assert.equal(await snapshot("iVBORw0KGgo="), "iVBORw0KGgo=")
+  for (const value of [null, undefined, "", 3, { png: "x" }]) assert.equal(await snapshot(value), null)
+  assert.equal(await readDesktopBridge({ version: 2, browserSnapshot: () => Promise.reject(new Error("x")) })?.browserSnapshot?.("/p"), null)
+  assert.equal(readDesktopBridge({ version: 2 })?.browserSnapshot, null)
+})
+
+test("a window hosts the Browser only with experimental features on and all five methods", () => {
+  const methods = { browserOpen() {}, browserState() {}, browserAction() {}, browserFrame() {}, browserSnapshot() {} }
+  const on = { enabled: true, source: "env" }
+  assert.equal(hostsBrowser(readDesktopBridge({ version: 2, experimental: on, ...methods })), true)
+  assert.equal(hostsBrowser(readDesktopBridge({ version: 2, experimental: { enabled: false, source: "" }, ...methods })), false)
+  assert.equal(hostsBrowser(readDesktopBridge({ version: 2, ...methods })), false)
+  for (const missing of Object.keys(methods)) {
+    assert.equal(hostsBrowser(readDesktopBridge({ version: 2, experimental: on, ...methods, [missing]: undefined })), false, missing)
+  }
+  assert.equal(hostsBrowser(null), false)
+  assert.equal(browserAvailable(), false)
 })
 
 test("the bridge carries the app's experimental state and sets the user's choice (decision 0184)", async () => {

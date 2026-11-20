@@ -1,7 +1,7 @@
-// Pure model of UI review in the desktop app (decision 0177): which URLs
-// the Review URL palette accepts and remembers per project.
+// Pure model of the Browser's pages (decision 0184): which addresses the
+// address field accepts and remembers per project.
 
-// reviewURL reads what the reviewer typed as the page to review: an
+// reviewURL reads what the reviewer typed as the page to open: an
 // absolute http or https URL with a host and no credentials; a bare
 // localhost, dotted host, or host:port takes http. null for anything else. The desktop app checks
 // again.
@@ -31,7 +31,7 @@ export function pageLabel(url: string): string {
   }
 }
 
-// RecentURLs is the pages reviewed per project, most recent first, as
+// RecentURLs is the pages opened per project, most recent first, as
 // zero-review-urls stores them.
 export type RecentURLs = Readonly<Record<string, readonly string[]>>
 
@@ -58,8 +58,8 @@ export function rememberURL(recent: RecentURLs, project: string, url: string): R
   return { ...Object.fromEntries(Object.entries(rest).slice(-(recentProjects - 1))), [project]: urls }
 }
 
-// ReviewChoice is one row of the Review URL palette: the typed page, or a
-// remembered one.
+// ReviewChoice is one suggestion under the address field: the typed page,
+// or a remembered one.
 export interface ReviewChoice {
   url: string
   typed: boolean

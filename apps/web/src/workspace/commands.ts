@@ -24,7 +24,7 @@ export type CommandAction =
   | { kind: "toggle-word-wrap" }
   | { kind: "find" }
   | { kind: "find-step"; direction: 1 | -1 }
-  | { kind: "review-url" }
+  | { kind: "browser-location" }
 
 export interface Command {
   id: string
@@ -48,8 +48,8 @@ export interface CommandMatch {
 // walkthrough stepping, which
 // acts on the walkthrough last opened; then Source Control's file history,
 // which acts on the working-tree file in view, and line blame, which acts on
-// Source's active line; then Review URL, in the desktop app's local window
-// (decision 0177); then Help.
+// Source's active line; then the Browser's Open Location, where the desktop
+// app hosts the Browser (decision 0184); then Help.
 export const commands: readonly Command[] = [
   { id: "preferences.openSettings", category: "Preferences", title: "Open Settings", action: { kind: "open-settings" } },
   { id: "preferences.colorTheme", category: "Preferences", title: "Color Theme", action: { kind: "select-color-theme" } },
@@ -75,17 +75,17 @@ export const commands: readonly Command[] = [
   { id: "walkthrough.exit", category: "Walkthrough", title: "Close Walkthrough", action: { kind: "walkthrough-exit" } },
   { id: "sourceControl.showFileHistory", category: "Source Control", title: "Show File History", action: { kind: "show-file-history" } },
   { id: "sourceControl.showLineBlame", category: "Source Control", title: "Show Line Blame", action: { kind: "show-line-blame" } },
-  { id: "review.reviewURL", category: "Review", title: "Review URL…", action: { kind: "review-url" } },
+  { id: "browser.openLocation", category: "Browser", title: "Open Location…", action: { kind: "browser-location" }, shortcut: mac ? "⌘L" : "Ctrl+L" },
   { id: "help.welcome", category: "Help", title: "Welcome", action: { kind: "open-welcome" } },
   { id: "help.reportProblem", category: "Help", title: "Report a Problem…", action: { kind: "report-problem" } },
 ]
 
 // availableCommands keeps commands supported by the client and active view.
-export function availableCommands(notificationsAvailable: boolean, canWrap: boolean, canReview: boolean): readonly Command[] {
+export function availableCommands(notificationsAvailable: boolean, canWrap: boolean, canBrowse: boolean): readonly Command[] {
   const settings = availableSettings(notificationsAvailable)
   return commands.filter(({ action }) => {
     if (action.kind === "toggle-word-wrap") return canWrap
-    if (action.kind === "review-url") return canReview
+    if (action.kind === "browser-location") return canBrowse
     if (action.kind === "open-setting") return settings.some((definition) => definition.id === action.setting)
     return true
   })

@@ -4,8 +4,7 @@ import { branchLabel } from "./feedback-model.ts"
 
 // CommentTarget is the project a screen comment joins: the folder's name and
 // its branch ("detached HEAD" without one; a folder shows no branch). The
-// Browser tab (decision 0181) and the composer (decision 0183) show it, since
-// a capture can switch the window to another project before it opens.
+// Browser's comments show it (decision 0184).
 export interface CommentTargetProps {
   name: string
   branch: string

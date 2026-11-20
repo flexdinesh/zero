@@ -48,127 +48,9 @@ export function readDesktopDiagnostics(value: unknown): DesktopDiagnostics | nul
   return { version, commit, logDir, logLines, crashLines }
 }
 
-// ScreenPage is the page a desktop capture froze (decision 0176): its URL and
-// title, its layout viewport in CSS pixels with the device scale factor that
-// sizes the frame, and its scroll position in CSS pixels.
-export interface ScreenPage {
-  url: string
-  title: string
-  viewport: { width: number; height: number; deviceScaleFactor: number }
-  scroll: { x: number; y: number }
-}
-
-// ScreenCapture is a capture waiting for this window's composer: its id, the
-// project it comments on, the full frame as base64 PNG, the page, and its
-// hit map (null when the page gave none that holds). drift says the page's
-// layout moved while it was captured: the hit map may not match the frame.
-export interface ScreenCapture {
-  id: string
-  project: string
-  png: string
-  page: ScreenPage
-  hits: ScreenHits | null
-  drift: boolean
-}
-
-// ScreenHits is a capture's hit map (decision 0180), recorded with the frame:
-// grid holds, row by row, the element (an index into elements, -1 for none)
-// topmost at the center of each step-pixel cell of the viewport.
-export interface ScreenHits {
-  step: number
-  columns: number
-  rows: number
-  grid: readonly number[]
-  elements: readonly ScreenHitElement[]
-}
-
-// ScreenHitElement is one element of a hit map, the page's own word:
-// advisory, never trusted. parent is the nearest ancestor the map holds
-// (earlier) or -1; box is the part the page showed, in CSS pixels of the
-// viewport. Metadata is present while the page had time to describe it.
-export interface ScreenHitElement {
-  parent: number
-  tag?: string
-  selector?: string
-  role?: string
-  name?: string
-  text?: string
-  box?: { x: number; y: number; width: number; height: number }
-  meaningful: boolean
-}
-
-function finite(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value)
-}
-
-function positive(value: unknown): value is number {
-  return finite(value) && value > 0
-}
-
-// readScreenCapture accepts the app's pending capture, or null.
-export function readScreenCapture(value: unknown): ScreenCapture | null {
-  if (!isRecord(value)) return null
-  const { id, project, png, page } = value
-  if (typeof id !== "string" || id === "" || typeof project !== "string" || project === "" || typeof png !== "string" || png === "" || !isRecord(page)) return null
-  const { url, title, viewport, scroll } = page
-  if (typeof url !== "string" || typeof title !== "string" || !isRecord(viewport) || !isRecord(scroll)) return null
-  const { width, height, deviceScaleFactor } = viewport
-  if (!positive(width) || !positive(height) || !positive(deviceScaleFactor) || !finite(scroll.x) || !finite(scroll.y)) return null
-  return {
-    id, project, png,
-    page: { url, title, viewport: { width, height, deviceScaleFactor }, scroll: { x: scroll.x, y: scroll.y } },
-    hits: readScreenHits(value.hits, width, height),
-    drift: value.drift === true,
-  }
-}
-
-function whole(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value)
-}
-
-// readScreenHitElement accepts one element of a hit map at index, or null.
-function readScreenHitElement(value: unknown, index: number): ScreenHitElement | null {
-  if (!isRecord(value) || !whole(value.parent) || value.parent < -1 || value.parent >= index) return null
-  const element: ScreenHitElement = { parent: value.parent, meaningful: value.meaningful === true }
-  for (const key of ["tag", "selector", "role", "name", "text"] as const) {
-    const field = value[key]
-    if (field === undefined) continue
-    if (typeof field !== "string") return null
-    if (field) element[key] = field
-  }
-  const { box } = value
-  if (box !== undefined) {
-    if (!isRecord(box) || !finite(box.x) || !finite(box.y) || !positive(box.width) || !positive(box.height)) return null
-    element.box = { x: box.x, y: box.y, width: box.width, height: box.height }
-  }
-  return element
-}
-
-// readScreenHits accepts a hit map for a width × height viewport, or null:
-// a grid that covers the viewport in step-pixel cells, whose cells name an
-// element or none, and elements whose parents come first.
-export function readScreenHits(value: unknown, width: number, height: number): ScreenHits | null {
-  if (!isRecord(value)) return null
-  const { step, columns, rows, grid, elements } = value
-  if (!whole(step) || step < 1 || columns !== Math.ceil(width / step) || rows !== Math.ceil(height / step)) return null
-  if (!Array.isArray(grid) || !Array.isArray(elements) || grid.length !== columns * rows) return null
-  const read: ScreenHitElement[] = []
-  for (const [index, element] of elements.entries()) {
-    const parsed = readScreenHitElement(element, index)
-    if (!parsed) return null
-    read.push(parsed)
-  }
-  const cells: number[] = []
-  for (const cell of grid) {
-    if (!whole(cell) || cell < -1 || cell >= read.length) return null
-    cells.push(cell)
-  }
-  return { step, columns, rows, grid: cells, elements: read }
-}
-
 // BrowserFailureKind is why a project browser's page did not show (decision
-// 0181): it could not load, its certificate was refused, the page asked for
-// a scheme the guest window refuses, or its web process stopped.
+// 0184): it could not load, its certificate was refused, the page asked for
+// a scheme the guest refuses, or its web process stopped.
 export type BrowserFailureKind = "load" | "certificate" | "refused" | "crashed"
 
 // BrowserFailure is the page's last failure: the address it concerned and
@@ -179,19 +61,32 @@ export interface BrowserFailure {
   description: string
 }
 
-// BrowserState is a project's open guest window as the app reads it now
-// (decision 0181): the page's address, whether it is loading, its history,
-// and its last failure, cleared by the next navigation.
+// BrowserState is a project's guest as the app reads it now (decision
+// 0184): the page's address ("" before the first load commits) and title,
+// whether it is loading, its history, its last failure, cleared by the next
+// navigation, and whether comment mode is on or the composer shows.
 export interface BrowserState {
   url: string
+  title: string
   loading: boolean
   canGoBack: boolean
   canGoForward: boolean
   failure: BrowserFailure | null
+  commenting: boolean
+  composing: boolean
 }
 
-// BrowserAction is what the Browser tab asks of its guest window.
-export type BrowserAction = "back" | "forward" | "reload" | "stop" | "show" | "close" | "comment" | "commentDelayed"
+// BrowserAction is what the Browser tab asks of its guest.
+export type BrowserAction = "back" | "forward" | "reload" | "stop" | "close"
+
+// BrowserFrame is where the guest shows: a rectangle of this page's
+// viewport in CSS pixels.
+export interface BrowserFrame {
+  x: number
+  y: number
+  width: number
+  height: number
+}
 
 const failureKinds: readonly string[] = ["load", "certificate", "refused", "crashed"] satisfies readonly BrowserFailureKind[]
 
@@ -207,16 +102,20 @@ function readBrowserFailure(value: unknown): BrowserFailure | null | undefined {
   return { kind, url, description }
 }
 
-// readBrowserState accepts the app's state of a project's guest window, or
-// null: no window, or an answer that is not one.
+// readBrowserState accepts the app's state of a project's guest, or null:
+// no guest, or an answer that is not one. A missing title reads as "", and
+// missing commenting or composing as false.
 export function readBrowserState(value: unknown): BrowserState | null {
   if (!isRecord(value)) return null
-  const { url, loading, canGoBack, canGoForward } = value
+  const { url, title, loading, canGoBack, canGoForward } = value
   const failure = readBrowserFailure(value.failure)
   if (typeof url !== "string" || typeof loading !== "boolean" || typeof canGoBack !== "boolean" || typeof canGoForward !== "boolean" || failure === undefined) {
     return null
   }
-  return { url, loading, canGoBack, canGoForward, failure }
+  return {
+    url, title: typeof title === "string" ? title : "", loading, canGoBack, canGoForward, failure,
+    commenting: value.commenting === true, composing: value.composing === true,
+  }
 }
 
 // ExperimentalSource says what decided the app's experimental features
@@ -264,11 +163,12 @@ export interface NotificationStatus {
 // setAppearance has the app's menus and window controls follow the theme's
 // polarity, or the OS for "system" (decision 0119); diagnostics resolves the
 // app's part of a problem report, or null when it refuses (decision 0152).
-// openReview shows a page of the developer's app in the project's review
-// window; screenCapture resolves the capture waiting for this window's
-// composer, with its hit map, or null (decisions 0177, 0180). browserState
-// resolves a project's guest window, or null without one, and browserAction
-// steers it from the Browser tab (decision 0181). A
+// The browser methods drive a project's guest, the page the Browser tab
+// shows (decision 0184): browserOpen makes it if the project has none and
+// navigates; browserState resolves it, or null without one; browserAction
+// steers it; browserFrame says where it shows, or hides it with null (the
+// page is kept); browserSnapshot resolves its frame now as a base64 PNG, or
+// null. A
 // window on a remote server has no revealPath or diagnostics: its files are
 // not on this computer, and its server is not trusted with this computer's
 // logs (decision 0098). experimental is the state the window opened with, and
@@ -285,10 +185,11 @@ export interface DesktopBridge {
   configureNotifications: ((config: NotificationConfig) => Promise<NotificationStatus | null>) | null
   setAppearance: ((appearance: DesktopAppearance) => void) | null
   diagnostics: (() => Promise<DesktopDiagnostics | null>) | null
-  openReview: ((project: string, url: string) => void) | null
-  screenCapture: (() => Promise<ScreenCapture | null>) | null
+  browserOpen: ((project: string, url: string) => Promise<void>) | null
   browserState: ((project: string) => Promise<BrowserState | null>) | null
-  browserAction: ((project: string, action: BrowserAction) => void) | null
+  browserAction: ((project: string, action: BrowserAction) => Promise<void>) | null
+  browserFrame: ((project: string, frame: BrowserFrame | null) => void) | null
+  browserSnapshot: ((project: string) => Promise<string | null>) | null
 }
 
 // DesktopAppearance is the polarity native surfaces take: the OS's, or one.
@@ -299,7 +200,7 @@ export type DesktopAppearance = "system" | "light" | "dark"
 export function readDesktopBridge(value: unknown): DesktopBridge | null {
   if (!isRecord(value) || typeof value.version !== "number" || !Number.isInteger(value.version) || value.version < 1) return null
   const { closeWindow, showAppMenu, revealPath, showContextMenu, configureNotifications, setAppearance, diagnostics } = value
-  const { openReview, screenCapture, browserState, browserAction, setExperimental } = value
+  const { browserOpen, browserState, browserAction, browserFrame, browserSnapshot, setExperimental } = value
   return {
     version: value.version,
     experimental: readExperimentalState(value.experimental),
@@ -364,18 +265,13 @@ export function readDesktopBridge(value: unknown): DesktopBridge | null {
         }
       }
       : null,
-    openReview: typeof openReview === "function"
-      ? (project, url) => {
-        // The app reports failures itself.
-        Promise.resolve(openReview.call(value, project, url)).catch(() => undefined)
-      }
-      : null,
-    screenCapture: typeof screenCapture === "function"
-      ? async () => {
+    browserOpen: typeof browserOpen === "function"
+      ? async (project, url) => {
         try {
-          return readScreenCapture(await screenCapture.call(value))
+          // The app reports failures in the guest's state.
+          await browserOpen.call(value, project, url)
         } catch {
-          return null
+          // Refused: the state says what shows.
         }
       }
       : null,
@@ -389,8 +285,27 @@ export function readDesktopBridge(value: unknown): DesktopBridge | null {
       }
       : null,
     browserAction: typeof browserAction === "function"
-      ? (project, action) => {
-        Promise.resolve(browserAction.call(value, project, action)).catch(() => undefined)
+      ? async (project, action) => {
+        try {
+          await browserAction.call(value, project, action)
+        } catch {
+          // Refused: the state says what shows.
+        }
+      }
+      : null,
+    browserFrame: typeof browserFrame === "function"
+      ? (project, frame) => {
+        Promise.resolve(browserFrame.call(value, project, frame)).catch(() => undefined)
+      }
+      : null,
+    browserSnapshot: typeof browserSnapshot === "function"
+      ? async (project) => {
+        try {
+          const png: unknown = await browserSnapshot.call(value, project)
+          return typeof png === "string" && png !== "" ? png : null
+        } catch {
+          return null
+        }
       }
       : null,
   }
@@ -405,6 +320,18 @@ export function desktopBridge(): DesktopBridge | null {
 // (decision 0184): only in the desktop app, when its state says so.
 export function experimentalEnabled(): boolean {
   return desktopBridge()?.experimental?.enabled === true
+}
+
+// hostsBrowser reports a bridge whose window hosts the Browser (decision
+// 0184): experimental features on, and every browser method offered.
+export function hostsBrowser(bridge: DesktopBridge | null): boolean {
+  return Boolean(bridge?.experimental?.enabled && bridge.browserOpen && bridge.browserState && bridge.browserAction
+    && bridge.browserFrame && bridge.browserSnapshot)
+}
+
+// browserAvailable reports whether this window hosts the Browser.
+export function browserAvailable(): boolean {
+  return hostsBrowser(desktopBridge())
 }
 
 // notificationsAvailable reports a client that can show notices: the desktop

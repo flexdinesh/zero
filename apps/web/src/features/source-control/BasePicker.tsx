@@ -8,6 +8,7 @@ import { StatusMessage } from "../../components/ui/notice.tsx"
 import { TextField } from "../../components/ui/text-field.tsx"
 import { shortHash } from "../../lib/commit-hash.ts"
 import type { Refs } from "./use-refs.ts"
+import { OverlayLayer } from "../../lib/overlay-layers.ts"
 
 interface BasePickerProps {
   // base is the chosen base, "" for the default.
@@ -109,6 +110,7 @@ export function BasePicker({ base, mergeBase, name, refs, onChange }: BasePicker
             {refs.error && <StatusMessage className="base-picker-note" tone="error" role="alert">{refs.error}</StatusMessage>}
             {result && choices.length === 0 && <StatusMessage className="base-picker-note">No branches match.</StatusMessage>}
             {result?.truncated && <StatusMessage className="base-picker-note">Showing the first {result.branches.length.toLocaleString()} branches.</StatusMessage>}
+            <OverlayLayer />
           </Popover.Popup>
         </Popover.Positioner>
       </Popover.Portal>

@@ -4,27 +4,19 @@ import path from "node:path"
 import { expect, type APIRequestContext, type Page } from "@playwright/test"
 import { test } from "./live-test.ts"
 
+import { experimentalDesktop } from "./desktop-fake.ts"
 import { gitFixtureRoot } from "./git-fixture.ts"
 
-// Visual threads in Zero (decisions 0176, 0182): a pasted screenshot takes a
-// region and a comment, or is cancelled; a visual thread opens its screen
-// tab, which shows the stored screenshot and the agent's replies beside
-// code threads in the same feedback. Each test serves its own copy of the
-// git fixture, so its repository's feedback starts empty.
+// Visual threads in Zero (decisions 0176, 0182, 0184): they show only where
+// the desktop app has experimental features on. There a visual thread opens
+// its screen tab, which shows the stored screenshot and the agent's replies
+// beside code threads in the same feedback. Each test serves its own copy
+// of the git fixture, so its repository's feedback starts empty.
 test.skip(() => !existsSync(path.join(gitFixtureRoot, ".git")), "git is not installed")
 test.use({ seed: gitFixtureRoot })
 
 // The contract fixture's screenshot: 612 × 288.
 const screenshot = readFileSync(path.join(import.meta.dirname, "../../testdata/api/default/feedback-attachment.png"))
-
-async function paste(page: Page) {
-  await page.locator(".feedback-view").evaluate((view, base64) => {
-    const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0))
-    const transfer = new DataTransfer()
-    transfer.items.add(new File([bytes], "screen.png", { type: "image/png" }))
-    view.dispatchEvent(new ClipboardEvent("paste", { clipboardData: transfer, bubbles: true, cancelable: true }))
-  }, screenshot.toString("base64"))
-}
 
 interface Live {
   root: string
@@ -39,7 +31,7 @@ async function feedbackId(request: APIRequestContext, live: Live): Promise<strin
 }
 
 // startVisual uploads the screenshot and opens a visual thread on it, as
-// the composer does.
+// a screen comment does.
 async function startVisual(request: APIRequestContext, live: Live, body: string, id?: string): Promise<number> {
   const upload = await request.post(`${live.origin}/api/feedback-attachments?project=${encodeURIComponent(live.root)}`, {
     data: screenshot, headers: { "Content-Type": "image/png", Origin: live.origin },
@@ -73,67 +65,49 @@ function screenTabButton(page: Page, id: string, number: number) {
   return page.locator(`[data-tab="screen:${id}:${number}"]`)
 }
 
-test("a pasted screenshot takes a region and a comment, or cancels, and Send opens its screen tab", async ({ page, request, live }) => {
-  test.setTimeout(60_000)
+function feedbackActivity(page: Page) {
+  return page.getByRole("navigation", { name: "Views" }).getByRole("button", { name: /^Feedback/ })
+}
+
+test("visual threads show only with experimental features on", async ({ page, request, live }) => {
   await startCode(request, live, "Name the answer after what it counts.")
   const id = await feedbackId(request, live)
-  await page.goto(`${live.origin}/view?project=${encodeURIComponent(live.root)}&fb=${id}`)
+  const shot = await startVisual(request, live, "Save overlaps the card edge.", id)
+  const project = encodeURIComponent(live.root)
+
+  // A browser: the list, its count, and the badge leave the screenshot out,
+  // and its link opens no screen tab. A feedback link shows the Feedback view.
+  await page.goto(`${live.origin}/view?project=${project}&fb=${id}&thread=${shot}`)
   const view = page.locator(".feedback-view")
-  const rows = view.getByRole("listbox", { name: "Threads" }).getByRole("option")
-  await expect(rows).toHaveCount(1)
-  const dialog = page.getByRole("dialog", { name: "New screen comment" })
+  const rows = view.getByRole("listbox", { name: "Threads" })
+  await expect(rows.getByRole("option")).toHaveCount(1)
+  await expect(rows.getByRole("option")).toHaveAccessibleName(/^Thread 1, Open: Name the answer/)
+  await expect(rows.getByRole("group", { name: "Screenshots" })).toHaveCount(0)
+  await expect(feedbackActivity(page)).toHaveAccessibleName("Feedback, 1 open thread")
+  await expect(screenTabButton(page, id, shot)).toHaveCount(0)
+  await expect(page.getByRole("main").getByRole("region", { name: "Screenshot" })).toHaveCount(0)
 
-  // Escape closes an untouched composer.
-  await paste(page)
-  await expect(dialog).toBeVisible()
-  const stage = dialog.getByRole("group", { name: /^Screenshot\. Drag to mark a region/ })
-  await expect(stage).toBeFocused()
-  await page.keyboard.press("Escape")
-  await expect(dialog).toBeHidden()
-
-  // A written comment asks before Cancel drops it; nothing is sent.
-  await paste(page)
-  await expect(stage).toBeFocused()
-  await page.keyboard.press("ArrowRight")
-  await expect(dialog.locator(".screen-readout")).toContainText("Region")
-  await dialog.getByRole("textbox", { name: "Comment" }).fill("Too tight.")
-  await dialog.getByRole("button", { name: "Cancel" }).click()
-  await dialog.getByRole("group", { name: "Discard this comment?" }).getByRole("button", { name: "Discard" }).click()
-  await expect(dialog).toBeHidden()
-  await expect(rows).toHaveCount(1)
-
-  // A dragged rectangle hands focus to the comment; Send opens the thread's
-  // screen tab as the preview tab, with the screenshot marked.
-  await paste(page)
-  const box = await stage.boundingBox()
-  if (!box) throw new Error("the stage has no box")
-  await page.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.3)
-  await page.mouse.down()
-  await page.mouse.move(box.x + box.width * 0.7, box.y + box.height * 0.6, { steps: 4 })
-  await page.mouse.up()
-  const field = dialog.getByRole("textbox", { name: "Comment" })
-  await expect(field).toBeFocused()
-  await field.fill("Save overlaps the card edge.")
-  await page.keyboard.press("ControlOrMeta+Enter")
-  await expect(dialog).toBeHidden()
-  await expect(page).toHaveURL(new RegExp(`[?&]fb=${id}&thread=2$`))
-  const tab = screenTabButton(page, id, 2)
+  // The desktop app with experimental features on: all of it shows.
+  const desktop = await page.context().newPage()
+  await experimentalDesktop(desktop)
+  await desktop.goto(`${live.origin}/view?project=${project}&fb=${id}&thread=${shot}`)
+  const tab = screenTabButton(desktop, id, shot)
   await expect(tab).toHaveAttribute("aria-selected", "true")
-  await expect(tab).toHaveAttribute("data-preview", "true")
-  await expect(tab).toContainText("#2 · Screenshot")
-  const main = page.getByRole("main")
+  await expect(tab).toContainText(`#${shot} · `)
+  const main = desktop.getByRole("main")
   await expect(main.getByRole("region", { name: "Screenshot" }).locator("img.visual-image")).toHaveJSProperty("naturalWidth", 612)
   await expect(main.locator(".visual-mark")).toBeVisible()
-  await expect(main.getByText("Save overlaps the card edge.")).toBeVisible()
-
+  const shown = desktop.locator(".feedback-view").getByRole("listbox", { name: "Threads" })
   // Code threads list first, screenshots after them.
-  await expect(rows).toHaveCount(2)
-  await expect(rows.nth(0)).toHaveAccessibleName(/^Thread 1, Open: Name the answer/)
-  await expect(rows.nth(1)).toHaveAccessibleName(/^Thread 2, Open: Save overlaps the card edge\., #2 · open · Screenshot/)
+  await expect(shown.getByRole("option")).toHaveCount(2)
+  await expect(shown.getByRole("group", { name: "Screenshots" }).getByRole("option")).toHaveAccessibleName(
+    new RegExp(`^Thread ${shot}, Open: Save overlaps the card edge\\., #${shot} · open · `))
+  await expect(feedbackActivity(desktop)).toHaveAccessibleName("Feedback, 2 open threads")
 })
 
 test("a screen tab shows the agent's reply beside the stored screenshot, and keyboard rows open code and screens", async ({ page, request, live }) => {
   test.setTimeout(60_000)
+  await experimentalDesktop(page)
   await startCode(request, live, "Name the answer after what it counts.")
   const id = await feedbackId(request, live)
   const shot = await startVisual(request, live, "Save overlaps the card edge.", id)

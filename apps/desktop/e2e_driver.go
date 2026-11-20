@@ -58,6 +58,9 @@ type e2eRequest struct {
 	Params struct {
 		Host   string `json:"host"`
 		Script string `json:"script"`
+		// Project names a guest of the window: eval and capture then act
+		// on its page, not the app's.
+		Project string `json:"project"`
 	} `json:"params"`
 }
 
@@ -130,11 +133,33 @@ func (h *host) e2eCall(request e2eRequest) (any, error) {
 	if window == nil {
 		return nil, errors.New("no window on " + connectionHost)
 	}
+	var visitor *guest
+	if request.Params.Project != "" {
+		if frame := h.shellOf(window); frame != nil {
+			visitor = frame.guest(request.Params.Project)
+		}
+		if visitor == nil {
+			return nil, errors.New("no guest for " + request.Params.Project)
+		}
+	}
 	switch request.Method {
+	case "shown":
+		// The guest the window shows, and where, in its layout units.
+		frame := h.shellOf(window)
+		if frame == nil {
+			return nil, errors.New("not a window of native UI")
+		}
+		frame.mu.Lock()
+		defer frame.mu.Unlock()
+		return map[string]any{"project": frame.shown, "x": frame.at.X, "y": frame.at.Y, "width": frame.at.Width, "height": frame.at.Height, "guests": len(frame.guests)}, nil
 	case "eval":
 		ctx, cancel := context.WithTimeout(context.Background(), 7*time.Second)
 		defer cancel()
-		value, err := h.page(window).EvalContext(ctx, request.Params.Script)
+		page := h.page(window)
+		if visitor != nil {
+			page = visitor.view.Page()
+		}
+		value, err := page.EvalContext(ctx, request.Params.Script)
 		if err != nil {
 			return nil, err
 		}
@@ -144,7 +169,9 @@ func (h *host) e2eCall(request e2eRequest) (any, error) {
 			data []byte
 			err  error
 		)
-		if frame := h.shellOf(window); frame != nil {
+		if visitor != nil {
+			data, err = visitor.view.CapturePage()
+		} else if frame := h.shellOf(window); frame != nil {
 			data, err = frame.zeroView().CapturePage()
 		} else {
 			data, err = window.CapturePage()

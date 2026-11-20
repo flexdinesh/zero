@@ -17,6 +17,7 @@ import {
 } from "./feedback-model.ts"
 import { markFeedbackSeen } from "./use-feedback-seen.ts"
 import type { FeedbackActions } from "./use-feedback.ts"
+import { OverlayLayer } from "../../lib/overlay-layers.ts"
 
 const mac = typeof navigator !== "undefined" && navigator.platform.includes("Mac")
 // sendKeys names Cmd/Ctrl+Enter, which sends a comment or reply.
@@ -159,6 +160,7 @@ function ThreadConversation({
                 <Menu.Popup className={menuPopupClass} aria-label="Thread actions">
                   {thread.status !== "wontfix" && <Menu.Item className={menuItemClass} disabled={busy || !id} onClick={() => send("wontfix")}>Won't fix</Menu.Item>}
                   <Menu.Item className={menuItemClass} disabled={busy || !id} onClick={remove}>Delete thread</Menu.Item>
+                  <OverlayLayer />
                 </Menu.Popup>
               </Menu.Positioner>
             </Menu.Portal>

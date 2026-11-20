@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// Failure kinds a guest window reports (decision 0181).
+// Failure kinds a guest reports (decisions 0181, 0184).
 const (
 	FailureLoad        = "load"
 	FailureCertificate = "certificate"
@@ -16,8 +16,7 @@ const (
 // refusedDescription is what a refused navigation says.
 const refusedDescription = "Only http and https pages open in the browser."
 
-// BrowserFailure is why a guest window shows no page of the developer's
-// app: Kind is one of the Failure kinds, URL the page that failed (only its
+// BrowserFailure is why a guest shows no page: Kind is one of the Failure kinds, URL the page that failed (only its
 // scheme and host when refused), Description one line of at most 256
 // characters.
 type BrowserFailure struct {
@@ -26,21 +25,24 @@ type BrowserFailure struct {
 	Description string `json:"description"`
 }
 
-// BrowserState is what the local window's Browser tab shows of a project's
-// guest window (decision 0181). URL, Loading, CanGoBack, and CanGoForward are
-// read from the page when asked; Failure comes from its load events.
+// BrowserState is what a window's Browser tab shows of a project's guest
+// (decisions 0181, 0184). URL, Loading, CanGoBack, and CanGoForward are read
+// from the page when asked; Title and Failure come from its events.
 type BrowserState struct {
 	URL          string          `json:"url"`
+	Title        string          `json:"title"`
 	Loading      bool            `json:"loading"`
 	CanGoBack    bool            `json:"canGoBack"`
 	CanGoForward bool            `json:"canGoForward"`
 	Failure      *BrowserFailure `json:"failure"`
 }
 
-// Browsing follows a guest window's load events. The zero value has no
-// failure. It is not safe for concurrent use.
+// Browsing follows a guest's load events. The zero value has no failure. It
+// is not safe for concurrent use.
 type Browsing struct {
 	failure *BrowserFailure
+	// title is the page's, one line of at most 256 characters.
+	title string
 	// certificate is the URL whose certificate was refused, until its load
 	// fails or another starts.
 	certificate string
@@ -52,7 +54,10 @@ func (b *Browsing) Start() {
 	b.certificate = ""
 }
 
-// Refuse records a navigation to raw the window refused; the failure names
+// Title records the page's title.
+func (b *Browsing) Title(title string) { b.title = oneLine(title, 256) }
+
+// Refuse records a navigation to raw the guest refused; the failure names
 // only its scheme and host.
 func (b *Browsing) Refuse(raw string) {
 	b.failure = &BrowserFailure{Kind: FailureRefused, URL: RefusedURL(raw), Description: refusedDescription}
@@ -80,9 +85,9 @@ func (b *Browsing) Crash(raw, reason string) {
 	b.failure = &BrowserFailure{Kind: FailureCrashed, URL: raw, Description: describe(reason, "crashed")}
 }
 
-// State is the window's state with what the page answers now.
+// State is the guest's state with what the page answers now.
 func (b *Browsing) State(pageURL string, loading, canGoBack, canGoForward bool) BrowserState {
-	state := BrowserState{URL: pageURL, Loading: loading, CanGoBack: canGoBack, CanGoForward: canGoForward}
+	state := BrowserState{URL: pageURL, Title: b.title, Loading: loading, CanGoBack: canGoBack, CanGoForward: canGoForward}
 	if b.failure != nil {
 		failure := *b.failure
 		state.Failure = &failure

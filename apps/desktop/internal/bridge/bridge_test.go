@@ -232,10 +232,10 @@ func TestNewDiagnosticsRedacts(t *testing.T) {
 	}
 }
 
-func TestParseOpenReview(t *testing.T) {
-	request, ok := ParseOpenReview("/home/u/app", "localhost:5173/settings")
-	if !ok || request != (OpenReview{Project: "/home/u/app", URL: "http://localhost:5173/settings"}) {
-		t.Errorf("ParseOpenReview = %+v, %v", request, ok)
+func TestParseBrowserOpen(t *testing.T) {
+	request, ok := ParseBrowserOpen("/home/u/app", "localhost:5173/settings")
+	if !ok || request != (BrowserOpen{Project: "/home/u/app", URL: "http://localhost:5173/settings"}) {
+		t.Errorf("ParseBrowserOpen = %+v, %v", request, ok)
 	}
 	for name, args := range map[string][2]any{
 		"relative project": {"app", "http://a.test/"},
@@ -244,7 +244,7 @@ func TestParseOpenReview(t *testing.T) {
 		"app URL":          {"/p", "zero-app://local/"},
 		"not text":         {"/p", 3.0},
 	} {
-		if request, ok := ParseOpenReview(args[0], args[1]); ok {
+		if request, ok := ParseBrowserOpen(args[0], args[1]); ok {
 			t.Errorf("%s: accepted %+v", name, request)
 		}
 	}
@@ -270,7 +270,7 @@ func TestParseBrowserProject(t *testing.T) {
 }
 
 func TestParseBrowserAction(t *testing.T) {
-	for _, action := range []string{"back", "forward", "reload", "stop", "show", "close", "comment", "commentDelayed"} {
+	for _, action := range []string{"back", "forward", "reload", "stop", "close"} {
 		got, ok := ParseBrowserAction("/home/u/app", action)
 		if !ok || got != (BrowserAction{Project: "/home/u/app", Action: action}) {
 			t.Errorf("ParseBrowserAction(%q) = %+v, %v", action, got, ok)
@@ -278,6 +278,7 @@ func TestParseBrowserAction(t *testing.T) {
 	}
 	for name, args := range map[string][2]any{
 		"unknown action":   {"/p", "navigate"},
+		"a gone action":    {"/p", "show"},
 		"case":             {"/p", "Back"},
 		"empty action":     {"/p", ""},
 		"action not text":  {"/p", 1.0},
@@ -285,6 +286,35 @@ func TestParseBrowserAction(t *testing.T) {
 		"project not text": {nil, "back"},
 	} {
 		if got, ok := ParseBrowserAction(args[0], args[1]); ok {
+			t.Errorf("%s: accepted %+v", name, got)
+		}
+	}
+}
+
+func TestParseBrowserFrame(t *testing.T) {
+	frame := func(x, y, width, height any) map[string]any {
+		return map[string]any{"x": x, "y": y, "width": width, "height": height}
+	}
+	got, ok := ParseBrowserFrame("/home/u/app", frame(300.5, 80.0, 600.0, 400.0))
+	if !ok || got != (BrowserFrame{Project: "/home/u/app", Shown: true, X: 300.5, Y: 80, Width: 600, Height: 400}) {
+		t.Errorf("ParseBrowserFrame = %+v, %v", got, ok)
+	}
+	if got, ok := ParseBrowserFrame("/home/u/app", nil); !ok || got != (BrowserFrame{Project: "/home/u/app"}) {
+		t.Errorf("hidden: ParseBrowserFrame = %+v, %v", got, ok)
+	}
+	for name, args := range map[string][2]any{
+		"relative project": {"p", frame(0.0, 0.0, 10.0, 10.0)},
+		"not a rectangle":  {"/p", "0,0,10,10"},
+		"a list":           {"/p", []any{0.0, 0.0, 10.0, 10.0}},
+		"a side missing":   {"/p", map[string]any{"x": 0.0, "y": 0.0, "width": 10.0}},
+		"text for a side":  {"/p", frame("0", 0.0, 10.0, 10.0)},
+		"no width":         {"/p", frame(0.0, 0.0, 0.0, 10.0)},
+		"negative height":  {"/p", frame(0.0, 0.0, 10.0, -1.0)},
+		"not a number":     {"/p", frame(math.NaN(), 0.0, 10.0, 10.0)},
+		"endless":          {"/p", frame(0.0, 0.0, math.Inf(1), 10.0)},
+		"far away":         {"/p", frame(1e9, 0.0, 10.0, 10.0)},
+	} {
+		if got, ok := ParseBrowserFrame(args[0], args[1]); ok {
 			t.Errorf("%s: accepted %+v", name, got)
 		}
 	}
