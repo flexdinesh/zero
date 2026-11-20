@@ -1,3 +1,8 @@
+import {
+  isFeedbackColorScheme, isFeedbackElementPair, isFeedbackRect, isFeedbackScroll, isFeedbackViewport,
+  type FeedbackColorScheme, type FeedbackElementPair, type FeedbackRect, type FeedbackScroll, type FeedbackViewport,
+} from "@zero/contracts"
+
 import { isRecord } from "../api/http.ts"
 
 declare global {
@@ -76,8 +81,137 @@ export interface BrowserState {
   composing: boolean
 }
 
-// BrowserAction is what the Browser tab asks of its guest.
-export type BrowserAction = "back" | "forward" | "reload" | "stop" | "close"
+// BrowserAction is what the Browser tab asks of its guest: history, loading,
+// closing, and turning comment mode on and off.
+export type BrowserAction = "back" | "forward" | "reload" | "stop" | "close" | "comment" | "endComment"
+
+// BrowserPin marks a comment on the guest's page (decision 0184): its
+// thread's number, whether the thread is closed, and where it sits: on the
+// top right corner of the element selector finds, else at x, y, document
+// CSS pixels.
+export interface BrowserPin {
+  thread: number
+  resolved: boolean
+  selector?: string
+  x: number
+  y: number
+}
+
+// ElementFacts is the guest page's own word on a picked element (decision
+// 0184): advisory, bounded by the app, never trusted, and shown only as
+// text. box is CSS pixels of the guest's viewport.
+export interface ElementFacts {
+  tag: string
+  box: FeedbackRect
+  selector?: string
+  role?: string
+  name?: string
+  text?: string
+  path?: string
+  classes?: string
+  attributes?: FeedbackElementPair[]
+  styles?: FeedbackElementPair[]
+  component?: string
+  source?: string
+  nearby?: string
+  selectedText?: string
+}
+
+// CapturePage is the guest's page as a pick froze it.
+export interface CapturePage {
+  url: string
+  title: string
+  viewport: FeedbackViewport
+  scroll: FeedbackScroll
+  colorScheme: FeedbackColorScheme
+}
+
+// ComposerCapture is a pick waiting for its comment (decision 0184): the
+// project it comments on, the guest's whole viewport as a base64 PNG with
+// nothing of Zero's drawn on it, the page, the selection in CSS pixels of
+// the viewport, and the element (for a region, the one at its center, or
+// none). canWalkUp and canWalkDown say whether the pick can move to its
+// parent or back.
+export interface ComposerCapture {
+  project: string
+  png: string
+  page: CapturePage
+  rect: FeedbackRect
+  kind: "element" | "region"
+  element: ElementFacts | null
+  canWalkUp: boolean
+  canWalkDown: boolean
+}
+
+// WalkDirection is where a pick walks: out to its parent, or back in.
+export type WalkDirection = "parent" | "child"
+
+// optionalText reads an optional string: undefined when absent or empty,
+// null when it is not a string.
+function optionalText(value: unknown): string | undefined | null {
+  if (value === undefined || value === null || value === "") return undefined
+  return typeof value === "string" ? value : null
+}
+
+function optionalPairs(value: unknown): FeedbackElementPair[] | undefined | null {
+  if (value === undefined || value === null) return undefined
+  if (!Array.isArray(value) || !value.every(isFeedbackElementPair)) return null
+  return value.length > 0 ? value.map(({ name, value: text }) => ({ name, value: text })) : undefined
+}
+
+type TextFact = "selector" | "role" | "name" | "text" | "path" | "classes" | "component" | "source" | "nearby" | "selectedText"
+const textFacts: readonly TextFact[] = ["selector", "role", "name", "text", "path", "classes", "component", "source", "nearby", "selectedText"]
+const pairFacts: readonly ("attributes" | "styles")[] = ["attributes", "styles"]
+
+// readElementFacts accepts a picked element's facts, or null for anything
+// else. Absent and empty facts are left out.
+export function readElementFacts(value: unknown): ElementFacts | null {
+  if (!isRecord(value) || typeof value.tag !== "string" || !value.tag || !isFeedbackRect(value.box)) return null
+  const { x, y, width, height } = value.box
+  const facts: ElementFacts = { tag: value.tag, box: { x, y, width, height } }
+  for (const key of textFacts) {
+    const text = optionalText(value[key])
+    if (text === null) return null
+    if (text !== undefined) facts[key] = text
+  }
+  for (const key of pairFacts) {
+    const pairs = optionalPairs(value[key])
+    if (pairs === null) return null
+    if (pairs !== undefined) facts[key] = pairs
+  }
+  return facts
+}
+
+function readCapturePage(value: unknown): CapturePage | null {
+  if (!isRecord(value)) return null
+  const { url, title, viewport, scroll, colorScheme } = value
+  if (typeof url !== "string" || !isFeedbackViewport(viewport) || !isFeedbackScroll(scroll) || !isFeedbackColorScheme(colorScheme)) return null
+  if (!(viewport.width >= 1 && viewport.height >= 1 && viewport.deviceScaleFactor > 0 && Number.isFinite(viewport.deviceScaleFactor))) return null
+  return {
+    url, title: typeof title === "string" ? title : "", colorScheme,
+    viewport: { width: viewport.width, height: viewport.height, deviceScaleFactor: viewport.deviceScaleFactor },
+    scroll: { x: scroll.x, y: scroll.y },
+  }
+}
+
+// readComposerCapture accepts the pick the app hands the composer, or null:
+// no pick waits, or the answer is not one.
+export function readComposerCapture(value: unknown): ComposerCapture | null {
+  if (!isRecord(value)) return null
+  const { project, png, rect, kind } = value
+  const page = readCapturePage(value.page)
+  if (typeof project !== "string" || !project || typeof png !== "string" || !png || !page || !isFeedbackRect(rect)) return null
+  if (kind !== "element" && kind !== "region") return null
+  const element = value.element === null || value.element === undefined ? null : readElementFacts(value.element)
+  if (element === null && value.element !== null && value.element !== undefined) return null
+  // An element pick names its element.
+  if (kind === "element" && !element) return null
+  return {
+    project, png, page, kind, element,
+    rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+    canWalkUp: value.canWalkUp === true, canWalkDown: value.canWalkDown === true,
+  }
+}
 
 // BrowserFrame is where the guest shows: a rectangle of this page's
 // viewport in CSS pixels.
@@ -168,7 +302,13 @@ export interface NotificationStatus {
 // navigates; browserState resolves it, or null without one; browserAction
 // steers it; browserFrame says where it shows, or hides it with null (the
 // page is kept); browserSnapshot resolves its frame now as a base64 PNG, or
-// null. A
+// null; browserPins replaces the pins the guest's page shows, which the app
+// applies again after each load. The composer methods exist only on the
+// composer's own page (/composer), which the app shows beside a pick:
+// composerCapture resolves the pick that waits, or null; composerWalk moves
+// it to its parent or back and resolves what it became; composerResize
+// tells the app the page's content height; composerClose hides the
+// composer, saying whether a comment was sent. A
 // window on a remote server has no revealPath or diagnostics: its files are
 // not on this computer, and its server is not trusted with this computer's
 // logs (decision 0098). experimental is the state the window opened with, and
@@ -190,6 +330,11 @@ export interface DesktopBridge {
   browserAction: ((project: string, action: BrowserAction) => Promise<void>) | null
   browserFrame: ((project: string, frame: BrowserFrame | null) => void) | null
   browserSnapshot: ((project: string) => Promise<string | null>) | null
+  browserPins: ((project: string, pins: readonly BrowserPin[], visible: boolean) => void) | null
+  composerCapture: (() => Promise<ComposerCapture | null>) | null
+  composerWalk: ((direction: WalkDirection) => Promise<ComposerCapture | null>) | null
+  composerResize: ((height: number) => void) | null
+  composerClose: ((sent: boolean) => Promise<void>) | null
 }
 
 // DesktopAppearance is the polarity native surfaces take: the OS's, or one.
@@ -201,6 +346,7 @@ export function readDesktopBridge(value: unknown): DesktopBridge | null {
   if (!isRecord(value) || typeof value.version !== "number" || !Number.isInteger(value.version) || value.version < 1) return null
   const { closeWindow, showAppMenu, revealPath, showContextMenu, configureNotifications, setAppearance, diagnostics } = value
   const { browserOpen, browserState, browserAction, browserFrame, browserSnapshot, setExperimental } = value
+  const { browserPins, composerCapture, composerWalk, composerResize, composerClose } = value
   return {
     version: value.version,
     experimental: readExperimentalState(value.experimental),
@@ -308,6 +454,43 @@ export function readDesktopBridge(value: unknown): DesktopBridge | null {
         }
       }
       : null,
+    browserPins: typeof browserPins === "function"
+      ? (project, pins, visible) => {
+        Promise.resolve(browserPins.call(value, project, pins, visible)).catch(() => undefined)
+      }
+      : null,
+    composerCapture: typeof composerCapture === "function"
+      ? async () => {
+        try {
+          return readComposerCapture(await composerCapture.call(value))
+        } catch {
+          return null
+        }
+      }
+      : null,
+    composerWalk: typeof composerWalk === "function"
+      ? async (direction) => {
+        try {
+          return readComposerCapture(await composerWalk.call(value, direction))
+        } catch {
+          return null
+        }
+      }
+      : null,
+    composerResize: typeof composerResize === "function"
+      ? (height) => {
+        Promise.resolve(composerResize.call(value, height)).catch(() => undefined)
+      }
+      : null,
+    composerClose: typeof composerClose === "function"
+      ? async (sent) => {
+        try {
+          await composerClose.call(value, sent)
+        } catch {
+          // Refused: the app keeps the composer as it is.
+        }
+      }
+      : null,
   }
 }
 
@@ -332,6 +515,18 @@ export function hostsBrowser(bridge: DesktopBridge | null): boolean {
 // browserAvailable reports whether this window hosts the Browser.
 export function browserAvailable(): boolean {
   return hostsBrowser(desktopBridge())
+}
+
+// hostsComments reports a Browser that takes comments on its page (decision
+// 0184): the app offers pins, which came with comment mode.
+export function hostsComments(bridge: DesktopBridge | null): boolean {
+  return hostsBrowser(bridge) && Boolean(bridge?.browserPins)
+}
+
+// hostsComposer reports the composer's own page: experimental features on,
+// and every composer method offered.
+export function hostsComposer(bridge: DesktopBridge | null): boolean {
+  return Boolean(bridge?.experimental?.enabled && bridge.composerCapture && bridge.composerWalk && bridge.composerResize && bridge.composerClose)
 }
 
 // notificationsAvailable reports a client that can show notices: the desktop

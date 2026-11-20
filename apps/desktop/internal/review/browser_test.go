@@ -13,13 +13,13 @@ func TestBrowserStateJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := string(raw); got != `{"url":"http://localhost:5173/","title":"","loading":true,"canGoBack":true,"canGoForward":false,"failure":null}` {
+	if got := string(raw); got != `{"url":"http://localhost:5173/","title":"","loading":true,"canGoBack":true,"canGoForward":false,"failure":null,"commenting":false,"composing":false}` {
 		t.Errorf("state = %s", got)
 	}
 	browsing.Fail("http://localhost:1/", "Could not connect: Connection refused")
 	browsing.Title("  Problem\nloading page ")
 	raw, _ = json.Marshal(browsing.State("http://localhost:1/", false, false, false))
-	if got := string(raw); got != `{"url":"http://localhost:1/","title":"Problem loading page","loading":false,"canGoBack":false,"canGoForward":false,"failure":{"kind":"load","url":"http://localhost:1/","description":"Could not connect: Connection refused"}}` {
+	if got := string(raw); got != `{"url":"http://localhost:1/","title":"Problem loading page","loading":false,"canGoBack":false,"canGoForward":false,"failure":{"kind":"load","url":"http://localhost:1/","description":"Could not connect: Connection refused"},"commenting":false,"composing":false}` {
 		t.Errorf("failed state = %s", got)
 	}
 }

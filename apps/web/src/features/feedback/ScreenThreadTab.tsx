@@ -1,6 +1,6 @@
 import type { FeedbackStatus, FeedbackThread, FeedbackVisual } from "@zero/contracts"
 import { AppWindowIcon, ArrowUpRightIcon, CheckIcon, ClipboardCopyIcon, ImageOffIcon, XIcon } from "lucide-react"
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 
 import { Button } from "../../components/ui/button.tsx"
 import { StatusMessage } from "../../components/ui/notice.tsx"
@@ -13,7 +13,7 @@ import { copyImage, cropPNG } from "./screen-image.ts"
 import type { FeedbackActions, FeedbackSession } from "./use-feedback.ts"
 import { VisualShot } from "./VisualTarget.tsx"
 import { copyMargin, expand } from "./visual-geometry.ts"
-import { attachmentURL, elementLabel, isVisualThread, pageAddress, pageOpener, pageWhere, visualPlace } from "./visual-model.ts"
+import { attachmentURL, elementDetails, elementLabel, isVisualThread, pageAddress, pageOpener, pageWhere, visualPlace } from "./visual-model.ts"
 
 interface ScreenThreadTabProps {
   project: string
@@ -81,6 +81,10 @@ function Age({ time }: { time: string }) {
 
 type Scale = "fit" | "actual"
 
+// detailLimit is how many values of one element fact show before More.
+const detailLimit = 4
+const schemeLabels = { light: "Light", dark: "Dark" }
+
 interface ThreadProps {
   project: string
   feedbackId: string
@@ -98,6 +102,7 @@ function ScreenThread({ actions, feedbackId, navigate, onPin, project, reviewPag
   const [failed, setFailed] = useState(false)
   const [scale, setScale] = useState<Scale>("fit")
   const [copy, setCopy] = useState<"idle" | "copied" | "failed">("idle")
+  const [allDetails, setAllDetails] = useState(false)
   const pin = useRef(onPin)
   useLayoutEffect(() => { pin.current = onPin })
   useEffect(() => {
@@ -128,6 +133,8 @@ function ScreenThread({ actions, feedbackId, navigate, onPin, project, reviewPag
   const place = visualPlace(visual)
   const opener = useMemo(() => page ? pageOpener(page, reviewPage !== null) : null, [page, reviewPage])
   const where = page ? pageWhere(page) : ""
+  const details = useMemo(() => element ? elementDetails(element) : [], [element])
+  const hiddenDetails = details.reduce((count, detail) => count + Math.max(0, detail.values.length - detailLimit), 0)
 
   const copyCrop = () => {
     const shot = image.current
@@ -181,13 +188,31 @@ function ScreenThread({ actions, feedbackId, navigate, onPin, project, reviewPag
                   {where && <span className="screen-muted">{where}</span>}
                 </dd>
                 {page.title && <><dt>Title</dt><dd className="screen-tab-text">{page.title}</dd></>}
+                {page.colorScheme && <><dt>Scheme</dt><dd className="screen-tab-text">{schemeLabels[page.colorScheme]}</dd></>}
               </>}
               {element && <>
                 <dt>Element</dt>
                 <dd>
                   <span className="screen-element">{elementLabel(element)}</span>
-                  <span className="screen-muted screen-tab-selector" title={element.selector}>{element.selector}</span>
+                  {element.selector && <span className="screen-muted screen-tab-selector" title={element.selector}>{element.selector}</span>}
                 </dd>
+                {/* The page's own words: text only, never markup. */}
+                {details.map((detail) => (
+                  <Fragment key={detail.label}>
+                    <dt>{detail.label}</dt>
+                    <dd className="screen-tab-fact">
+                      {(allDetails ? detail.values : detail.values.slice(0, detailLimit)).map((value, index) => <span key={`${index}:${value}`}>{value}</span>)}
+                    </dd>
+                  </Fragment>
+                ))}
+                {hiddenDetails > 0 && <>
+                  <dt />
+                  <dd>
+                    <Button variant="link" size="inline" aria-expanded={allDetails} onClick={() => setAllDetails((all) => !all)}>
+                      {allDetails ? "Less" : `${hiddenDetails.toLocaleString()} more`}
+                    </Button>
+                  </dd>
+                </>}
               </>}
               <dt>Captured</dt>
               <dd className="screen-tab-text">

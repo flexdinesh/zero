@@ -137,22 +137,34 @@ file's menu has **Show File History** ([Browsing](/docs/browsing)). Zero
 reveals only files inside a project it serves, and never follows a link out of
 the project.
 
-## Review a running app
+## Experimental features
 
-**Review › Review URL…** opens the project's **Browser** tab. Type a page of
-your app, such as `localhost:5173`, or any http or https address, and press
-Enter: the page opens in a review window of its own. The tab keeps Back,
-Forward, Reload, the address (**Ctrl+L**, or **⌘L** on macOS), your recent
-pages, and why a page did not load. It also says where your comments go: the
-project's folder and branch. Switch to a diff and back as with any tab; the
-review window stays open until you close the tab.
+Features still being built are off until you ask for them. Turn on
+**Settings › Experimental Features**, or start the app with
+`ZERO_EXPERIMENTAL=1` in its environment; `ZERO_EXPERIMENTAL=0` turns them off
+whatever the setting says. A change reopens the app's windows on the pages
+they showed. Experimental features can change or go away between releases.
 
-Press **F8** in the review window, or **Comment on Screen** in the tab, to
-take a screenshot and comment on it in Zero; the comment joins the project's
-[feedback](/docs/feedback#commenting-on-screenshots). In the review window,
-**Page › Open Location…** (**Ctrl+L**) brings Zero forward on the address. The
-review window is the page alone: it has its own sign-ins, apart from Zero's,
-and the page reaches neither Zero nor your files.
+## Browser (experimental)
+
+The **Browser** view, beside Feedback, shows a page of your running app
+inside Zero's window, in the project's **Browser** tab. Type an address, such
+as `localhost:5173`, or any http or https page, and press Enter. The tab has
+Back, Forward, Reload, the address (**Ctrl+L**, or **⌘L** on macOS) over your
+recent pages, and says why a page did not load. The view lists the project's
+pages and the comments on the one that shows. Closing the tab closes its
+page.
+
+Press **Comment** (**Ctrl+Shift+C**, or **⌘⇧C** on macOS), then click an
+element or drag a region, write beside it, and send: the comment joins the
+project's [feedback](/docs/feedback#commenting-on-a-running-app-experimental)
+with a screenshot and what the page says of the element. **Escape** leaves
+comment mode. Sent comments stay on the page as numbered pins; click one to
+open its thread.
+
+The page is someone else's: it has its own sign-ins, apart from Zero's and
+apart for each connection, and it reaches neither Zero nor your files. In a
+window on a remote server, `localhost` is this computer, not the server.
 
 ## Notifications
 

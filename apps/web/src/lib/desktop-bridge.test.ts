@@ -1,7 +1,9 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { browserAvailable, desktopBridge, hostsBrowser, readDesktopBridge, type NativeMenuItem } from "./desktop-bridge.ts"
+import {
+  browserAvailable, desktopBridge, hostsBrowser, hostsComments, hostsComposer, readComposerCapture, readDesktopBridge, readElementFacts, type NativeMenuItem,
+} from "./desktop-bridge.ts"
 
 test("a version 1 bridge is read; folders open in the page, not through it (decision 0146)", () => {
   const bridge = readDesktopBridge({ version: 1, openFolder() {} })
@@ -224,4 +226,103 @@ test("the bridge carries the app's experimental state and sets the user's choice
   assert.equal(readDesktopBridge({ version: 2, experimental: { enabled: true, source: "magic" } })?.experimental, null)
   const refusing = readDesktopBridge({ version: 2, setExperimental() { return Promise.reject(new Error("refused")) } })
   assert.equal(await refusing?.setExperimental?.(true), null)
+})
+
+const pick = {
+  project: "/p",
+  png: "iVBORw0KGgo=",
+  page: { url: "http://localhost:5173/settings", title: "Settings", viewport: { width: 1440, height: 900, deviceScaleFactor: 2 }, scroll: { x: 0, y: 1320 }, colorScheme: "dark" },
+  rect: { x: 605, y: 320, width: 210, height: 48 },
+  kind: "element",
+  element: {
+    tag: "button", box: { x: 605, y: 320, width: 210, height: 48 }, selector: "#save", name: "Save changes", text: "",
+    attributes: [{ name: "type", value: "submit" }], styles: [], component: "SettingsForm › Button", source: "src/a.tsx:42", extra: 1,
+  },
+  canWalkUp: true,
+  canWalkDown: false,
+  extra: true,
+}
+
+test("a pick is read with its element's facts; absent and empty facts are left out", () => {
+  assert.deepEqual(readComposerCapture(pick), {
+    project: "/p", png: "iVBORw0KGgo=", page: pick.page, rect: pick.rect, kind: "element",
+    element: {
+      tag: "button", box: pick.rect, selector: "#save", name: "Save changes",
+      attributes: [{ name: "type", value: "submit" }], component: "SettingsForm › Button", source: "src/a.tsx:42",
+    },
+    canWalkUp: true, canWalkDown: false,
+  })
+  // A region may name the element at its center, or none.
+  assert.equal(readComposerCapture({ ...pick, kind: "region", element: null })?.element, null)
+  assert.equal(readComposerCapture({ ...pick, kind: "region" })?.element?.tag, "button")
+  // Walking is possible only where the app says so.
+  assert.equal(readComposerCapture({ ...pick, canWalkUp: undefined, canWalkDown: "yes" })?.canWalkUp, false)
+  assert.equal(readComposerCapture({ ...pick, page: { ...pick.page, title: undefined } })?.page.title, "")
+})
+
+test("anything that is not a pick is none", () => {
+  for (const value of [
+    null, undefined, "pick", { ...pick, project: "" }, { ...pick, png: "" }, { ...pick, png: 3 }, { ...pick, kind: "window" },
+    { ...pick, rect: { x: 0, y: 0, width: "210", height: 48 } }, { ...pick, element: null }, { ...pick, element: "button" },
+    { ...pick, element: { ...pick.element, tag: "" } }, { ...pick, element: { ...pick.element, box: null } },
+    { ...pick, element: { ...pick.element, selector: 3 } }, { ...pick, element: { ...pick.element, styles: [{ name: "color" }] } },
+    { ...pick, page: { ...pick.page, colorScheme: "sepia" } }, { ...pick, page: { ...pick.page, url: 3 } },
+    { ...pick, page: { ...pick.page, viewport: { width: 0, height: 900, deviceScaleFactor: 2 } } },
+    { ...pick, page: { ...pick.page, viewport: { width: 1440, height: 900, deviceScaleFactor: 0 } } },
+  ]) {
+    assert.equal(readComposerCapture(value), null, JSON.stringify(value))
+  }
+  assert.equal(readElementFacts({ tag: "a", box: pick.rect, attributes: "href" }), null)
+  assert.deepEqual(readElementFacts({ tag: "a", box: pick.rect, nearby: "Docs", selectedText: null }), { tag: "a", box: pick.rect, nearby: "Docs" })
+})
+
+test("browserPins passes the project, pins, and whether they show, and swallows refusals", () => {
+  const calls: unknown[][] = []
+  const bridge = readDesktopBridge({ version: 2, browserPins(...args: unknown[]) { calls.push(args); return Promise.reject(new Error("refused")) } })
+  const pins = [{ thread: 3, resolved: false, selector: "#save", x: 815, y: 1640 }, { thread: 1, resolved: true, x: 10, y: 20 }]
+  bridge?.browserPins?.("/p", pins, true)
+  bridge?.browserPins?.("/p", [], false)
+  assert.deepEqual(calls, [["/p", pins, true], ["/p", [], false]])
+  assert.equal(readDesktopBridge({ version: 2 })?.browserPins, null)
+  assert.equal(readDesktopBridge({ version: 2, browserPins: true })?.browserPins, null)
+})
+
+test("the composer's methods read the pick, walk it, size the page, and close it", async () => {
+  const calls: unknown[][] = []
+  const bridge = readDesktopBridge({
+    version: 2,
+    composerCapture() { calls.push(["capture"]); return Promise.resolve(pick) },
+    composerWalk(...args: unknown[]) { calls.push(["walk", ...args]); return Promise.resolve(args[0] === "parent" ? { ...pick, canWalkDown: true } : null) },
+    composerResize(...args: unknown[]) { calls.push(["resize", ...args]); return Promise.reject(new Error("refused")) },
+    composerClose(...args: unknown[]) { calls.push(["close", ...args]); return Promise.reject(new Error("refused")) },
+  })
+  assert.equal((await bridge?.composerCapture?.())?.project, "/p")
+  assert.equal((await bridge?.composerWalk?.("parent"))?.canWalkDown, true)
+  assert.equal(await bridge?.composerWalk?.("child"), null)
+  bridge?.composerResize?.(212)
+  await bridge?.composerClose?.(true)
+  assert.deepEqual(calls, [["capture"], ["walk", "parent"], ["walk", "child"], ["resize", 212], ["close", true]])
+  // Refusals and answers that are no pick are no pick.
+  const refusing = readDesktopBridge({ version: 2, composerCapture: () => Promise.reject(new Error("refused")), composerWalk: () => Promise.resolve({ png: "" }) })
+  assert.equal(await refusing?.composerCapture?.(), null)
+  assert.equal(await refusing?.composerWalk?.("parent"), null)
+  const none = readDesktopBridge({ version: 2 })
+  assert.deepEqual([none?.composerCapture, none?.composerWalk, none?.composerResize, none?.composerClose], [null, null, null, null])
+})
+
+test("comments need the Browser and its pins; the composer needs experimental features and all four methods", () => {
+  const on = { enabled: true, source: "env" }
+  const browser = { browserOpen() {}, browserState() {}, browserAction() {}, browserFrame() {}, browserSnapshot() {} }
+  assert.equal(hostsComments(readDesktopBridge({ version: 2, experimental: on, ...browser, browserPins() {} })), true)
+  // Layer 3's app: the Browser without comments.
+  assert.equal(hostsComments(readDesktopBridge({ version: 2, experimental: on, ...browser })), false)
+  assert.equal(hostsComments(readDesktopBridge({ version: 2, experimental: on, browserPins() {} })), false)
+  assert.equal(hostsComments(readDesktopBridge({ version: 2, experimental: { enabled: false, source: "" }, ...browser, browserPins() {} })), false)
+  const composer = { composerCapture() {}, composerWalk() {}, composerResize() {}, composerClose() {} }
+  assert.equal(hostsComposer(readDesktopBridge({ version: 2, experimental: on, ...composer })), true)
+  assert.equal(hostsComposer(readDesktopBridge({ version: 2, experimental: { enabled: false, source: "off" }, ...composer })), false)
+  for (const missing of Object.keys(composer)) {
+    assert.equal(hostsComposer(readDesktopBridge({ version: 2, experimental: on, ...composer, [missing]: undefined })), false, missing)
+  }
+  assert.equal(hostsComposer(null), false)
 })

@@ -1,6 +1,6 @@
 # 0180: Hit map at capture
 
-- Status: Accepted
+- Status: Superseded by [0184](0184-browser-view-and-in-page-comments.md)
 - Date: 2026-11-20
 - Supersedes: [0177](0177-ui-review-in-the-desktop-app.md)'s Element hint
   and its kept captures

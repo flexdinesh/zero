@@ -124,6 +124,14 @@ test("the Browser activity opens the tab, an address opens a page, and the stage
   await expect(stage(page)).toHaveAttribute("data-view", "page")
   await expect(stage(page).locator("*")).toHaveCount(0)
 
+  // A click on the address selects all of it, so typing replaces it.
+  await page.evaluate(() => { if (document.activeElement instanceof HTMLElement) document.activeElement.blur() })
+  await address(page).click()
+  await page.keyboard.type("localhost:3000")
+  await expect(address(page)).toHaveValue("localhost:3000")
+  await address(page).press("Escape")
+  await expect(address(page)).toHaveValue("http://localhost:5173/settings")
+
   // The guest shows over the stage, and follows it when the window resizes.
   await expectGuestOnStage(page)
   const before = await stageFrame(page)

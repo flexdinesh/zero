@@ -1,7 +1,9 @@
 // Package review is the pure part of the Browser view in the desktop app
-// (decisions 0175, 0184): the script guest pages run, which addresses a
-// guest may show, where a guest goes in its window, and its load failures.
-// It knows no mygo: the main package drives web views.
+// (decisions 0175, 0176, 0184): the script guest pages run, which addresses
+// a guest may show, where a guest and the composer go in the window, a
+// guest's load failures, and the picks, element facts, and pins guest.js
+// answers through Page.Eval, which are the page's word and so are validated
+// and bounded here. It knows no mygo: the main package drives web views.
 package review
 
 import (

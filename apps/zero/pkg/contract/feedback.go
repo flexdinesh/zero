@@ -137,18 +137,47 @@ type FeedbackPage struct {
 	Scroll    FeedbackScroll    `json:"scroll"`
 	Clip      *FeedbackRect     `json:"clip,omitempty"`
 	Localhost FeedbackLocalhost `json:"localhost,omitempty"`
+	// ColorScheme is the scheme the page showed in, absent when the capture
+	// did not say (decision 0184).
+	ColorScheme FeedbackColorScheme `json:"colorScheme,omitempty"`
 }
 
-// FeedbackElement is the page's own word on the element at a visual
-// target's center when it was captured: advisory, bounded, never trusted.
-// Box is its border box clipped to the viewport, in image pixels.
+// FeedbackColorScheme is the color scheme a captured page showed in.
+type FeedbackColorScheme string
+
+const (
+	FeedbackColorSchemeLight FeedbackColorScheme = "light"
+	FeedbackColorSchemeDark  FeedbackColorScheme = "dark"
+)
+
+// FeedbackElementPair is one attribute or computed style of an element.
+type FeedbackElementPair struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+// FeedbackElement is the page's own word on a visual target's element when
+// it was captured: advisory, bounded, never trusted (decisions 0176, 0184).
+// Box is its border box clipped to the viewport, in image pixels. Path is
+// its ancestors, outermost first; Component the chain of components that
+// rendered it and Source where its source is, when a framework's
+// development build said; Nearby the text around it and SelectedText the
+// text selected in it. Attributes never hold a field's value.
 type FeedbackElement struct {
-	Selector string        `json:"selector"`
-	Tag      string        `json:"tag"`
-	Role     string        `json:"role,omitempty"`
-	Name     string        `json:"name,omitempty"`
-	Text     string        `json:"text,omitempty"`
-	Box      *FeedbackRect `json:"box,omitempty"`
+	Selector     string                `json:"selector,omitempty"`
+	Tag          string                `json:"tag"`
+	Role         string                `json:"role,omitempty"`
+	Name         string                `json:"name,omitempty"`
+	Text         string                `json:"text,omitempty"`
+	Box          *FeedbackRect         `json:"box,omitempty"`
+	Path         string                `json:"path,omitempty"`
+	Classes      string                `json:"classes,omitempty"`
+	Attributes   []FeedbackElementPair `json:"attributes,omitempty"`
+	Styles       []FeedbackElementPair `json:"styles,omitempty"`
+	Component    string                `json:"component,omitempty"`
+	Source       string                `json:"source,omitempty"`
+	Nearby       string                `json:"nearby,omitempty"`
+	SelectedText string                `json:"selectedText,omitempty"`
 }
 
 // FeedbackAttachment is an image the server holds for one feedback (at-

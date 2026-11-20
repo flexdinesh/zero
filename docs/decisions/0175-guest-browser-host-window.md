@@ -1,6 +1,7 @@
 # 0175: Guest browser host window
 
-- Status: Accepted
+- Status: Accepted; Window superseded by
+  [0184](0184-browser-view-and-in-page-comments.md)
 - Date: 2026-11-19
 - Extends: [0094](0094-mygo-app-uses-web-views.md) (the OS web view hosts
   pages), [0095](0095-desktop-app-is-mygo-electron-removed.md) (mygo v0.7.4),

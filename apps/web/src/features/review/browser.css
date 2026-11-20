@@ -7,6 +7,7 @@
   height: 100%;
   min-height: 0;
   flex-direction: column;
+  container: browser-tab / inline-size;
 }
 
 /* One chrome band: history, the address, and at its end the tab's toggles. */
@@ -28,6 +29,31 @@
   min-width: 0;
   flex: 1 1 auto;
   margin-inline: var(--space-1);
+}
+
+/* The bar's toggles sit at its controls' height. */
+.browser-comment-toggle[data-size="text"] {
+  height: var(--control-sm);
+  margin-inline-end: calc(var(--space-1) / 2);
+  font-size: var(--text-label);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* What comment mode asks for, said once beside its toggle. It yields to the
+   address in a narrow tab. */
+.browser-comment-hint {
+  flex: none;
+  margin-inline-end: var(--space-1);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+@container browser-tab (max-width: 52rem) {
+  .browser-comment-hint {
+    display: none;
+  }
 }
 
 /* The list drops over the stage; the tab hides the guest while it is open. */
@@ -202,4 +228,92 @@
 
 .browser-view-empty {
   padding: var(--space-1) var(--space-3) var(--space-2) var(--space-2);
+}
+
+.browser-view-section + .browser-view-section {
+  margin-top: var(--space-2);
+}
+
+.browser-view-count {
+  margin-inline-start: auto;
+  color: var(--color-text-muted);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A comment's row: its pin's number, what was picked, the comment's first
+   line, and its address when that is not the one showing. */
+.browser-comment {
+  align-items: flex-start;
+  padding-block: var(--space-1);
+}
+
+/* The pin as the page draws it: a numbered square, hollow once resolved. */
+.browser-pin {
+  display: grid;
+  min-width: var(--icon-md);
+  height: var(--icon-md);
+  flex: none;
+  margin-top: calc((var(--text-sm--line-height) - var(--icon-md)) / 2);
+  padding: 0 calc(var(--space-1) / 2);
+  color: var(--color-on-accent);
+  background: var(--color-accent);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  line-height: 1;
+  place-items: center;
+}
+
+.browser-comment[data-closed] .browser-pin {
+  color: var(--color-text-muted);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--color-border-strong);
+}
+
+.browser-comment-text {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  line-height: var(--text-sm--line-height);
+}
+
+.browser-comment-name,
+.browser-comment-title,
+.browser-comment-address {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.browser-comment-name {
+  color: var(--color-text-primary);
+  font-size: var(--text-label);
+}
+
+.browser-comment-title,
+.browser-comment-address {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  line-height: var(--text-xs--line-height);
+}
+
+.browser-comment[data-closed] .browser-comment-name {
+  color: var(--color-text-secondary);
+}
+
+.browser-comment-address {
+  font-family: var(--font-mono);
+}
+
+/* Where comments go, pinned under the lists. */
+.browser-view-foot {
+  flex: none;
+  padding: var(--space-2);
+  border-top: 1px solid var(--color-border);
+}
+
+.browser-view-foot .comment-target {
+  font-size: var(--text-xs);
+  gap: var(--space-1) var(--space-2);
 }

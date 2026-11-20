@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/flexdinesh/zero/internal/document"
@@ -552,11 +553,27 @@ func threadDraftModel(draft contract.FeedbackThreadDraft) feedback.ThreadDraft {
 	}
 	if visual := draft.Visual; visual != nil {
 		model.Visual = &feedback.VisualDraft{Attachment: visual.Attachment, Rect: feedback.Rect(visual.Rect), Element: elementModel(visual.Element)}
+		if element := model.Visual.Element; element != nil {
+			element.Source = projectSource(draft.Project, element.Source)
+		}
 		if page := visual.Page; page != nil {
-			model.Visual.Page = &feedback.Page{URL: page.URL, Title: page.Title, Viewport: feedback.Viewport(page.Viewport), Scroll: feedback.Scroll(page.Scroll), Clip: rectModel(page.Clip)}
+			model.Visual.Page = &feedback.Page{URL: page.URL, Title: page.Title, Viewport: feedback.Viewport(page.Viewport), Scroll: feedback.Scroll(page.Scroll), Clip: rectModel(page.Clip), ColorScheme: string(page.ColorScheme)}
 		}
 	}
 	return model
+}
+
+// projectSource is an element's source location as the project names it: a
+// development build says an absolute path, which inside the project reads
+// better, and says less of the machine, without the project's directory.
+func projectSource(project, source string) string {
+	if project == "" {
+		return source
+	}
+	if rest, inside := strings.CutPrefix(strings.TrimSpace(source), strings.TrimRight(project, "/")+"/"); inside {
+		return rest
+	}
+	return source
 }
 
 func rectModel(rect *contract.FeedbackRect) *feedback.Rect {
@@ -579,7 +596,33 @@ func elementModel(element *contract.FeedbackElement) *feedback.Element {
 	if element == nil {
 		return nil
 	}
-	return &feedback.Element{Selector: element.Selector, Tag: element.Tag, Role: element.Role, Name: element.Name, Text: element.Text, Box: rectModel(element.Box)}
+	return &feedback.Element{
+		Selector: element.Selector, Tag: element.Tag, Role: element.Role, Name: element.Name, Text: element.Text, Box: rectModel(element.Box),
+		Path: element.Path, Classes: element.Classes, Attributes: pairsModel(element.Attributes), Styles: pairsModel(element.Styles),
+		Component: element.Component, Source: element.Source, Nearby: element.Nearby, SelectedText: element.SelectedText,
+	}
+}
+
+func pairsModel(pairs []contract.FeedbackElementPair) []feedback.ElementPair {
+	if len(pairs) == 0 {
+		return nil
+	}
+	model := make([]feedback.ElementPair, len(pairs))
+	for index, pair := range pairs {
+		model[index] = feedback.ElementPair(pair)
+	}
+	return model
+}
+
+func pairsContract(pairs []feedback.ElementPair) []contract.FeedbackElementPair {
+	if len(pairs) == 0 {
+		return nil
+	}
+	answered := make([]contract.FeedbackElementPair, len(pairs))
+	for index, pair := range pairs {
+		answered[index] = contract.FeedbackElementPair(pair)
+	}
+	return answered
 }
 
 func attachmentContract(attachment feedback.Attachment) contract.FeedbackAttachment {
@@ -591,10 +634,14 @@ func attachmentContract(attachment feedback.Attachment) contract.FeedbackAttachm
 func visualContract(visual feedback.Visual, available bool) *contract.FeedbackVisual {
 	answered := &contract.FeedbackVisual{Attachment: attachmentContract(visual.Attachment), Rect: contract.FeedbackRect(visual.Rect), Head: visual.Head, Available: available}
 	if page := visual.Page; page != nil {
-		answered.Page = &contract.FeedbackPage{URL: page.URL, Title: page.Title, Viewport: contract.FeedbackViewport(page.Viewport), Scroll: contract.FeedbackScroll(page.Scroll), Clip: rectContract(page.Clip), Localhost: contract.FeedbackLocalhost(page.Localhost)}
+		answered.Page = &contract.FeedbackPage{URL: page.URL, Title: page.Title, Viewport: contract.FeedbackViewport(page.Viewport), Scroll: contract.FeedbackScroll(page.Scroll), Clip: rectContract(page.Clip), Localhost: contract.FeedbackLocalhost(page.Localhost), ColorScheme: contract.FeedbackColorScheme(page.ColorScheme)}
 	}
 	if element := visual.Element; element != nil {
-		answered.Element = &contract.FeedbackElement{Selector: element.Selector, Tag: element.Tag, Role: element.Role, Name: element.Name, Text: element.Text, Box: rectContract(element.Box)}
+		answered.Element = &contract.FeedbackElement{
+			Selector: element.Selector, Tag: element.Tag, Role: element.Role, Name: element.Name, Text: element.Text, Box: rectContract(element.Box),
+			Path: element.Path, Classes: element.Classes, Attributes: pairsContract(element.Attributes), Styles: pairsContract(element.Styles),
+			Component: element.Component, Source: element.Source, Nearby: element.Nearby, SelectedText: element.SelectedText,
+		}
 	}
 	return answered
 }

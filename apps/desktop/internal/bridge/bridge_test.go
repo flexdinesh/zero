@@ -5,8 +5,11 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/flexdinesh/zero/apps/desktop/internal/review"
 )
 
 func TestParseAppearance(t *testing.T) {
@@ -270,7 +273,7 @@ func TestParseBrowserProject(t *testing.T) {
 }
 
 func TestParseBrowserAction(t *testing.T) {
-	for _, action := range []string{"back", "forward", "reload", "stop", "close"} {
+	for _, action := range []string{"back", "forward", "reload", "stop", "close", "comment", "endComment"} {
 		got, ok := ParseBrowserAction("/home/u/app", action)
 		if !ok || got != (BrowserAction{Project: "/home/u/app", Action: action}) {
 			t.Errorf("ParseBrowserAction(%q) = %+v, %v", action, got, ok)
@@ -316,6 +319,97 @@ func TestParseBrowserFrame(t *testing.T) {
 	} {
 		if got, ok := ParseBrowserFrame(args[0], args[1]); ok {
 			t.Errorf("%s: accepted %+v", name, got)
+		}
+	}
+}
+
+func TestParseBrowserPins(t *testing.T) {
+	pin := func(fields map[string]any) []any { return []any{fields} }
+	got, ok := ParseBrowserPins("/repo", []any{
+		map[string]any{"thread": 2.0, "resolved": false, "selector": `main > button[data-testid="save"]`, "x": 605.0, "y": 1640.0},
+		map[string]any{"thread": 5.0, "resolved": true, "x": -4.0, "y": 0.0},
+	}, true)
+	want := BrowserPins{Project: "/repo", Visible: true, Pins: []review.Pin{
+		{Thread: 2, Selector: `main > button[data-testid="save"]`, X: 605, Y: 1640},
+		{Thread: 5, Resolved: true, X: -4, Y: 0},
+	}}
+	if !ok || !reflect.DeepEqual(got, want) {
+		t.Errorf("pins = %+v, %v", got, ok)
+	}
+	if got, ok := ParseBrowserPins("/repo", []any{}, false); !ok || len(got.Pins) != 0 || got.Visible {
+		t.Errorf("no pins = %+v, %v", got, ok)
+	}
+	many := make([]any, review.MaxPins+1)
+	for index := range many {
+		many[index] = map[string]any{"thread": float64(index + 1), "resolved": false, "x": 0.0, "y": 0.0}
+	}
+	valid := map[string]any{"thread": 1.0, "resolved": false, "x": 0.0, "y": 0.0}
+	with := func(name string, value any) []any {
+		changed := map[string]any{}
+		for key, each := range valid {
+			changed[key] = each
+		}
+		changed[name] = value
+		return pin(changed)
+	}
+	for name, each := range map[string][3]any{
+		"relative project":  {"repo", pin(valid), true},
+		"no pins":           {"/repo", nil, true},
+		"no visible":        {"/repo", pin(valid), nil},
+		"too many":          {"/repo", many, true},
+		"not an object":     {"/repo", []any{"pin"}, true},
+		"thread zero":       {"/repo", with("thread", 0.0), true},
+		"thread fraction":   {"/repo", with("thread", 1.5), true},
+		"thread text":       {"/repo", with("thread", "1"), true},
+		"resolved missing":  {"/repo", with("resolved", nil), true},
+		"x not a number":    {"/repo", with("x", math.NaN()), true},
+		"y too far":         {"/repo", with("y", 1e8), true},
+		"selector a number": {"/repo", with("selector", 1.0), true},
+		"selector control":  {"/repo", with("selector", "a\nb"), true},
+		"selector too long": {"/repo", with("selector", strings.Repeat("a", 513)), true},
+		"thread twice":      {"/repo", []any{valid, valid}, true},
+	} {
+		if got, ok := ParseBrowserPins(each[0], each[1], each[2]); ok {
+			t.Errorf("%s: pins = %+v", name, got)
+		}
+	}
+}
+
+func TestParseComposerPayloads(t *testing.T) {
+	for _, direction := range []string{WalkParent, WalkChild} {
+		if got, ok := ParseWalk(direction); !ok || got != direction {
+			t.Errorf("ParseWalk(%q) = %q, %v", direction, got, ok)
+		}
+	}
+	for _, direction := range []any{"up", "", nil, 1.0} {
+		if got, ok := ParseWalk(direction); ok {
+			t.Errorf("ParseWalk(%v) = %q", direction, got)
+		}
+	}
+	if got, ok := ParseComposerHeight(212.5); !ok || got != 212.5 {
+		t.Errorf("ParseComposerHeight = %v, %v", got, ok)
+	}
+	for _, height := range []any{0.0, -1.0, math.NaN(), math.Inf(1), "200", nil} {
+		if got, ok := ParseComposerHeight(height); ok {
+			t.Errorf("ParseComposerHeight(%v) = %v", height, got)
+		}
+	}
+}
+
+func TestIsComposerPage(t *testing.T) {
+	for raw, want := range map[string]bool{
+		"app://local/composer":         true,
+		"app://local/composer?x=1#top": true,
+		"app://local/":                 false,
+		"app://local/composer/":        false,
+		"app://local/view":             false,
+		"app://other/composer":         false,
+		"app://user@local/composer":    false,
+		"https://local/composer":       false,
+		"":                             false,
+	} {
+		if got := IsComposerPage(raw, "app", "/composer", func(host string) bool { return host == "local" }); got != want {
+			t.Errorf("IsComposerPage(%q) = %v", raw, got)
 		}
 	}
 }

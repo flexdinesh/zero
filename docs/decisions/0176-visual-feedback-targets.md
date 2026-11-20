@@ -1,6 +1,8 @@
 # 0176: Visual feedback targets
 
-- Status: Accepted; sweep extended by [0179](0179-sweep-interrupted-uploads.md)
+- Status: Accepted; sweep extended by [0179](0179-sweep-interrupted-uploads.md);
+  UI superseded and element facts extended by
+  [0184](0184-browser-view-and-in-page-comments.md)
 - Date: 2026-11-19
 - Extends: [0120](0120-review-feedback-threads.md), [0156](0156-feedback-badge-and-sidebar-width.md),
   [0159](0159-feedback-directory-mutations.md), [0098](0098-remote-connections.md),

@@ -12,7 +12,7 @@ against `FeedbackUpload`, compare a created thread's `visual` with
 | File | Shape |
 | --- | --- |
 | `draft-minimal.json` | `POST /api/feedback-threads`: pasted image, rectangle only |
-| `draft-page.json` | `POST /api/feedback-threads`: page capture, region clip, element hint |
+| `draft-page.json` | `POST /api/feedback-threads`: page capture, region clip, color scheme, and an element with everything the Browser view's pick carries ([decision 0184](../../../docs/decisions/0184-browser-view-and-in-page-comments.md)) |
 | `upload.json` | `POST /api/feedback-attachments` response (`FeedbackUpload`) |
 | `feedback.json` | `GET /api/feedback`: an unchanged code thread beside four visual threads: a page capture (5), a pasted screenshot no longer stored (6), a capture at 1.25× with the project's loopback, a role that differs from its tag, and a title with backticks (7), and a stored paste (8) |
 | `feedback-cli.json` | `zero feedback show --json`: the same thread with the CLI-only `attachment.path` |

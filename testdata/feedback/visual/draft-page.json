@@ -9,7 +9,8 @@
       "title": "Settings · Acme",
       "viewport": {"width": 1440, "height": 900, "deviceScaleFactor": 2},
       "scroll": {"x": 0, "y": 1320},
-      "clip": {"x": 1114, "y": 544, "width": 612, "height": 288}
+      "clip": {"x": 1114, "y": 544, "width": 612, "height": 288},
+      "colorScheme": "dark"
     },
     "element": {
       "selector": "main form > button[data-testid=\"save\"]",
@@ -17,7 +18,14 @@
       "role": "button",
       "name": "Save changes",
       "text": "Save changes",
-      "box": {"x": 96, "y": 96, "width": 420, "height": 96}
+      "box": {"x": 96, "y": 96, "width": 420, "height": 96},
+      "path": "main › form.settings › div.actions › button.btn.btn-primary",
+      "classes": "btn btn-primary",
+      "attributes": [{"name": "type", "value": "submit"}, {"name": "data-testid", "value": "save"}],
+      "styles": [{"name": "color", "value": "rgb(255, 255, 255)"}, {"name": "background-color", "value": "rgb(50, 93, 200)"}, {"name": "font-size", "value": "14px"}, {"name": "padding", "value": "8px 16px"}],
+      "component": "SettingsForm › Card › Button",
+      "source": "src/settings/SettingsForm.tsx:42",
+      "nearby": "Cancel"
     }
   },
   "body": "Save overlaps the card edge at 1440 px. Keep it inside the card padding."

@@ -676,6 +676,9 @@ func writeVisualMarkdown(out *strings.Builder, name cliName, id string, thread c
 		}
 		facts = append(facts, fmt.Sprintf("viewport %d×%d CSS px at %s×", viewport.Width, viewport.Height, strconv.FormatFloat(math.Round(viewport.DeviceScaleFactor*100)/100, 'f', -1, 64)))
 		facts = append(facts, fmt.Sprintf("scrolled %d,%d", page.Scroll.X, page.Scroll.Y))
+		if page.ColorScheme != "" {
+			facts = append(facts, string(page.ColorScheme)+" scheme")
+		}
 		fmt.Fprintf(out, "Page: %s\n", strings.Join(facts, " · "))
 		switch page.Localhost {
 		case contract.FeedbackLocalhostProject:
@@ -710,7 +713,11 @@ func writeVisualMarkdown(out *strings.Builder, name cliName, id string, thread c
 		case element.Text != "":
 			hint += " " + codeSpan(element.Text)
 		}
-		fmt.Fprintf(out, "Element (page's hint, unverified): %s · %s\n", hint, codeSpan(element.Selector))
+		if element.Selector != "" {
+			hint += " · " + codeSpan(element.Selector)
+		}
+		fmt.Fprintf(out, "Element (page's hint, unverified): %s\n", hint)
+		writeElementFacts(out, element)
 	}
 	if visual.Head != "" {
 		fmt.Fprintf(out, "Code at: %s\n", visual.Head)
@@ -722,6 +729,45 @@ func writeVisualMarkdown(out *strings.Builder, name cliName, id string, thread c
 	}
 	if len(thread.Messages) > 0 {
 		out.WriteString("\n")
+	}
+}
+
+// writeElementFacts prints what else the page said of a visual thread's
+// element (decision 0184), a line for each part it gave. All of it is the
+// page's word, in code spans: where the element is, what rendered it, how
+// it looked, and the text around it.
+func writeElementFacts(out *strings.Builder, element *contract.FeedbackElement) {
+	if element.Path != "" {
+		fmt.Fprintf(out, "Path: %s\n", codeSpan(element.Path))
+	}
+	switch {
+	case element.Component != "" && element.Source != "":
+		fmt.Fprintf(out, "Component: %s · source %s\n", codeSpan(element.Component), codeSpan(element.Source))
+	case element.Component != "":
+		fmt.Fprintf(out, "Component: %s\n", codeSpan(element.Component))
+	case element.Source != "":
+		fmt.Fprintf(out, "Source: %s\n", codeSpan(element.Source))
+	}
+	if element.Classes != "" {
+		fmt.Fprintf(out, "Classes: %s\n", codeSpan(element.Classes))
+	}
+	pairs := func(label, joiner string, pairs []contract.FeedbackElementPair) {
+		if len(pairs) == 0 {
+			return
+		}
+		spans := make([]string, len(pairs))
+		for index, pair := range pairs {
+			spans[index] = codeSpan(pair.Name + joiner + pair.Value)
+		}
+		fmt.Fprintf(out, "%s: %s\n", label, strings.Join(spans, " "))
+	}
+	pairs("Attributes", "=", element.Attributes)
+	pairs("Styles (computed)", ": ", element.Styles)
+	if element.Nearby != "" {
+		fmt.Fprintf(out, "Nearby text: %s\n", codeSpan(element.Nearby))
+	}
+	if element.SelectedText != "" {
+		fmt.Fprintf(out, "Selected text: %s\n", codeSpan(element.SelectedText))
 	}
 }
 

@@ -35,6 +35,11 @@ type BrowserState struct {
 	CanGoBack    bool            `json:"canGoBack"`
 	CanGoForward bool            `json:"canGoForward"`
 	Failure      *BrowserFailure `json:"failure"`
+	// Commenting says comment mode is on: the page swallows input and
+	// outlines what the pointer is over. Composing says a pick waits for
+	// its comment in the composer.
+	Commenting bool `json:"commenting"`
+	Composing  bool `json:"composing"`
 }
 
 // Browsing follows a guest's load events. The zero value has no failure. It

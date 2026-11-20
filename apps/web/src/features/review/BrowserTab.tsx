@@ -1,5 +1,5 @@
-import { AppWindowIcon, ArrowLeftIcon, ArrowRightIcon, CornerDownLeftIcon, RotateCwIcon, XIcon } from "lucide-react"
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react"
+import { AppWindowIcon, ArrowLeftIcon, ArrowRightIcon, CornerDownLeftIcon, EyeIcon, EyeOffIcon, MessageSquarePlusIcon, RotateCwIcon, XIcon } from "lucide-react"
+import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react"
 
 import { Button } from "../../components/ui/button.tsx"
 import { IconButton } from "../../components/ui/icon-button.tsx"
@@ -8,10 +8,12 @@ import { ListButton, ListRow } from "../../components/ui/list-row.tsx"
 import { Notice } from "../../components/ui/notice.tsx"
 import { ProgressBar } from "../../components/ui/progress-bar.tsx"
 import { TextField } from "../../components/ui/text-field.tsx"
+import { ToggleButton } from "../../components/ui/toggle-button.tsx"
 import type { BrowserFailure } from "../../lib/desktop-bridge.ts"
-import { useOverlayLayer } from "../../lib/overlay-layers.ts"
+import { useOverlayLayer, useOverlayOpen } from "../../lib/overlay-layers.ts"
 import { blockingFailure, currentPage, failureText, refusedFailure, stageView } from "./browser-model.ts"
 import { pageLabel, reviewChoices, type ReviewChoice } from "./review-model.ts"
+import { commentKeys, type BrowserComments } from "./use-browser-comments.ts"
 import { useBrowserStage } from "./use-browser-stage.ts"
 import type { ProjectBrowser } from "./use-project-browser.ts"
 
@@ -20,6 +22,7 @@ const locationKeys = mac ? "⌘L" : "Ctrl+L"
 
 interface BrowserTabProps {
   browser: ProjectBrowser
+  comments: BrowserComments
   project: string
 }
 
@@ -28,12 +31,30 @@ interface BrowserTabProps {
 // app, the guest, over the stage's rectangle; Zero's page is under it and
 // draws there only what stands in for the page: the prompt before one
 // opens, a failure, or the guest's snapshot while an overlay is open.
-export function BrowserTab({ browser, project }: BrowserTabProps) {
+// Comment puts the page in comment mode, where a click or a drag picks
+// what a comment is about; the app shows the composer beside the pick.
+export function BrowserTab({ browser, comments, project }: BrowserTabProps) {
   const { state, recent, open, act, registerField } = browser
   const page = currentPage(state, recent[0] ?? "")
   const view = stageView(state)
   const failure = blockingFailure(state)
   const { attach, cover } = useBrowserStage(project, view === "page")
+  const commenting = comments.available && state?.commenting === true
+  const overlay = useOverlayOpen()
+  // Escape in Zero's page ends comment mode; in the guest's page, where the
+  // keyboard is between picks, the app ends it. A field or an overlay that
+  // takes Escape keeps it.
+  useEffect(() => {
+    if (!commenting || overlay) return
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== "Escape" || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
+      event.preventDefault()
+      act("endComment")
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [act, commenting, overlay])
+  const noComment = failure ? "The page did not load" : view !== "page" || !state?.url ? "Open a page first" : undefined
 
   return (
     <div className="browser-tab">
@@ -50,7 +71,16 @@ export function BrowserTab({ browser, project }: BrowserTabProps) {
             disabledReason={state ? undefined : "No page open"} onClick={() => act("reload")} />
         )}
         <AddressField page={page} recent={recent} onOpen={open} registerField={registerField} />
-        {/* Layer 4: the Comment toggle and the pins toggle go here, at the bar's end. */}
+        {comments.available && <>
+          {commenting && <span className="browser-comment-hint" role="status">Click an element or drag a region · Esc to finish</span>}
+          <ToggleButton size="text" className="browser-comment-toggle" pressed={commenting} disabledReason={noComment}
+            title={commenting ? `Stop commenting (${commentKeys})` : `Comment on the page (${commentKeys})`}
+            onPressedChange={(on) => act(on ? "comment" : "endComment")}>
+            <MessageSquarePlusIcon aria-hidden="true" />Comment
+          </ToggleButton>
+          <IconButton label="Show comment pins" title={comments.pins ? "Hide comment pins" : "Show comment pins"} aria-pressed={comments.pins}
+            icon={comments.pins ? <EyeIcon aria-hidden="true" /> : <EyeOffIcon aria-hidden="true" />} onClick={() => comments.setPins(!comments.pins)} />
+        </>}
       </div>
       <ProgressBar active={Boolean(state?.loading)} label="Loading page" />
       <RefusedNotice failure={refusedFailure(state)} />
@@ -82,6 +112,8 @@ interface AddressFieldProps {
 // an overlay while open.
 function AddressField({ page, recent, onOpen, registerField }: AddressFieldProps) {
   const input = useRef<HTMLInputElement>(null)
+  // selecting says the field just took the keyboard and selected its text.
+  const selecting = useRef(false)
   // draft is what the reviewer typed; null while the field shows the page.
   const [draft, setDraft] = useState<string | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
@@ -112,7 +144,8 @@ function AddressField({ page, recent, onOpen, registerField }: AddressFieldProps
     onOpen(choice.url)
   }
 
-  function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+  function onKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    selecting.current = false
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault()
       if (draft === null) {
@@ -155,8 +188,20 @@ function AddressField({ page, recent, onOpen, registerField }: AddressFieldProps
         aria-describedby={invalid ? `${listID}-hint` : undefined}
         invalid={invalid}
         value={draft ?? page}
-        onFocus={(event) => event.currentTarget.select()}
-        onBlur={restore}
+        onFocus={(event) => {
+          event.currentTarget.select()
+          selecting.current = true
+        }}
+        // The click that gave the field the keyboard keeps the whole
+        // address selected: its mouseup would put a caret in it instead.
+        onMouseUp={(event) => {
+          if (selecting.current) event.preventDefault()
+          selecting.current = false
+        }}
+        onBlur={() => {
+          selecting.current = false
+          restore()
+        }}
         onChange={(event) => {
           setDraft(event.target.value)
           setActiveIndex(0)

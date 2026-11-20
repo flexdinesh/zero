@@ -31,6 +31,28 @@ export function pageLabel(url: string): string {
   }
 }
 
+// pageKey names the page an address belongs to (decision 0184): its origin
+// and path, plus the hash when the hash is a route (#/… or #!…), without
+// the route's own query. The query never counts. "" for anything that is
+// not an http or https address.
+export function pageKey(url: string): string {
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return ""
+  }
+  if ((parsed.protocol !== "http:" && parsed.protocol !== "https:") || !parsed.host) return ""
+  const route = /^#[/!]/.test(parsed.hash) ? parsed.hash.split("?")[0] ?? "" : ""
+  return `${parsed.origin}${parsed.pathname}${route}`
+}
+
+// samePage reports two addresses of one page.
+export function samePage(left: string, right: string): boolean {
+  const key = pageKey(left)
+  return key !== "" && key === pageKey(right)
+}
+
 // RecentURLs is the pages opened per project, most recent first, as
 // zero-review-urls stores them.
 export type RecentURLs = Readonly<Record<string, readonly string[]>>

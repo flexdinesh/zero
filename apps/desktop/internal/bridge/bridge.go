@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/flexdinesh/zero/apps/desktop/internal/appearance"
@@ -60,6 +61,13 @@ func IsAppPage(raw, scheme string, known func(host string) bool) bool {
 		return false
 	}
 	return u.Path == "" || u.Path == "/" || u.Path == "/view"
+}
+
+// IsComposerPage reports the composer's page: path on an origin known says
+// is the app's.
+func IsComposerPage(raw, scheme, path string, known func(host string) bool) bool {
+	u, err := url.Parse(raw)
+	return err == nil && u.Scheme == scheme && u.User == nil && known(u.Host) && u.Path == path
 }
 
 // ParsePoint validates a menu point: finite numbers inside the content size,
@@ -345,13 +353,16 @@ type BrowserAction struct {
 	Action  string
 }
 
-// Browser actions: history moves, loading, and closing the guest.
+// Browser actions: history moves, loading, closing the guest, and comment
+// mode on and off.
 const (
-	BrowserBack    = "back"
-	BrowserForward = "forward"
-	BrowserReload  = "reload"
-	BrowserStop    = "stop"
-	BrowserClose   = "close"
+	BrowserBack       = "back"
+	BrowserForward    = "forward"
+	BrowserReload     = "reload"
+	BrowserStop       = "stop"
+	BrowserClose      = "close"
+	BrowserComment    = "comment"
+	BrowserEndComment = "endComment"
 )
 
 // ParseBrowserAction validates browserAction's payload: an absolute project
@@ -363,7 +374,7 @@ func ParseBrowserAction(project, action any) (BrowserAction, bool) {
 		return BrowserAction{}, false
 	}
 	switch a {
-	case BrowserBack, BrowserForward, BrowserReload, BrowserStop, BrowserClose:
+	case BrowserBack, BrowserForward, BrowserReload, BrowserStop, BrowserClose, BrowserComment, BrowserEndComment:
 		return BrowserAction{Project: p, Action: a}, true
 	}
 	return BrowserAction{}, false
@@ -406,4 +417,80 @@ func ParseBrowserFrame(project, frame any) (BrowserFrame, bool) {
 		return BrowserFrame{}, false
 	}
 	return BrowserFrame{Project: p, Shown: true, X: x, Y: y, Width: width, Height: height}, true
+}
+
+// BrowserPins is browserPins's payload: the marks of earlier comments on a
+// project's page, and whether they show.
+type BrowserPins struct {
+	Project string
+	Pins    []review.Pin
+	Visible bool
+}
+
+// ParseBrowserPins validates browserPins's payload: an absolute project
+// directory, at most review.MaxPins pins, and whether they show. A pin is
+// its thread's number from 1, whether it is resolved, an optional selector
+// of at most 512 bytes without control characters, and a point of whole
+// CSS pixels of the document.
+func ParseBrowserPins(project, pins, visible any) (BrowserPins, bool) {
+	p, okP := ParseBrowserProject(project)
+	rows, okRows := pins.([]any)
+	shown, okShown := visible.(bool)
+	if !okP || !okRows || !okShown || len(rows) > review.MaxPins {
+		return BrowserPins{}, false
+	}
+	parsed := make([]review.Pin, 0, len(rows))
+	seen := map[int]bool{}
+	for _, row := range rows {
+		fields, ok := row.(map[string]any)
+		if !ok {
+			return BrowserPins{}, false
+		}
+		thread, okThread := wholeNumber(fields["thread"], 1, 1e9)
+		x, okX := wholeNumber(fields["x"], -1e7, 1e7)
+		y, okY := wholeNumber(fields["y"], -1e7, 1e7)
+		resolved, okResolved := fields["resolved"].(bool)
+		if !okThread || !okX || !okY || !okResolved || seen[thread] {
+			return BrowserPins{}, false
+		}
+		seen[thread] = true
+		pin := review.Pin{Thread: thread, Resolved: resolved, X: x, Y: y}
+		if selector, given := fields["selector"]; given && selector != nil {
+			text, ok := selector.(string)
+			if !ok || len(text) > 512 || !utf8.ValidString(text) || strings.IndexFunc(text, unicode.IsControl) >= 0 {
+				return BrowserPins{}, false
+			}
+			pin.Selector = text
+		}
+		parsed = append(parsed, pin)
+	}
+	return BrowserPins{Project: p, Pins: parsed, Visible: shown}, true
+}
+
+// wholeNumber reads a JSON number that is a whole number within [low, high].
+func wholeNumber(value any, low, high float64) (int, bool) {
+	number, ok := value.(float64)
+	if !ok || math.IsNaN(number) || number < low || number > high || number != math.Trunc(number) {
+		return 0, false
+	}
+	return int(number), true
+}
+
+// Walk directions of the composer's Alt+Up and Alt+Down.
+const (
+	WalkParent = "parent"
+	WalkChild  = "child"
+)
+
+// ParseWalk validates composerWalk's payload: one of the Walk directions.
+func ParseWalk(direction any) (string, bool) {
+	text, ok := direction.(string)
+	return text, ok && (text == WalkParent || text == WalkChild)
+}
+
+// ParseComposerHeight validates composerResize's payload: the composer's
+// content height in CSS pixels, a finite number above 0.
+func ParseComposerHeight(height any) (float64, bool) {
+	number, ok := height.(float64)
+	return number, ok && !math.IsNaN(number) && number > 0 && number < 1<<20
 }
