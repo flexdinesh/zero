@@ -242,11 +242,18 @@
   --activity-width: 2.5rem;
 }
 
+/* Narrow screens change the layout. Touch sizes follow them except in a
+   document that declares pointer density (decision 0186): a panel the
+   desktop app shows in a small web view, used with a mouse. Every
+   primitive's touch rule takes the same guard. */
 @media (max-width: 48rem) {
   :root {
     --preview-font-size: 0.9375rem;
-    --status-height: var(--control-touch);
     --activity-width: var(--chrome-height);
+  }
+
+  :root:not([data-density="pointer"]) {
+    --status-height: var(--control-touch);
     --row-list: 2rem;
     --row-pick: var(--control-touch);
     --field-height-palette: var(--control-touch);

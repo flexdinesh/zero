@@ -13,6 +13,7 @@ import { Kbd } from "../components/ui/kbd.tsx"
 import { ListButton, ListRow } from "../components/ui/list-row.tsx"
 import { menuItemClass, menuPopupClass, menuSeparatorClass } from "../components/ui/menu.ts"
 import { Notice, StatusMessage } from "../components/ui/notice.tsx"
+import { PanelBody, PanelFooter, PanelHeader } from "../components/ui/panel.tsx"
 import { ProgressBar } from "../components/ui/progress-bar.tsx"
 import { Chevron, SectionToggle } from "../components/ui/section-toggle.tsx"
 import { SegmentedControl, SegmentedItem } from "../components/ui/segmented-control.tsx"
@@ -215,6 +216,19 @@ export default function UiGallery() {
             <Button onClick={() => dialog.current?.close()}>Done</Button>
           </div>
         </DialogShell>
+      </Section>
+
+      {/* Panel itself is the whole page of a desktop web view (decision 0186);
+          its bands are shown here at the composer's 360 px. */}
+      <Section title="Panel bands">
+        <div className="gallery-panel">
+          <PanelHeader><span>Header</span></PanelHeader>
+          <PanelBody>
+            <TextArea rows={3} aria-label="Panel field" placeholder="Body" />
+            <Row><Button variant="ghost" size="sm">Cancel</Button><Button size="sm">Comment</Button></Row>
+          </PanelBody>
+          <PanelFooter><span>Footer</span></PanelFooter>
+        </div>
       </Section>
     </main>
   )

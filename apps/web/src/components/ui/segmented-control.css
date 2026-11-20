@@ -100,7 +100,7 @@
 }
 
 @media (max-width: 48rem) {
-  .ui-segmented[data-size="sm"] {
+  :where(:root:not([data-density="pointer"])) .ui-segmented[data-size="sm"] {
     height: var(--control-md);
   }
 }

@@ -64,7 +64,7 @@
 }
 
 @media (max-width: 48rem) {
-  .ui-toggle {
+  :where(:root:not([data-density="pointer"])) .ui-toggle {
     --toggle-min: var(--control-lg);
   }
 }

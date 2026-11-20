@@ -68,7 +68,7 @@
 @media (max-width: 48rem) {
   /* Modal actions grow to touch size. The drawer hosts views whose chrome
      bands keep their own sizes. */
-  .ui-dialog:not([data-variant="drawer"]) {
+  :where(:root:not([data-density="pointer"])) .ui-dialog:not([data-variant="drawer"]) {
     --icon-button-min: var(--control-touch);
   }
 

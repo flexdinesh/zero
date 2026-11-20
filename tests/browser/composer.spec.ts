@@ -99,6 +99,8 @@ function posts(page: Page): { attachments: number; threads: number } {
 }
 
 const composer = (page: Page) => page.locator(".composer")
+// The panel's page (decision 0186): the raised surface, with or without a pick.
+const surface = (page: Page) => page.locator(".ui-panel-page")
 const field = (page: Page) => page.getByRole("textbox", { name: /^Comment on / })
 
 test("the composer shows the pick, what it sends, and where the comment goes, and nothing of the workspace", async ({ page, request, live }) => {
@@ -167,6 +169,37 @@ test("text from the page is shown as text, and the composer fits its 360 px web 
   expect(await composer(page).evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
   await expect(page.getByRole("button", { name: "Select parent" })).toBeInViewport({ ratio: 1 })
   await expect(page.getByRole("button", { name: "Cancel" })).toBeInViewport({ ratio: 1 })
+})
+
+// The 360 px view is narrower than the phone breakpoint, but the composer is
+// used with a mouse: as a panel it keeps desktop sizes (decision 0186) and
+// lays out as the review's comment box.
+test("the composer keeps desktop sizes in its 360 px view, laid out as the review's comment box", async ({ page, request, live }) => {
+  await openComposer(page, live, pick(live))
+  await expect(page.locator("html")).toHaveAttribute("data-density", "pointer")
+
+  const comment = page.getByRole("button", { name: "Comment", exact: true })
+  const cancel = page.getByRole("button", { name: "Cancel" })
+  const sent = page.getByRole("button", { name: "What's sent" })
+  for (const control of [comment, cancel, sent]) expect((await control.boundingBox())?.height).toBe(24)
+  const fieldHeight = (await field(page).boundingBox())?.height ?? 0
+  expect(fieldHeight).toBeGreaterThanOrEqual(3 * 28)
+
+  // The hint shares the actions' row, and no longer names Escape.
+  const hint = composer(page).locator(".feedback-hint")
+  await expect(hint).toHaveText(/^Markdown · (⌘↵|Ctrl\+Enter) to comment$/)
+  const hintBox = await hint.boundingBox()
+  const commentBox = await comment.boundingBox()
+  expect(hintBox && commentBox && hintBox.y < commentBox.y + commentBox.height && hintBox.y + hintBox.height > commentBox.y).toBe(true)
+  await expect(cancel).toHaveAttribute("title", "Cancel (Esc)")
+
+  // Where the comment goes shares What's sent's row.
+  const { branch } = await stored(request, live)
+  const target = composer(page).locator(".composer-target")
+  await expect(target).toHaveText(`Comments go to repository · ${branch}`)
+  const targetBox = await target.boundingBox()
+  const sentBox = await sent.boundingBox()
+  expect(targetBox && sentBox && targetBox.x >= sentBox.x + sentBox.width && Math.abs((targetBox.y + targetBox.height / 2) - (sentBox.y + sentBox.height / 2)) <= 2).toBe(true)
 })
 
 test("Alt+Up and Alt+Down walk the pick and keep the comment; a region walks nowhere", async ({ page, live }) => {
@@ -272,8 +305,8 @@ test("Escape and Cancel close without sending, and a pick that ended clears the 
   // The app says the pick ended: the composer is the empty surface.
   await page.evaluate(() => window.dispatchEvent(new CustomEvent("zero:composer")))
   await expect(composer(page)).toHaveCount(0)
-  await expect(page.locator(".composer-page")).toBeVisible()
-  await expect(page.locator(".composer-page *")).toHaveCount(0)
+  await expect(surface(page)).toBeVisible()
+  await expect(surface(page).locator(".ui-panel *")).toHaveCount(0)
 
   // The next pick starts with no comment.
   await announce(page, pick(live))
@@ -287,14 +320,14 @@ test("Escape and Cancel close without sending, and a pick that ended clears the 
 
 test("no pick, or experimental features off, shows the empty surface", async ({ page, live }) => {
   await openComposer(page, live, null)
-  await expect(page.locator(".composer-page")).toBeVisible()
+  await expect(surface(page)).toBeVisible()
   await expect(composer(page)).toHaveCount(0)
   await expect.poll(() => calls(page, "capture")).toEqual([["capture"]])
   expect(await calls(page, "resize")).toEqual([])
 
   const off = await page.context().newPage()
   await openComposer(off, live, pick(live), false)
-  await expect(off.locator(".composer-page")).toBeVisible()
+  await expect(surface(off)).toBeVisible()
   await expect(composer(off)).toHaveCount(0)
   expect(await calls(off)).toEqual([])
 })

@@ -1,25 +1,7 @@
 /* The composer (decision 0184): Zero's page in its own small web view
-   beside a pick on the Browser's page. One raised surface, no workspace
-   around it. The desktop app sizes the view to the composer's height, up
-   to a bound; past it the page scrolls. Fixed to the viewport, so the
-   workspace's minimum page width does not apply to the 360 px view. */
-.composer-page {
-  position: fixed;
-  overflow: auto;
-  color: var(--color-text-primary);
-  background: var(--color-surface-raised);
-  font-size: var(--text-label);
-  inset: 0;
-}
-
-.composer-head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--color-border);
-  gap: calc(var(--space-1) / 2);
-}
-
+   beside a pick on the Browser's page. A panel (decision 0186): the panel
+   draws the surface and bands; the body is the review's comment box. The
+   desktop app sizes the view to the composer's height, up to a bound. */
 .composer-pick {
   display: flex;
   min-height: var(--control-xs);
@@ -55,27 +37,51 @@
   white-space: nowrap;
 }
 
-.composer-body {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  padding: var(--space-3) var(--space-3) var(--space-2);
-  gap: var(--space-1);
-}
-
+/* Three lines at rest, as the review's comment box. */
 .composer-field {
+  min-height: calc(var(--field-height) * 3);
   max-height: 8rem;
 }
 
 .composer-error {
+  margin: 0;
   overflow-wrap: anywhere;
+}
+
+/* What's sent and where the comment goes share one row; the facts open
+   under it. The toggle's hover band ends where its label does. */
+.composer-sent {
+  padding: 0;
+  gap: 0;
+}
+
+.composer-sent-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  padding-inline: var(--space-1) var(--space-3);
+  gap: var(--space-2);
+}
+
+.composer-sent-toggle {
+  width: auto;
+  flex: none;
+}
+
+.composer-target {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  text-align: end;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* What the comment carries: a label over its values, each value the
    page's own text, mono and wrapped. */
-.composer-sent {
-  border-top: 1px solid var(--color-border);
-}
-
 .composer-facts {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -110,23 +116,4 @@
 
 .composer-fact dd[data-plain] {
   font-family: inherit;
-}
-
-.composer-foot {
-  display: flex;
-  align-items: center;
-  padding: var(--space-2) var(--space-3);
-  border-top: 1px solid var(--color-border);
-  gap: var(--space-2);
-}
-
-.composer-target {
-  min-width: 0;
-  flex: 1 1 auto;
-  overflow: hidden;
-  margin: 0;
-  color: var(--color-text-muted);
-  font-size: var(--text-xs);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }

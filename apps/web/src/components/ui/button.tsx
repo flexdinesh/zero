@@ -13,7 +13,7 @@ type ButtonProps = ButtonPrimitive.Props & {
 
 // Button is the text action. Sizes: sm 24px, md 28px (default), lg 32px, and
 // inline for text-flow actions such as More/Less; touch layouts raise all but
-// inline to 44px.
+// inline to 44px, except in a panel (pointer density, decision 0186).
 export function Button({ className, variant = "primary", size = "md", type = "button", ...props }: ButtonProps) {
   return (
     <ButtonPrimitive

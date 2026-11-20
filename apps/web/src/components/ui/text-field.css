@@ -116,13 +116,12 @@
 }
 
 @media (max-width: 48rem) {
-  .ui-field[data-variant="field"],
-  .ui-select {
+  :where(:root:not([data-density="pointer"])) :is(.ui-field[data-variant="field"], .ui-select) {
     --field-height-touch: var(--control-touch);
   }
 
   /* Trailing actions fit inside the touch-height field. */
-  .ui-field-trailing {
+  :where(:root:not([data-density="pointer"])) .ui-field-trailing {
     --icon-button-min: var(--control-lg);
   }
 }
