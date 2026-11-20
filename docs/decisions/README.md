@@ -183,3 +183,4 @@ rewriting history; update `Status` on the old record.
 | [0181](0181-project-browser-tab.md) | Project browser tab | Accepted; extends 0052, 0081, 0175, 0177 |
 | [0182](0182-screen-tabs-for-visual-threads.md) | Screen tabs for visual threads | Accepted; extends 0113, 0120, 0176, 0177, 0178 |
 | [0183](0183-visual-review-loop-verified.md) | The visual review loop, verified end to end | Accepted; extends 0175, 0176, 0177, 0178, 0180, 0181, 0182 |
+| [0184](0184-browser-view-and-in-page-comments.md) | Browser view and in-page comments (experimental) | Accepted; supersedes 0177, 0180, 0181, 0175's window, 0176's UI; extends 0081, 0094, 0176, 0178, 0182 |

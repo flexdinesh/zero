@@ -239,6 +239,32 @@ export function availableSettings(notificationsAvailable: boolean): readonly Set
     : settingDefinitions.filter((definition) => definition.category !== NOTIFICATIONS_CATEGORY)
 }
 
+// The desktop app's experimental features (decision 0184) are the app's
+// setting, not this page's: the app remembers the choice and reopens its
+// windows. They are listed with the settings and searched like them.
+export const EXPERIMENTAL_CATEGORY = "Experimental"
+export const EXPERIMENTAL_TITLE = "Experimental Features"
+export const EXPERIMENTAL_DESCRIPTION = "Shows features that are still being built, such as the Browser view. The app's windows reopen when this changes."
+
+// experimentalMatches reports whether a settings search finds the
+// experimental features setting.
+export function experimentalMatches(query: string): boolean {
+  const text = `${EXPERIMENTAL_CATEGORY} ${EXPERIMENTAL_TITLE} ${EXPERIMENTAL_DESCRIPTION} off on`.toLowerCase()
+  return query.toLowerCase().split(/\s+/).filter(Boolean).every((term) => text.includes(term))
+}
+
+// experimentalLock says why the user cannot change experimental features, or
+// "" when they can: a development build and ZERO_EXPERIMENTAL decide over the
+// setting.
+export function experimentalLock(source: string): string {
+  switch (source) {
+    case "build": return "Always on in development builds."
+    case "env": return "Turned on by ZERO_EXPERIMENTAL=1 in the app's environment."
+    case "off": return "Turned off by ZERO_EXPERIMENTAL=0 in the app's environment."
+  }
+  return ""
+}
+
 // parseSettingValue accepts whole numbers, or numeric text, within the
 // definition's range.
 export function parseSettingValue(definition: Pick<NumberSettingDefinition, "min" | "max">, value: unknown): number | null {

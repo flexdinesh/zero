@@ -12,10 +12,13 @@ import { ToggleButton } from "../components/ui/toggle-button.tsx"
 import { ViewHeader } from "../components/ui/view-header.tsx"
 
 import { notificationProblem } from "../features/notifications/notifications.ts"
-import { notificationsAvailable, type NotificationStatus } from "../lib/desktop-bridge.ts"
+import { desktopBridge, notificationsAvailable, type ExperimentalState, type NotificationStatus } from "../lib/desktop-bridge.ts"
 import type { RegisterDialogOpen } from "../workspace/use-deferred-dialog.tsx"
 
-import { availableSettings, matchSettings, NOTIFICATIONS_CATEGORY, type SettingId } from "./settings.ts"
+import {
+  availableSettings, EXPERIMENTAL_CATEGORY, EXPERIMENTAL_DESCRIPTION, EXPERIMENTAL_TITLE, experimentalLock, experimentalMatches,
+  matchSettings, NOTIFICATIONS_CATEGORY, type SettingId,
+} from "./settings.ts"
 import { useSettingValues, type SettingValue } from "./use-setting-values.ts"
 
 
@@ -110,6 +113,47 @@ function SettingItem({ setting, revealed, onReset }: SettingItemProps) {
   )
 }
 
+// ExperimentalSetting is the desktop app's experimental features (decision
+// 0184). The app owns the choice: changing it reopens the app's windows, so
+// this page goes with it. A build or the environment that decides it locks
+// the control and says why.
+function ExperimentalSetting({ state }: { state: ExperimentalState }) {
+  const id = useId()
+  const [failed, setFailed] = useState(false)
+  const lock = experimentalLock(state.source)
+
+  function change(value: string) {
+    setFailed(false)
+    const set = desktopBridge()?.setExperimental
+    if (!set) return
+    void set(value === "on").then((result) => {
+      if (!result) setFailed(true)
+    })
+  }
+
+  return (
+    <div className="setting-item" data-setting="experimental" data-modified={state.source === "setting" || undefined}>
+      <div className="setting-heading">
+        <label className="setting-title" htmlFor={id}>
+          <span className="setting-category">{EXPERIMENTAL_CATEGORY}: </span>
+          <span className="setting-name">{EXPERIMENTAL_TITLE}</span>
+        </label>
+        {state.source === "setting" && <span className="setting-modified">Modified</span>}
+      </div>
+      <p className="setting-description" id={`${id}-description`}>{EXPERIMENTAL_DESCRIPTION}{lock ? ` ${lock}` : ""}</p>
+      <div className="setting-control">
+        <Select className="setting-select" id={id} value={state.enabled ? "on" : "off"} disabled={lock !== ""}
+          aria-describedby={`${id}-description${failed ? ` ${id}-error` : ""}`}
+          onChange={(event) => change(event.target.value)}>
+          <option value="off">Off</option>
+          <option value="on">On</option>
+        </Select>
+      </div>
+      {failed && <p className="setting-error" id={`${id}-error`}>The app could not change this. Try again.</p>}
+    </div>
+  )
+}
+
 interface SettingsDialogProps {
   registerOpen: RegisterDialogOpen<SettingId>
   notificationStatus: NotificationStatus | null
@@ -131,8 +175,15 @@ export function SettingsDialogBody({ registerOpen, notificationStatus }: Setting
   const definitions = availableSettings(notificationsAvailable())
   const matches = matchSettings(query, definitions).filter((definition) => !onlyModified || values[definition.id].modified)
   const results = matches.filter((definition) => category === null || definition.category === category)
+  // The app's experimental features list after the page's own settings.
+  const experimental = desktopBridge()?.experimental ?? null
+  const experimentalMatched = experimental !== null && experimentalMatches(query) && (!onlyModified || experimental.source === "setting")
+  const experimentalShown = experimentalMatched && (category === null || category === EXPERIMENTAL_CATEGORY)
   const categories = [...new Set(results.map((definition) => definition.category))]
-  const allCategories = [...new Set(definitions.map((definition) => definition.category))]
+  const allCategories = [...new Set(definitions.map((definition) => definition.category)), ...(experimental ? [EXPERIMENTAL_CATEGORY] : [])]
+  const count = (item: string | null) => (item === EXPERIMENTAL_CATEGORY ? 0 : matches.filter((definition) => item === null || definition.category === item).length)
+    + (experimentalMatched && (item === null || item === EXPERIMENTAL_CATEGORY) ? 1 : 0)
+  const shown = results.length + (experimentalShown ? 1 : 0)
   const problem = notificationProblem(notificationStatus)
 
   function clearFilters() {
@@ -228,7 +279,7 @@ export function SettingsDialogBody({ registerOpen, notificationStatus }: Setting
           }}
         />
         <div className="settings-tools">
-          <span role="status">{results.length} {results.length === 1 ? "setting" : "settings"}</span>
+          <span role="status">{shown} {shown === 1 ? "setting" : "settings"}</span>
           <ToggleButton ref={modifiedFilter} size="text" className="settings-modified-filter" pressed={onlyModified}
             label="Show modified settings"
             onPressedChange={setOnlyModified}>Show modified <span>{modifiedCount}</span></ToggleButton>
@@ -239,12 +290,12 @@ export function SettingsDialogBody({ registerOpen, notificationStatus }: Setting
               <ListButton key={item ?? "all"} selected={category === item} aria-current={category === item ? "true" : undefined}
                 aria-controls="settings-list" onClick={() => { setCategory(item); list.current?.scrollTo(0, 0) }}>
                 <span>{item ?? "All settings"}</span>
-                <span className="settings-category-count">{item === null ? matches.length : matches.filter((definition) => definition.category === item).length}</span>
+                <span className="settings-category-count">{count(item)}</span>
               </ListButton>
             ))}
           </nav>
           <div ref={list} className="settings-list" id="settings-list">
-            {results.length ? categories.map((category) => (
+            {shown ? categories.map((category) => (
               <section key={category} aria-label={category}>
                 <h3 className="settings-group-title">{category}</h3>
                 {category === NOTIFICATIONS_CATEGORY && problem && <Notice tone="warning">{problem}</Notice>}
@@ -254,7 +305,14 @@ export function SettingsDialogBody({ registerOpen, notificationStatus }: Setting
                     onReset={() => { if (onlyModified) modifiedFilter.current?.focus() }} />
                 ))}
               </section>
-            )) : (
+            )) : null}
+            {experimentalShown && experimental && (
+              <section aria-label={EXPERIMENTAL_CATEGORY}>
+                <h3 className="settings-group-title">{EXPERIMENTAL_CATEGORY}</h3>
+                <ExperimentalSetting state={experimental} />
+              </section>
+            )}
+            {shown ? null : (
               <div className="settings-empty">
                 <p>{query.trim() ? `No settings match “${query.trim()}”.` : onlyModified ? "No modified settings in this category." : "No settings in this category."}</p>
                 <Button variant="outline" onClick={clearFilters}>Clear filters</Button>

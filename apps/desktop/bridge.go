@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"runtime"
@@ -12,6 +13,7 @@ import (
 	"github.com/egoist/mygo"
 
 	"github.com/flexdinesh/zero/apps/desktop/internal/bridge"
+	"github.com/flexdinesh/zero/apps/desktop/internal/experimental"
 	"github.com/flexdinesh/zero/apps/desktop/internal/proxy"
 	"github.com/flexdinesh/zero/apps/desktop/internal/review"
 	"github.com/flexdinesh/zero/pkg/client"
@@ -24,11 +26,19 @@ import (
 // are elsewhere, its problem report carries none of this app's logs, and the
 // review windows (decision 0177) and their Browser tab (decision 0181) are
 // this machine's. The methods check again, since a page can call mygo
-// directly.
-const preloadScript = `(() => {
+// directly. experimental is the state the window opened with (decision 0184):
+// a change reopens the windows, so it stays true.
+func preloadScript(state experimental.State) string {
+	experiments, err := json.Marshal(state)
+	if err != nil {
+		experiments = []byte("null")
+	}
+	return `(() => {
   if (location.protocol !== "` + proxy.Scheme + `:") return
   const call = (method, ...args) => window.mygo.call("Bridge." + method, ...args)
   const window_ = {
+    experimental: Object.freeze(` + string(experiments) + `),
+    setExperimental(enabled) { return call("SetExperimental", enabled) },
     closeWindow() { void call("CloseWindow").catch(() => undefined) },
     showAppMenu(x, y) { void call("ShowAppMenu", x, y).catch(() => undefined) },
     showContextMenu(items, x, y) { return call("ShowContextMenu", items, x, y) },
@@ -46,6 +56,7 @@ const preloadScript = `(() => {
     browserAction(project, action) { return call("BrowserAction", project, action) },
   } : { version: 2, ...window_ })
 })()`
+}
 
 // errRefused answers a sender that is not the app's page or a payload that
 // is invalid. Nothing happens, and no dialog says so (decision 0081).
@@ -121,6 +132,21 @@ func (b *bridgeService) SetAppearance(ctx context.Context, value any) error {
 	}
 	b.host.setAppearance(hostOf(mygo.CallerPage(ctx).URL()), window, source)
 	return nil
+}
+
+// SetExperimental remembers whether the user wants experimental features and
+// answers the state that results (decision 0184); a build or environment that
+// decides it leaves the state as it was. A change reopens the app's windows,
+// which are built for one state.
+func (b *bridgeService) SetExperimental(ctx context.Context, value any) (experimental.State, error) {
+	if _, ok := callerWindow(ctx, b.anyConnection); !ok {
+		return experimental.State{}, errRefused
+	}
+	enabled, ok := value.(bool)
+	if !ok {
+		return experimental.State{}, errRefused
+	}
+	return b.host.setExperimental(enabled), nil
 }
 
 // Diagnostics answers the app's part of a problem report (decision 0152),

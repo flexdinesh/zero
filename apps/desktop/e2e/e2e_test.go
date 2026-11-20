@@ -211,6 +211,33 @@ func TestWebViewApp(t *testing.T) {
 		w.report["clipboardWrite"] = app.eval(`try { await navigator.clipboard.writeText("e2e"); return "ok" } catch (error) { return String(error) }`)
 	})
 
+	// Decision 0184: the page reads the state its window opened with, and
+	// the Settings choice reopens the window in the new state on the page it
+	// showed.
+	run("experimental features", func(t *testing.T) {
+		if got := app.eval(`return JSON.stringify(window.zeroDesktop.experimental)`); got != `{"enabled":false,"source":""}` {
+			t.Fatalf("experimental = %v, want off with no source", got)
+		}
+		app.eval(`window.e2eBefore = true; void window.zeroDesktop.setExperimental(true); return true`)
+		app.waitEval("the reopened window with experimental features on",
+			`return !window.e2eBefore && window.zeroDesktop?.experimental?.enabled === true && window.zeroDesktop.experimental.source === "setting"`)
+		app.waitEval("the project's tree after reopening", treeShows("README.md"))
+		if got := app.eval(`return new URL(location.href).searchParams.get("project")`); got != w.project {
+			t.Errorf("the reopened window shows project %v, want %s", got, w.project)
+		}
+		app.eval(`window.e2eBefore = true; void window.zeroDesktop.setExperimental(false); return true`)
+		app.waitEval("the reopened window with experimental features off",
+			`return !window.e2eBefore && window.zeroDesktop?.experimental?.enabled === false && window.zeroDesktop.experimental.source === ""`)
+		app.waitEval("the project's tree after turning them off", treeShows("README.md"))
+		deadline := time.Now().Add(callTimeout)
+		for app.windowCount() != 1 && time.Now().Before(deadline) {
+			time.Sleep(100 * time.Millisecond)
+		}
+		if got := app.windowCount(); got != 1 {
+			t.Errorf("%d windows after reopening twice, want 1", got)
+		}
+	})
+
 	run("refusals", func(t *testing.T) {
 		// "//x" alone would name another host, which the page's CSP refuses.
 		for _, name := range []string{"/_daemon/status", "/%5Fdaemon/status", "//_daemon/status", "/_zero/status", "/x/%2e%2e/_daemon/status", "/_daemon/..%2fstatus", "/_daemon%2f..%2fstatus", "/_zero/..%2fstatus"} {
