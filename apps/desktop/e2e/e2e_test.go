@@ -121,6 +121,47 @@ type world struct {
 	out     string
 	notices string
 	report  map[string]any
+	// driverSock is the app's own e2e driver (ZERO_E2E_DRIVER), which
+	// reaches the page of a window of native UI (decision 0184).
+	driverSock string
+}
+
+// driver connects to the app's e2e driver. Its session evaluates in the
+// local window's page of the app, whichever kind of window holds it.
+func (w *world) driver(t *testing.T) *session {
+	t.Helper()
+	deadline := time.Now().Add(pageTimeout)
+	for {
+		conn, err := net.Dial("unix", w.driverSock)
+		if err == nil {
+			t.Cleanup(func() { _ = conn.Close() })
+			return &session{t: t, socket: w.driverSock, conn: conn, reader: bufio.NewReader(conn)}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("e2e driver socket: %v", err)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// shells counts the windows of native UI, through the app's driver.
+func (s *session) shells() int {
+	s.t.Helper()
+	var listing struct {
+		Windows []struct {
+			Shell bool `json:"shell"`
+		} `json:"windows"`
+	}
+	if err := s.call("windows", nil, &listing); err != nil {
+		s.t.Fatal(err)
+	}
+	count := 0
+	for _, window := range listing.Windows {
+		if window.Shell {
+			count++
+		}
+	}
+	return count
 }
 
 func newWorld(t *testing.T) (*world, string) {
@@ -162,7 +203,9 @@ func newWorld(t *testing.T) (*world, string) {
 		"XDG_RUNTIME_DIR="+filepath.Join(base, "run"),
 		"ZERO_DESKTOP_SOCKET="+w.daemon, "ZERO_DESKTOP_ROOTS_FILE="+filepath.Join(base, "roots.json"),
 		"MYGO_AUTOMATION="+w.sock, "MYGO_ENV=production", "ZERO_E2E_NOTICES="+w.notices,
+		"ZERO_E2E_DRIVER="+filepath.Join(base, "e.sock"),
 	)
+	w.driverSock = filepath.Join(base, "e.sock")
 	for _, dir := range []string{home, filepath.Join(base, "run")} {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			t.Fatal(err)
@@ -213,21 +256,51 @@ func TestWebViewApp(t *testing.T) {
 
 	// Decision 0184: the page reads the state its window opened with, and
 	// the Settings choice reopens the window in the new state on the page it
-	// showed.
+	// showed: a window of native UI, whose page only the app's own driver
+	// reaches, then a page window again.
 	run("experimental features", func(t *testing.T) {
 		if got := app.eval(`return JSON.stringify(window.zeroDesktop.experimental)`); got != `{"enabled":false,"source":""}` {
 			t.Fatalf("experimental = %v, want off with no source", got)
 		}
-		app.eval(`window.e2eBefore = true; void window.zeroDesktop.setExperimental(true); return true`)
-		app.waitEval("the reopened window with experimental features on",
-			`return !window.e2eBefore && window.zeroDesktop?.experimental?.enabled === true && window.zeroDesktop.experimental.source === "setting"`)
-		app.waitEval("the project's tree after reopening", treeShows("README.md"))
-		if got := app.eval(`return new URL(location.href).searchParams.get("project")`); got != w.project {
+		shell := w.driver(t)
+		if got := shell.shells(); got != 0 {
+			t.Fatalf("%d windows of native UI before turning experimental features on", got)
+		}
+		app.eval(`void window.zeroDesktop.setExperimental(true); return true`)
+		shell.waitEval("the window of native UI with experimental features on",
+			`return window.zeroDesktop?.experimental?.enabled === true && window.zeroDesktop.experimental.source === "setting"`)
+		shell.waitEval("the project's tree in the window of native UI", treeShows("README.md"))
+		if got := shell.shells(); got != 1 {
+			t.Errorf("%d windows of native UI, want 1", got)
+		}
+		if got := shell.eval(`return new URL(location.href).searchParams.get("project")`); got != w.project {
 			t.Errorf("the reopened window shows project %v, want %s", got, w.project)
 		}
-		app.eval(`window.e2eBefore = true; void window.zeroDesktop.setExperimental(false); return true`)
-		app.waitEval("the reopened window with experimental features off",
-			`return !window.e2eBefore && window.zeroDesktop?.experimental?.enabled === false && window.zeroDesktop.experimental.source === ""`)
+		// The page works as it did: the proxy serves it, the bridge answers
+		// it with its window, and its storage is the connection's.
+		if got := shell.eval(`return (await fetch("/api/projects")).status`); got != float64(200) {
+			t.Errorf("fetch /api/projects in the window of native UI = %v", got)
+		}
+		if got := shell.eval(`return typeof (await window.zeroDesktop.diagnostics()).version`); got != "string" {
+			t.Errorf("the bridge's diagnostics in the window of native UI = %v", got)
+		}
+		if got := shell.eval(`return localStorage.getItem("e2e-persist")`); got != "kept" {
+			t.Errorf("localStorage in the window of native UI = %v", got)
+		}
+		if got := shell.eval(`const size = [innerWidth, innerHeight]; return size[0] >= 640 && size[1] >= 400`); got != true {
+			t.Errorf("the page does not fill the window of native UI")
+		}
+		shell.capture("shell-workspace.png")
+		// The app's menu still reaches the page.
+		if err := app.call("menu", map[string]any{"path": []string{"Help", "Report a Problem…"}}, nil); err != nil {
+			t.Errorf("Help > Report a Problem: %v", err)
+		}
+		shell.waitEval("the problem report from the menu", `return document.querySelector("dialog[open]") !== null`)
+		shell.eval(`document.querySelector("dialog[open]")?.close(); return true`)
+
+		shell.eval(`void window.zeroDesktop.setExperimental(false); return true`)
+		app.waitEval("the page window with experimental features off",
+			`return window.zeroDesktop?.experimental?.enabled === false && window.zeroDesktop.experimental.source === ""`)
 		app.waitEval("the project's tree after turning them off", treeShows("README.md"))
 		deadline := time.Now().Add(callTimeout)
 		for app.windowCount() != 1 && time.Now().Before(deadline) {
@@ -235,6 +308,9 @@ func TestWebViewApp(t *testing.T) {
 		}
 		if got := app.windowCount(); got != 1 {
 			t.Errorf("%d windows after reopening twice, want 1", got)
+		}
+		if got := shell.shells(); got != 0 {
+			t.Errorf("%d windows of native UI after turning experimental features off", got)
 		}
 	})
 
@@ -928,6 +1004,31 @@ func TestWebViewApp(t *testing.T) {
 	})
 
 	app.stop()
+
+	// Decision 0184: ZERO_EXPERIMENTAL=1 opens the first window as native
+	// UI, and the setting says the environment decided.
+	t.Run("the environment turns experimental features on", func(t *testing.T) {
+		w.t = t
+		w.env = append(w.env, "ZERO_EXPERIMENTAL=1")
+		defer func() { w.env = w.env[:len(w.env)-1] }()
+		app := w.launch(w.project)
+		defer app.stop()
+		shell := w.driver(t)
+		shell.waitEval("the project's tree", treeShows("README.md"))
+		if got := shell.eval(`return JSON.stringify(window.zeroDesktop.experimental)`); got != `{"enabled":true,"source":"env"}` {
+			t.Errorf("experimental = %v, want on by the environment", got)
+		}
+		if got := shell.shells(); got != 1 {
+			t.Errorf("%d windows of native UI, want 1", got)
+		}
+		// The setting cannot turn off what the environment decided.
+		if got := shell.eval(`return JSON.stringify(await window.zeroDesktop.setExperimental(false))`); got != `{"enabled":true,"source":"env"}` {
+			t.Errorf("setExperimental(false) under ZERO_EXPERIMENTAL=1 = %v", got)
+		}
+		// A crashed page comes back in a window of native UI too.
+		w.killWebProcess(t, app.cmd.Process.Pid)
+		shell.waitEval("the page after a crash", treeShows("README.md"))
+	})
 
 	t.Run("state survives a restart", func(t *testing.T) {
 		w.t = t

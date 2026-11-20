@@ -89,7 +89,7 @@ func (h *host) reportProblem(window *mygo.Window) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, _ = window.Page().EvalContext(ctx, `return window.dispatchEvent(new Event("zero:report-problem", { cancelable: true }))`)
+	_, _ = h.page(window).EvalContext(ctx, `return window.dispatchEvent(new Event("zero:report-problem", { cancelable: true }))`)
 }
 
 // openLogs shows the log folder in the file manager.

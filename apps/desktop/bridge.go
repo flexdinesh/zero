@@ -343,7 +343,7 @@ func (h *host) navigate(window *mygo.Window, move string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, _ = window.Page().EvalContext(ctx, `return window.dispatchEvent(new CustomEvent("zero:navigate", { detail: `+strconv.Quote(move)+`, cancelable: true }))`)
+	_, _ = h.page(window).EvalContext(ctx, `return window.dispatchEvent(new CustomEvent("zero:navigate", { detail: `+strconv.Quote(move)+`, cancelable: true }))`)
 }
 
 // windowMenu replaces the native Close action with the workspace's Close Tab.
@@ -376,7 +376,7 @@ func (h *host) closeTab(window *mygo.Window) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	unhandled, err := window.Page().EvalContext(ctx, `return window.dispatchEvent(new Event("zero:close-tab", { cancelable: true }))`)
+	unhandled, err := h.page(window).EvalContext(ctx, `return window.dispatchEvent(new Event("zero:close-tab", { cancelable: true }))`)
 	if err == nil && unhandled == true {
 		window.Close()
 	}
@@ -395,7 +395,7 @@ func (h *host) chooseFolder(window *mygo.Window) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, _ = window.Page().EvalContext(ctx, `return window.dispatchEvent(new Event("zero:open-folder", { cancelable: true }))`)
+	_, _ = h.page(window).EvalContext(ctx, `return window.dispatchEvent(new Event("zero:open-folder", { cancelable: true }))`)
 }
 
 // reviewMenu reviews the developer's app (decision 0177): Review URL… asks
@@ -471,5 +471,5 @@ func (h *host) reviewURL() {
 	window.Focus()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, _ = window.Page().EvalContext(ctx, `return window.dispatchEvent(new Event("zero:review-url", { cancelable: true }))`)
+	_, _ = h.page(window).EvalContext(ctx, `return window.dispatchEvent(new Event("zero:review-url", { cancelable: true }))`)
 }
