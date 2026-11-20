@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/ui"
 
 	"github.com/flexdinesh/zero/apps/desktop/internal/appearance"
 	"github.com/flexdinesh/zero/apps/desktop/internal/connect"
@@ -56,8 +57,11 @@ type host struct {
 	// mu guards windows, notifiers, and noticeTargets. Windows and notifiers are
 	// one per connection, by its scheme host; noticeTargets is where a notice's
 	// click goes, by its ID.
-	mu            sync.Mutex
-	windows       map[string]*mygo.Window
+	mu      sync.Mutex
+	windows map[string]*mygo.Window
+	// shells holds the windows of native UI, which experimental features
+	// open in place of page windows (decision 0184).
+	shells        map[*mygo.Window]*shell
 	notifiers     map[string]*notifier.Notifier
 	noticeTargets map[string]string
 	// versionNoticed holds the connection and server build pairs already told
@@ -96,6 +100,7 @@ func main() {
 	app := &host{
 		daemon:         connect.NewDaemon(binary, binaryErr, connect.DevFlags(os.Getenv), connect.Exec),
 		windows:        map[string]*mygo.Window{},
+		shells:         map[*mygo.Window]*shell{},
 		notifiers:      map[string]*notifier.Notifier{},
 		noticeTargets:  map[string]string{},
 		versionNoticed: map[string]bool{},
@@ -134,6 +139,7 @@ func main() {
 		log.Fatal(err)
 	}
 	mygo.BindAs("Bridge", &bridgeService{host: app})
+	startE2EDriver(app)
 	mygo.App.SetMenu(app.menu())
 
 	workingDir, _ := os.Getwd()
@@ -187,25 +193,52 @@ func (h *host) frontWindow() *mygo.Window {
 	return nil
 }
 
-// openWindow opens the window of start's connection.
+// openWindow opens the window of start's connection: a page window, or with
+// experimental features on a window of native UI whose web view shows the
+// page (decision 0184).
 func (h *host) openWindow(start string) {
 	connectionHost := hostOf(start)
 	titleBarStyle, trafficLights := windowChrome(runtime.GOOS)
-	window := mygo.NewWindow(mygo.WindowOptions{
+	state := h.experimental()
+	background := h.looks.Get(connectionHost).WindowBackground()
+	pageOptions := mygo.PageOptions{PreloadScript: preloadScript(state)}
+	options := mygo.WindowOptions{
 		Title:                windowTitle(connectionHost, h.connections.Label(connectionHost)),
 		Width:                1200,
 		Height:               800,
 		MinWidth:             640,
 		MinHeight:            400,
 		StateKey:             windowStateKey(connectionHost),
-		URL:                  start,
 		TitleBarStyle:        titleBarStyle,
 		TrafficLightPosition: trafficLights,
-		BackgroundColor:      h.looks.Get(connectionHost).WindowBackground(),
-		Page:                 mygo.PageOptions{PreloadScript: preloadScript(h.experimental())},
-	})
+		BackgroundColor:      background,
+	}
+	var frame *shell
+	if state.Enabled {
+		frame = &shell{}
+		options.Content = ui.View(frame.view)
+	} else {
+		options.URL = start
+		options.Page = pageOptions
+	}
+	window := mygo.NewWindow(options)
+	page := window.Page()
+	if frame != nil {
+		zero, err := window.NewWebView(mygo.WebViewOptions{URL: start, Page: pageOptions, BackgroundColor: background})
+		if err != nil {
+			window.Close()
+			h.report("Could not open the window", err.Error())
+			return
+		}
+		frame.setZero(zero)
+		page = zero.Page()
+		window.Invalidate()
+	}
 	h.mu.Lock()
 	h.windows[connectionHost] = window
+	if frame != nil {
+		h.shells[window] = frame
+	}
 	h.mu.Unlock()
 	window.OnClosed(func() {
 		h.mu.Lock()
@@ -213,6 +246,7 @@ func (h *host) openWindow(start string) {
 		if current {
 			delete(h.windows, connectionHost)
 		}
+		delete(h.shells, window)
 		h.mu.Unlock()
 		if current {
 			h.stopNotifier(connectionHost)
@@ -220,7 +254,6 @@ func (h *host) openWindow(start string) {
 			h.connections.Drop(connectionHost)
 		}
 	})
-	page := window.Page()
 	// The window takes its page's theme color, so resizing and loading never
 	// show another; a page without one gets the default (decision 0119).
 	page.OnThemeColorChanged(func(c color.NRGBA, ok bool) {
@@ -336,6 +369,8 @@ func (h *host) setExperimental(enabled bool) experimental.State {
 	}
 	after := h.experimental()
 	if after.Enabled != before.Enabled {
+		// The menu is built for the kind of window, too.
+		mygo.App.SetMenu(h.menu())
 		go h.reopenWindows()
 	}
 	return after
@@ -362,8 +397,21 @@ func (h *host) reopenWindows() {
 	}
 }
 
-// page is a window's page of the app.
-func (h *host) page(window *mygo.Window) *mygo.Page { return window.Page() }
+// page is a window's page of the app: the window's own, or its web view's in
+// a window of native UI.
+func (h *host) page(window *mygo.Window) *mygo.Page {
+	if frame := h.shellOf(window); frame != nil {
+		return frame.zeroView().Page()
+	}
+	return window.Page()
+}
+
+// shellOf is window's shell, nil for a page window.
+func (h *host) shellOf(window *mygo.Window) *shell {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.shells[window]
+}
 
 // windowStateKey keeps "main" for the local window: its remembered bounds
 // predate connections.
@@ -528,7 +576,7 @@ func (h *host) load(target string) {
 	if onlyNamesConnection(target) {
 		return
 	}
-	if err := window.Page().LoadURL(target); err != nil {
+	if err := h.page(window).LoadURL(target); err != nil {
 		log.Printf("zero-app: %v", err)
 	}
 }

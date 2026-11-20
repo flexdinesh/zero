@@ -449,7 +449,7 @@ func (h *host) tellLocal(event, project string) {
 	detail, _ := json.Marshal(project)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, _ = window.Page().EvalContext(ctx, `return window.dispatchEvent(new CustomEvent(`+string(name)+`, { detail: `+string(detail)+` }))`)
+	_, _ = h.page(window).EvalContext(ctx, `return window.dispatchEvent(new CustomEvent(`+string(name)+`, { detail: `+string(detail)+` }))`)
 }
 
 // showScreenComment brings the local window forward and tells its page a
@@ -466,5 +466,5 @@ func (h *host) showScreenComment(project string) {
 	window.Focus()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, _ = window.Page().EvalContext(ctx, `return window.dispatchEvent(new CustomEvent("zero:screen-comment"))`)
+	_, _ = h.page(window).EvalContext(ctx, `return window.dispatchEvent(new CustomEvent("zero:screen-comment"))`)
 }
