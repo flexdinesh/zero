@@ -28,10 +28,15 @@ const nudgeDelay = 50 * time.Millisecond
 // them.
 type shell struct {
 	window *mygo.Window
+	// hidesTitleBar is a window whose native title bar hides, so Zero's
+	// page draws the band under the controls (decision 0185).
+	hidesTitleBar bool
 	// opening serializes making a project's guest.
 	opening sync.Mutex
 
 	mu sync.Mutex
+	// room is the room the window's controls take, as the view last saw it.
+	room ui.TitleBar
 	// zero is the web view of the app's page, nil until the window has made
 	// it.
 	zero *mygo.WebView
@@ -73,11 +78,14 @@ type composition struct {
 	height    float64
 }
 
-func newShell() *shell { return &shell{guests: map[string]*guest{}} }
+func newShell(hidesTitleBar bool) *shell {
+	return &shell{hidesTitleBar: hidesTitleBar, guests: map[string]*guest{}}
+}
 
 // view builds the window's content: the app's page, filling it, and over
 // it the guest that shows.
 func (s *shell) view(c *ui.Context) {
+	s.noteTitleBar(c.TitleBar())
 	s.mu.Lock()
 	zero, at := s.zero, s.at
 	var shown, composer *mygo.WebView

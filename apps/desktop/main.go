@@ -194,24 +194,23 @@ func (h *host) frontWindow() *mygo.Window {
 // page (decision 0184).
 func (h *host) openWindow(start string) {
 	connectionHost := hostOf(start)
-	titleBarStyle, trafficLights := windowChrome(runtime.GOOS)
+	titleBarStyle := windowChrome(runtime.GOOS)
 	state := h.experimental()
 	background := h.looks.Get(connectionHost).WindowBackground()
 	pageOptions := mygo.PageOptions{PreloadScript: preloadScript(state)}
 	options := mygo.WindowOptions{
-		Title:                windowTitle(connectionHost, h.connections.Label(connectionHost)),
-		Width:                1200,
-		Height:               800,
-		MinWidth:             640,
-		MinHeight:            400,
-		StateKey:             windowStateKey(connectionHost),
-		TitleBarStyle:        titleBarStyle,
-		TrafficLightPosition: trafficLights,
-		BackgroundColor:      background,
+		Title:           windowTitle(connectionHost, h.connections.Label(connectionHost)),
+		Width:           1200,
+		Height:          800,
+		MinWidth:        640,
+		MinHeight:       400,
+		StateKey:        windowStateKey(connectionHost),
+		TitleBarStyle:   titleBarStyle,
+		BackgroundColor: background,
 	}
 	var frame *shell
 	if state.Enabled {
-		frame = newShell()
+		frame = newShell(titleBarStyle == mygo.TitleBarHidden)
 		options.Content = ui.View(frame.view)
 	} else {
 		options.URL = start
@@ -264,6 +263,9 @@ func (h *host) openWindow(start string) {
 		// A page that loads anew has no Browser tab showing yet: the guest
 		// hides until the tab reports its rectangle again.
 		page.OnDidNavigate(func(string) { frame.hide("") })
+		// mygo tells only a page window's page the room of the controls; each
+		// load of Zero's page hears it from the app (decision 0185).
+		page.OnDOMReady(func() { go frame.sendTitleBar() })
 	}
 	// Pages get nothing the web app does not use.
 	page.SetPermissionHandler(func(mygo.PermissionRequest) bool { return false })
@@ -293,20 +295,20 @@ func (h *host) openWindow(start string) {
 }
 
 // windowChrome hides the native title bar on macOS only, where the page draws
-// the title band under the traffic lights (decision 0119); they center in its
-// 32px. Other platforms keep their native title bar.
-func windowChrome(goos string) (mygo.TitleBarStyle, *mygo.Point) {
+// the title band under the traffic lights, which stay where mygo puts them
+// (decisions 0119, 0185). Other platforms keep their native title bar.
+func windowChrome(goos string) mygo.TitleBarStyle {
 	if goos != "darwin" {
-		return mygo.TitleBarDefault, nil
+		return mygo.TitleBarDefault
 	}
-	const bandHeight, trafficLightHeight = 32, 16
-	return mygo.TitleBarHidden, &mygo.Point{X: 12, Y: (bandHeight - trafficLightHeight) / 2}
+	return mygo.TitleBarHidden
 }
 
 // followsPageAppearance reports a platform whose native surfaces (menus,
-// window controls) follow the page's theme rather than the OS: macOS only
-// (decision 0119).
-func followsPageAppearance(goos string) bool { return goos == "darwin" }
+// title bar, window controls) follow the page's theme's light or dark rather
+// than the OS: macOS and Linux, where GTK's title bar follows it if the
+// desktop draws GTK's (decisions 0119, 0185).
+func followsPageAppearance(goos string) bool { return goos == "darwin" || goos == "linux" }
 
 // followThemeColor gives window its page's theme color and remembers it for
 // the next launch; a page without an opaque one gets the default.

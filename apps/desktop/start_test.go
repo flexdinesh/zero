@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/ui"
 
 	"github.com/flexdinesh/zero/apps/desktop/internal/connect"
 	"github.com/flexdinesh/zero/apps/desktop/internal/proxy"
@@ -15,27 +16,49 @@ import (
 )
 
 func TestOnlyMacOSHidesTheTitleBar(t *testing.T) {
-	style, lights := windowChrome("darwin")
-	if style != mygo.TitleBarHidden || lights == nil {
-		t.Fatalf("darwin chrome = %q, %v; want a hidden title bar with placed traffic lights", style, lights)
-	}
-	// The traffic lights (16px) center in the 32px band.
-	if lights.Y != 8 {
-		t.Errorf("traffic lights at y %d; want 8", lights.Y)
+	if style := windowChrome("darwin"); style != mygo.TitleBarHidden {
+		t.Errorf("darwin chrome = %q; want a hidden title bar", style)
 	}
 	for _, goos := range []string{"linux", "windows"} {
-		if style, lights := windowChrome(goos); style != mygo.TitleBarDefault || lights != nil {
-			t.Errorf("%s chrome = %q, %v; want the native title bar", goos, style, lights)
+		if style := windowChrome(goos); style != mygo.TitleBarDefault {
+			t.Errorf("%s chrome = %q; want the native title bar", goos, style)
 		}
 	}
 }
 
-func TestOnlyMacOSFollowsThePageAppearance(t *testing.T) {
-	if !followsPageAppearance("darwin") {
-		t.Error("macOS keeps the OS appearance")
+func TestMacOSAndLinuxFollowThePageAppearance(t *testing.T) {
+	// Decision 0185: GTK's title bar and menus follow the theme's light or
+	// dark on Linux, as macOS's do.
+	for _, goos := range []string{"darwin", "linux"} {
+		if !followsPageAppearance(goos) {
+			t.Errorf("%s keeps the OS appearance", goos)
+		}
 	}
-	if followsPageAppearance("linux") || followsPageAppearance("windows") {
-		t.Error("other platforms follow the page appearance")
+	if followsPageAppearance("windows") {
+		t.Error("windows follows the page appearance")
+	}
+}
+
+func TestTitleBarRoomInThePagesPixels(t *testing.T) {
+	room := ui.TitleBar{Height: 28, Left: 78, Right: 0}
+	cases := []struct {
+		zoom float64
+		want titleBar
+	}{
+		{1, titleBar{Height: 28, Left: 78}},
+		{2, titleBar{Height: 14, Left: 39}},
+		{0.5, titleBar{Height: 56, Left: 156}},
+		// A zoom the page cannot have counts as none.
+		{0, titleBar{Height: 28, Left: 78}},
+		{-1, titleBar{Height: 28, Left: 78}},
+	}
+	for _, c := range cases {
+		if got := titleBarCSS(room, c.zoom); got != c.want {
+			t.Errorf("titleBarCSS(%+v, %v) = %+v; want %+v", room, c.zoom, got, c.want)
+		}
+	}
+	if got := titleBarCSS(ui.TitleBar{}, 1.5); got != (titleBar{}) {
+		t.Errorf("full screen room = %+v; want none", got)
 	}
 }
 
