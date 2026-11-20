@@ -61,7 +61,7 @@ run = "pnpm dev:web"
 [tasks."dev:desktop"]
 description = "Run the desktop app against a private dev daemon"
 depends = ["build:web"]
-env = { ZERO_DESKTOP_BINARY = "{{config_root}}/.dev/desktop/zero", ZERO_DESKTOP_SOCKET = "{{config_root}}/.dev/desktop/daemon.sock", ZERO_DESKTOP_ROOTS_FILE = "{{config_root}}/.dev/desktop/roots.json", MYGO_ENV = "production" }
+env = { ZERO_DESKTOP_BINARY = "{{config_root}}/.dev/desktop/zero", ZERO_DESKTOP_SOCKET = "{{config_root}}/.dev/desktop/daemon.sock", ZERO_DESKTOP_ROOTS_FILE = "{{config_root}}/.dev/desktop/roots.json", MYGO_ENV = "production", ZERO_EXPERIMENTAL = "1" }
 run = [
   "go build -o .dev/desktop/zero ./apps/zero",
   "GOWORK=off GOTOOLCHAIN=go1.27.3 go -C apps/desktop build -o \"{{config_root}}/.dev/desktop/zero-app\" .",

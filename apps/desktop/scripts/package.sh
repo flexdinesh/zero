@@ -8,6 +8,8 @@
 # ARCHIVES holds zero_<VERSION>_<os>_<arch>.tar.gz (build.yml's cli job).
 # Writes zero-app_<VERSION>_linux_<arch>.tar.gz (mygo's archive) or
 # zero-app_<VERSION>_darwin_<arch>.zip (the ad-hoc signed app) to OUT.
+# ZERO_DESKTOP_EXPERIMENTAL=1 stamps a development build, which always shows
+# experimental features (decision 0184); release builds never set it.
 # Runs from the repository root with Go 1.27 (apps/desktop/go.mod) and jq.
 set -eu
 
@@ -39,7 +41,7 @@ for arch in $arches; do
   cp "$tmp/$name/zero" resources/bin/zero
   rm -rf "$tmp" build
 
-  export MYGO_LDFLAGS="-X main.version=$version -X main.commit=$commit"
+  export MYGO_LDFLAGS="-X main.version=$version -X main.commit=$commit -X main.experimentalBuild=${ZERO_DESKTOP_EXPERIMENTAL:-}"
   if [ "$os" = linux ]; then
     go tool mygo build -platform "linux/$arch"
     mv "build/linux-$arch/zero-app-$version-linux-$arch.tar.gz" "$out/zero-app_${version}_linux_${arch}.tar.gz"

@@ -25,6 +25,7 @@ import (
 
 	"github.com/flexdinesh/zero/apps/desktop/internal/appearance"
 	"github.com/flexdinesh/zero/apps/desktop/internal/connect"
+	"github.com/flexdinesh/zero/apps/desktop/internal/experimental"
 	"github.com/flexdinesh/zero/apps/desktop/internal/link"
 	"github.com/flexdinesh/zero/apps/desktop/internal/notifier"
 	"github.com/flexdinesh/zero/apps/desktop/internal/proxy"
@@ -33,10 +34,13 @@ import (
 	"github.com/flexdinesh/zero/pkg/contract"
 )
 
-// Stamped by release builds with -ldflags -X.
+// Stamped by release builds with -ldflags -X. experimentalBuild is "1" in
+// development installs (scripts/install-dev.sh), which always show
+// experimental features (decision 0184).
 var (
-	version = "0.0.0-dev"
-	commit  = ""
+	version           = "0.0.0-dev"
+	commit            = ""
+	experimentalBuild = ""
 )
 
 // host is the running app: the daemon, its connections, their windows, and
@@ -73,6 +77,9 @@ type host struct {
 	logDir string
 	// reviews holds the guest windows and their screen captures (decision 0177).
 	reviews *reviews
+	// experiments remembers the user's choice of experimental features
+	// (decision 0184).
+	experiments *experimental.Store
 }
 
 func main() {
@@ -109,6 +116,7 @@ func main() {
 		Warn:  app.versionNotice,
 	})
 	app.looks = appearance.Open(looksPath())
+	app.experiments = experimental.Open(userDataFile("experimental.json"))
 	// The app starts in the appearance the local window had last, before
 	// any page reports one.
 	app.applyAppearance(proxy.Host)
@@ -194,7 +202,7 @@ func (h *host) openWindow(start string) {
 		TitleBarStyle:        titleBarStyle,
 		TrafficLightPosition: trafficLights,
 		BackgroundColor:      h.looks.Get(connectionHost).WindowBackground(),
-		Page:                 mygo.PageOptions{PreloadScript: preloadScript},
+		Page:                 mygo.PageOptions{PreloadScript: preloadScript(h.experimental())},
 	})
 	h.mu.Lock()
 	h.windows[connectionHost] = window
@@ -299,16 +307,63 @@ func (h *host) applyAppearance(connectionHost string) {
 	}
 }
 
-// looksPath is where window looks are remembered: the app's user data, or
-// nowhere when there is none.
-func looksPath() string {
+// looksPath is where window looks are remembered.
+func looksPath() string { return userDataFile("appearance.json") }
+
+// userDataFile is a file of the app's user data, or "" when there is none:
+// what it would hold then lives in memory.
+func userDataFile(name string) string {
 	dir, err := mygo.App.Path(mygo.PathUserData)
 	if err != nil {
 		log.Printf("zero-app: %v", err)
 		return ""
 	}
-	return filepath.Join(dir, "appearance.json")
+	return filepath.Join(dir, name)
 }
+
+// experimental is whether experimental features show now (decision 0184).
+func (h *host) experimental() experimental.State {
+	return experimental.Resolve(experimentalBuild, os.Getenv(experimental.Env), h.experiments.Enabled())
+}
+
+// setExperimental remembers the user's choice and answers the state that
+// results. Windows are built for one state, so a change reopens them where
+// they were.
+func (h *host) setExperimental(enabled bool) experimental.State {
+	before := h.experimental()
+	if err := h.experiments.Set(enabled); err != nil {
+		log.Printf("zero-app: %v", err)
+	}
+	after := h.experimental()
+	if after.Enabled != before.Enabled {
+		go h.reopenWindows()
+	}
+	return after
+}
+
+// reopenWindows replaces each connection's window with a new one on the page
+// it showed. The new window opens first: the app never has none.
+func (h *host) reopenWindows() {
+	h.opening.Lock()
+	defer h.opening.Unlock()
+	h.mu.Lock()
+	open := make(map[string]*mygo.Window, len(h.windows))
+	for connectionHost, window := range h.windows {
+		open[connectionHost] = window
+	}
+	h.mu.Unlock()
+	for connectionHost, window := range open {
+		target := h.page(window).URL()
+		if hostOf(target) != connectionHost {
+			target = proxy.OriginOf(connectionHost) + "/"
+		}
+		h.openWindow(target)
+		window.Close()
+	}
+}
+
+// page is a window's page of the app.
+func (h *host) page(window *mygo.Window) *mygo.Page { return window.Page() }
 
 // windowStateKey keeps "main" for the local window: its remembered bounds
 // predate connections.

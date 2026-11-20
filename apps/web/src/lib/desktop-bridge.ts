@@ -219,6 +219,33 @@ export function readBrowserState(value: unknown): BrowserState | null {
   return { url, loading, canGoBack, canGoForward, failure }
 }
 
+// ExperimentalSource says what decided the app's experimental features
+// (decision 0184): the environment turned them off, a development build or
+// the environment turned them on, or the user's own choice did; "" when
+// nothing did and they are off.
+export type ExperimentalSource = "" | "off" | "build" | "env" | "setting"
+
+// ExperimentalState is whether the app shows features still being built, and
+// what decided it. Only "" and "setting" leave the user a choice.
+export interface ExperimentalState {
+  enabled: boolean
+  source: ExperimentalSource
+}
+
+const experimentalSources: readonly string[] = ["", "off", "build", "env", "setting"] satisfies readonly ExperimentalSource[]
+
+function isExperimentalSource(value: unknown): value is ExperimentalSource {
+  return typeof value === "string" && experimentalSources.includes(value)
+}
+
+// readExperimentalState accepts the app's state, or null.
+export function readExperimentalState(value: unknown): ExperimentalState | null {
+  if (!isRecord(value)) return null
+  const { enabled, source } = value
+  if (typeof enabled !== "boolean" || !isExperimentalSource(source)) return null
+  return { enabled, source }
+}
+
 // NotificationStatus is whether notices can reach the user.
 export interface NotificationStatus {
   supported: boolean
@@ -244,9 +271,13 @@ export interface NotificationStatus {
 // steers it from the Browser tab (decision 0181). A
 // window on a remote server has no revealPath or diagnostics: its files are
 // not on this computer, and its server is not trusted with this computer's
-// logs (decision 0098).
+// logs (decision 0098). experimental is the state the window opened with, and
+// setExperimental remembers the user's choice and resolves the state that
+// results; the app reopens its windows when that changes (decision 0184).
 export interface DesktopBridge {
   version: number
+  experimental: ExperimentalState | null
+  setExperimental: ((enabled: boolean) => Promise<ExperimentalState | null>) | null
   closeWindow: (() => void) | null
   showAppMenu: ((x: number, y: number) => void) | null
   revealPath: ((project: string, path: string) => void) | null
@@ -268,9 +299,19 @@ export type DesktopAppearance = "system" | "light" | "dark"
 export function readDesktopBridge(value: unknown): DesktopBridge | null {
   if (!isRecord(value) || typeof value.version !== "number" || !Number.isInteger(value.version) || value.version < 1) return null
   const { closeWindow, showAppMenu, revealPath, showContextMenu, configureNotifications, setAppearance, diagnostics } = value
-  const { openReview, screenCapture, browserState, browserAction } = value
+  const { openReview, screenCapture, browserState, browserAction, setExperimental } = value
   return {
     version: value.version,
+    experimental: readExperimentalState(value.experimental),
+    setExperimental: typeof setExperimental === "function"
+      ? async (enabled) => {
+        try {
+          return readExperimentalState(await setExperimental.call(value, enabled))
+        } catch {
+          return null
+        }
+      }
+      : null,
     closeWindow: typeof closeWindow === "function"
       ? () => {
         closeWindow.call(value)
@@ -358,6 +399,12 @@ export function readDesktopBridge(value: unknown): DesktopBridge | null {
 // desktopBridge is the bridge the desktop app exposes, or null in browsers.
 export function desktopBridge(): DesktopBridge | null {
   return typeof window === "undefined" ? null : readDesktopBridge(window.zeroDesktop)
+}
+
+// experimentalEnabled reports whether features still being built show
+// (decision 0184): only in the desktop app, when its state says so.
+export function experimentalEnabled(): boolean {
+  return desktopBridge()?.experimental?.enabled === true
 }
 
 // notificationsAvailable reports a client that can show notices: the desktop

@@ -3,6 +3,8 @@ import test from "node:test"
 
 import {
   availableSettings,
+  experimentalLock,
+  experimentalMatches,
   DEFAULT_FONT_SIZE,
   defaultSettings,
   FONT_SIZE_MAX,
@@ -88,4 +90,19 @@ test("setting search matches every term across category, title, and description"
   assert.deepEqual(matchSettings("dark").map((definition) => definition.id), ["theme"])
   assert.deepEqual(matchSettings("nord").map((definition) => definition.id), ["theme"])
   assert.equal(matchSettings("font color").length, 0)
+})
+
+test("the experimental features setting is searched like the others (decision 0184)", () => {
+  assert.equal(experimentalMatches(""), true)
+  assert.equal(experimentalMatches("experimental"), true)
+  assert.equal(experimentalMatches("browser view"), true)
+  assert.equal(experimentalMatches("font"), false)
+})
+
+test("a build or the environment locks the experimental features setting", () => {
+  assert.equal(experimentalLock(""), "")
+  assert.equal(experimentalLock("setting"), "")
+  assert.match(experimentalLock("build"), /development builds/)
+  assert.match(experimentalLock("env"), /ZERO_EXPERIMENTAL=1/)
+  assert.match(experimentalLock("off"), /ZERO_EXPERIMENTAL=0/)
 })

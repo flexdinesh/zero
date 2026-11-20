@@ -44,7 +44,8 @@ case "${1:-}" in
     cp README.md LICENSE "$stage/$name/"
     tar -C "$stage" -czf "$out/$name.tar.gz" "$name"
     # apps/desktop needs Go 1.27; GOTOOLCHAIN fetches it, as build.yml does.
-    GOTOOLCHAIN=go1.27.3 apps/desktop/scripts/package.sh "$os" "$version" "$out" "$out" "$arch"
+    # Development installs always show experimental features (decision 0184).
+    ZERO_DESKTOP_EXPERIMENTAL=1 GOTOOLCHAIN=go1.27.3 apps/desktop/scripts/package.sh "$os" "$version" "$out" "$out" "$arch"
     ;;
   image)
     arch="$(docker version --format '{{.Server.Arch}}')"

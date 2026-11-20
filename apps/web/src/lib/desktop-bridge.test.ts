@@ -211,3 +211,25 @@ test("browserAction passes the project and action through and swallows refusals"
   assert.deepEqual(calls, [["/p", "back"]])
   assert.equal(readDesktopBridge({ version: 2 })?.browserAction, null)
 })
+
+test("the bridge carries the app's experimental state and sets the user's choice (decision 0184)", async () => {
+  const calls: unknown[] = []
+  const exposed = {
+    version: 2,
+    experimental: { enabled: false, source: "" },
+    setExperimental(this: unknown, enabled: boolean) {
+      calls.push([this, enabled])
+      return Promise.resolve({ enabled, source: enabled ? "setting" : "" })
+    },
+  }
+  const bridge = readDesktopBridge(exposed)
+  assert.deepEqual(bridge?.experimental, { enabled: false, source: "" })
+  assert.deepEqual(await bridge?.setExperimental?.(true), { enabled: true, source: "setting" })
+  assert.deepEqual(calls, [[exposed, true]])
+  assert.equal(readDesktopBridge({ version: 2 })?.experimental, null)
+  assert.equal(readDesktopBridge({ version: 2 })?.setExperimental, null)
+  assert.equal(readDesktopBridge({ version: 2, experimental: { enabled: "yes", source: "" } })?.experimental, null)
+  assert.equal(readDesktopBridge({ version: 2, experimental: { enabled: true, source: "magic" } })?.experimental, null)
+  const refusing = readDesktopBridge({ version: 2, setExperimental() { return Promise.reject(new Error("refused")) } })
+  assert.equal(await refusing?.setExperimental?.(true), null)
+})
