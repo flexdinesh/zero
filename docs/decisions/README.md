@@ -121,7 +121,7 @@ rewriting history; update `Status` on the old record.
 | [0116](0116-image-diffs.md) | Image diffs | Accepted; extends 0004, 0035, 0083 |
 | [0117](0117-review-order-viewed-flow-and-view-options.md) | One review order, a quicker Viewed flow, and View options | Accepted; revises 0035, 0040, 0051 |
 | [0118](0118-zero-name-and-collision-safe-installs.md) | Zero name and collision-safe installs | Accepted; supersedes 0100 naming; revises 0073, 0101, 0104 |
-| [0119](0119-desktop-title-band-on-macos.md) | Themed desktop shell on macOS | Accepted; revises 0081, 0095 |
+| [0119](0119-desktop-title-band-on-macos.md) | Themed desktop shell on macOS | Accepted; revises 0081, 0095; revised by 0185 |
 | [0120](0120-review-feedback-threads.md) | Review feedback threads | Accepted; extends 0028, 0035, 0047, 0050, 0066, 0080, 0099 |
 | [0121](0121-final-tab-close-keeps-window.md) | Closing the final tab keeps the desktop window | Accepted; supersedes 0097 final-tab close |
 | [0122](0122-type-roles-and-list-size.md) | Type roles and the list size | Accepted; revises 0033; file rows revised by 0130 |
@@ -184,3 +184,4 @@ rewriting history; update `Status` on the old record.
 | [0182](0182-screen-tabs-for-visual-threads.md) | Screen tabs for visual threads | Accepted; extends 0113, 0120, 0176, 0177, 0178 |
 | [0183](0183-visual-review-loop-verified.md) | The visual review loop, verified end to end | Accepted; extends 0175, 0176, 0177, 0178, 0180, 0181, 0182 |
 | [0184](0184-browser-view-and-in-page-comments.md) | Browser view and in-page comments (experimental) | Accepted; supersedes 0177, 0180, 0181, 0175's window, 0176's UI; extends 0081, 0094, 0176, 0178, 0182 |
+| [0185](0185-title-band-in-every-desktop-window.md) | Title band in every desktop window | Accepted; revises 0119; extends 0184 |

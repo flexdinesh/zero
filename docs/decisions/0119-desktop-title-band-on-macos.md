@@ -2,6 +2,9 @@
 
 - Status: Accepted
 - Date: 2026-11-10
+- Revised by: [0185](0185-title-band-in-every-desktop-window.md) (the traffic
+  lights stay where mygo puts them; Linux follows the theme's light or dark;
+  windows of native UI draw the band)
 - Revises: [0095](0095-desktop-app-is-mygo-electron-removed.md) (the title band
   returns on macOS through mygo), [0081](0081-desktop-bridge-v2-native-features.md)
   (the bridge gains `setAppearance`), DESIGN.md "No app header"

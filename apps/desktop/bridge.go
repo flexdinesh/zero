@@ -33,7 +33,7 @@ func preloadScript(state experimental.State) string {
 	if err != nil {
 		experiments = []byte("null")
 	}
-	browser := ""
+	browser, titleBar := "", ""
 	if state.Enabled {
 		browser = `
     browserOpen(project, url) { return call("BrowserOpen", project, url) },
@@ -46,9 +46,21 @@ func preloadScript(state experimental.State) string {
     composerWalk(direction) { return call("ComposerWalk", direction) },
     composerResize(height) { return call("ComposerResize", height) },
     composerClose(sent) { return call("ComposerClose", sent) },`
+		// A window of native UI tells its page the room of the window's
+		// controls itself; the page reads mygo's variables (decision 0185).
+		titleBar = `
+  let titleBarSheet = null
+  window.mygo.on("zero:title-bar", (room) => {
+    const px = (value) => (typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0) + "px"
+    if (!titleBarSheet) {
+      titleBarSheet = new CSSStyleSheet()
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, titleBarSheet]
+    }
+    titleBarSheet.replaceSync(":root{--mygo-titlebar-height:" + px(room?.height) + ";--mygo-titlebar-inset-left:" + px(room?.left) + ";--mygo-titlebar-inset-right:" + px(room?.right) + "}")
+  })`
 	}
 	return `(() => {
-  if (location.protocol !== "` + proxy.Scheme + `:") return
+  if (location.protocol !== "` + proxy.Scheme + `:") return` + titleBar + `
   const call = (method, ...args) => window.mygo.call("Bridge." + method, ...args)
   const window_ = {
     experimental: Object.freeze(` + string(experiments) + `),
@@ -460,17 +472,33 @@ func (h *host) viewMenu(goos string) *mygo.MenuItem {
 			}
 		}}
 	}
-	zoom := func(direction int) func(page *mygo.Page) {
-		return func(page *mygo.Page) { page.SetZoomFactor(nextZoom(page.ZoomFactor(), direction)) }
+	// A zoom changes the CSS pixels of the room the window's controls take,
+	// which mygo tells only a page window's page (decision 0185).
+	zoom := func(label, accelerator string, next func(current float64) float64) *mygo.MenuItem {
+		return &mygo.MenuItem{Label: label, Accelerator: accelerator, Click: func(_ *mygo.MenuItem, window *mygo.Window) {
+			if window == nil {
+				return
+			}
+			page := h.page(window)
+			if page == nil {
+				return
+			}
+			go func() {
+				page.SetZoomFactor(next(page.ZoomFactor()))
+				if frame := h.shellOf(window); frame != nil {
+					frame.sendTitleBar()
+				}
+			}()
+		}}
 	}
 	return &mygo.MenuItem{Label: "View", Submenu: []*mygo.MenuItem{
 		reload("Reload", "CmdOrCtrl+R", false),
 		reload("Force Reload", "Shift+CmdOrCtrl+R", true),
 		item("Toggle Developer Tools", inspector, (*mygo.Page).ToggleDevTools),
 		mygo.Separator(),
-		item("Actual Size", "CmdOrCtrl+0", func(page *mygo.Page) { page.SetZoomFactor(1) }),
-		item("Zoom In", "CmdOrCtrl+Plus", zoom(1)),
-		item("Zoom Out", "CmdOrCtrl+-", zoom(-1)),
+		zoom("Actual Size", "CmdOrCtrl+0", func(float64) float64 { return 1 }),
+		zoom("Zoom In", "CmdOrCtrl+Plus", func(current float64) float64 { return nextZoom(current, 1) }),
+		zoom("Zoom Out", "CmdOrCtrl+-", func(current float64) float64 { return nextZoom(current, -1) }),
 		mygo.Separator(),
 		{Role: mygo.RoleToggleFullScreen},
 	}}

@@ -793,6 +793,13 @@ func TestWebViewApp(t *testing.T) {
 		if got := shell.shells(); got != 1 {
 			t.Errorf("%d windows of native UI, want 1", got)
 		}
+		// Decision 0185: the app tells the page the room of the controls only
+		// under a hidden title bar, so Linux keeps its native one and the
+		// band has no height here either.
+		band := shell.eval(`const band = document.querySelector(".title-bar"); return [band !== null, band ? band.getBoundingClientRect().height : -1, getComputedStyle(document.documentElement).getPropertyValue("--mygo-titlebar-height").trim()]`)
+		if values, _ := band.([]any); len(values) != 3 || values[0] != true || values[1] != float64(0) || (values[2] != "" && values[2] != "0px") {
+			t.Errorf("native UI title band [present, height, --mygo-titlebar-height] = %v; want [true 0 none]", band)
+		}
 		// The setting cannot turn off what the environment decided.
 		if got := shell.eval(`return JSON.stringify(await window.zeroDesktop.setExperimental(false))`); got != `{"enabled":true,"source":"env"}` {
 			t.Errorf("setExperimental(false) under ZERO_EXPERIMENTAL=1 = %v", got)
