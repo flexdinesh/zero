@@ -369,6 +369,8 @@ func (h *host) setExperimental(enabled bool) experimental.State {
 	}
 	after := h.experimental()
 	if after.Enabled != before.Enabled {
+		// The menu is built for the kind of window, too.
+		mygo.App.SetMenu(h.menu())
 		go h.reopenWindows()
 	}
 	return after

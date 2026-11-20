@@ -297,6 +297,22 @@ func TestWebViewApp(t *testing.T) {
 		}
 		shell.waitEval("the problem report from the menu", `return document.querySelector("dialog[open]") !== null`)
 		shell.eval(`document.querySelector("dialog[open]")?.close(); return true`)
+		// mygo's zoom and reload items do nothing in a window of native UI;
+		// the app's own act on its page.
+		wide := shell.eval(`return innerWidth`)
+		if err := app.call("menu", map[string]any{"path": []string{"View", "Zoom In"}}, nil); err != nil {
+			t.Errorf("View > Zoom In: %v", err)
+		}
+		shell.waitEval("the page zoomed in from the menu", fmt.Sprintf(`return innerWidth < %v`, wide))
+		if err := app.call("menu", map[string]any{"path": []string{"View", "Actual Size"}}, nil); err != nil {
+			t.Errorf("View > Actual Size: %v", err)
+		}
+		shell.waitEval("the page at its size again", fmt.Sprintf(`return innerWidth === %v`, wide))
+		shell.eval(`window.__e2eLoaded = true; return true`)
+		if err := app.call("menu", map[string]any{"path": []string{"View", "Reload"}}, nil); err != nil {
+			t.Errorf("View > Reload: %v", err)
+		}
+		shell.waitEval("the page reloaded from the menu", `return window.__e2eLoaded === undefined && document.readyState === "complete"`)
 
 		shell.eval(`void window.zeroDesktop.setExperimental(false); return true`)
 		app.waitEval("the page window with experimental features off",

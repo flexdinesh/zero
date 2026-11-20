@@ -288,8 +288,13 @@ func (b *bridgeService) ShowAppMenu(ctx context.Context, x, y any) error {
 	return nil
 }
 
-// menu is the app menu: the menu bar's, and ShowAppMenu's.
+// menu is the app menu: the menu bar's, and ShowAppMenu's. It is built for
+// the kind of window the app opens now (decision 0184).
 func (h *host) menu() *mygo.Menu {
+	view := &mygo.MenuItem{Role: mygo.RoleViewMenu}
+	if h.experimental().Enabled {
+		view = h.viewMenu(runtime.GOOS)
+	}
 	return mygo.NewMenu([]*mygo.MenuItem{
 		{Role: mygo.RoleAppMenu},
 		{Label: "File", Submenu: []*mygo.MenuItem{
@@ -298,12 +303,45 @@ func (h *host) menu() *mygo.Menu {
 			{Role: mygo.RoleQuit},
 		}},
 		{Role: mygo.RoleEditMenu},
-		{Role: mygo.RoleViewMenu},
+		view,
 		h.goMenu(runtime.GOOS),
 		h.reviewMenu(),
 		h.windowMenu(runtime.GOOS),
 		h.helpMenu(),
 	})
+}
+
+// viewMenu is the View menu of windows of native UI (decision 0184). mygo's
+// own reload, inspector, and zoom items act on a page window's page and do
+// nothing there, so these act on the app's page in the window's web view,
+// with the same keys.
+func (h *host) viewMenu(goos string) *mygo.MenuItem {
+	inspector := "Ctrl+Shift+I"
+	if goos == "darwin" {
+		inspector = "Alt+Cmd+I"
+	}
+	item := func(label, accelerator string, act func(page *mygo.Page)) *mygo.MenuItem {
+		return &mygo.MenuItem{Label: label, Accelerator: accelerator, Click: func(_ *mygo.MenuItem, window *mygo.Window) {
+			if window == nil || h.shellOf(window) == nil {
+				return
+			}
+			go act(h.page(window))
+		}}
+	}
+	zoom := func(direction int) func(page *mygo.Page) {
+		return func(page *mygo.Page) { page.SetZoomFactor(nextZoom(page.ZoomFactor(), direction)) }
+	}
+	return &mygo.MenuItem{Label: "View", Submenu: []*mygo.MenuItem{
+		item("Reload", "CmdOrCtrl+R", (*mygo.Page).Reload),
+		item("Force Reload", "Shift+CmdOrCtrl+R", (*mygo.Page).ReloadIgnoringCache),
+		item("Toggle Developer Tools", inspector, (*mygo.Page).ToggleDevTools),
+		mygo.Separator(),
+		item("Actual Size", "CmdOrCtrl+0", func(page *mygo.Page) { page.SetZoomFactor(1) }),
+		item("Zoom In", "CmdOrCtrl+Plus", zoom(1)),
+		item("Zoom Out", "CmdOrCtrl+-", zoom(-1)),
+		mygo.Separator(),
+		{Role: mygo.RoleToggleFullScreen},
+	}}
 }
 
 // goMenu moves through the window's history with VS Code's keys (decision
