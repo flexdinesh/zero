@@ -44,11 +44,11 @@
 }
 
 @media (max-width: 48rem) {
-  .ui-slider-control {
+  :where(:root:not([data-density="pointer"])) .ui-slider-control {
     height: var(--control-touch);
   }
 
-  .ui-slider-thumb {
+  :where(:root:not([data-density="pointer"])) .ui-slider-thumb {
     width: var(--icon-lg);
     height: var(--icon-lg);
   }

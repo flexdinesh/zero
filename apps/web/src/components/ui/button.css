@@ -113,7 +113,7 @@
 }
 
 @media (max-width: 48rem) {
-  .ui-button:not([data-size="inline"]) {
+  :where(:root:not([data-density="pointer"])) .ui-button:not([data-size="inline"]) {
     height: var(--control-touch);
   }
 }

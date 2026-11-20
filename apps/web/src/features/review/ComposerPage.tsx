@@ -5,6 +5,7 @@ import { fetchFeedback } from "../../api/feedback-data.ts"
 import { Button } from "../../components/ui/button.tsx"
 import { IconButton } from "../../components/ui/icon-button.tsx"
 import { StatusMessage } from "../../components/ui/notice.tsx"
+import { Panel, PanelBody, PanelFooter, PanelHeader } from "../../components/ui/panel.tsx"
 import { SectionToggle } from "../../components/ui/section-toggle.tsx"
 import { TextArea } from "../../components/ui/text-field.tsx"
 import { desktopBridge, hostsComposer, type ComposerCapture, type WalkDirection } from "../../lib/desktop-bridge.ts"
@@ -58,7 +59,6 @@ export function ComposerPage() {
   const reads = useRef(0)
   const sending = useRef(false)
   const field = useRef<HTMLTextAreaElement>(null)
-  const [root, setRoot] = useState<HTMLElement | null>(null)
   const factsID = useId()
   const branch = useBranch(capture?.project ?? "")
 
@@ -104,16 +104,6 @@ export function ComposerPage() {
   useEffect(() => {
     if (capture) field.current?.focus({ preventScroll: true })
   }, [capture])
-
-  // The app sizes the web view to the composer's content.
-  useEffect(() => {
-    if (!root || !resize) return
-    const report = () => resize(Math.ceil(root.getBoundingClientRect().height))
-    report()
-    const observer = new ResizeObserver(report)
-    observer.observe(root)
-    return () => observer.disconnect()
-  }, [resize, root])
 
   const cancel = useCallback(() => {
     if (sending.current) return
@@ -164,59 +154,62 @@ export function ComposerPage() {
     return () => window.removeEventListener("keydown", onKey)
   }, [cancel, capture, send, walk])
 
-  if (!capture) return <div className="composer-page" />
+  // A panel (decision 0186); the app sizes the web view to its content.
+  if (!capture) return <Panel />
 
   const label = pickLabel(capture)
   const origin = pickOrigin(capture)
   const target = targetLabel(capture.project, branch)
   const walks = capture.kind === "element"
   return (
-    <div className="composer-page">
-      <section ref={setRoot} className="composer" aria-label={`Comment on ${label}`}>
-        <header className="composer-head">
-          <div className="composer-pick">
-            <span className="composer-pick-label" title={label}>{label}</span>
-            {walks && (
-              <span className="composer-walk" role="group" aria-label="Change the selection">
-                <IconButton size="xs" label="Select parent" title={`Select parent (${walkKeys.parent})`} icon={<ChevronUpIcon aria-hidden="true" />}
-                  disabledReason={capture.canWalkUp ? undefined : "No parent to select"} onClick={() => walk("parent")} />
-                <IconButton size="xs" label="Select child" title={`Select child (${walkKeys.child})`} icon={<ChevronDownIcon aria-hidden="true" />}
-                  disabledReason={capture.canWalkDown ? undefined : "Select a parent first"} onClick={() => walk("child")} />
-              </span>
-            )}
-          </div>
-          {origin && <p className="composer-origin" title={origin}>{origin}</p>}
-        </header>
-        <div className="composer-body">
-          <TextArea ref={field} className="composer-field" rows={3} value={draft} disabled={busy} placeholder="What should change here?"
-            aria-label={`Comment on ${label}`} aria-keyshortcuts="Control+Enter Meta+Enter Escape"
-            onChange={(event) => setDraft(event.target.value)} />
-          <span className="feedback-hint">Markdown · {sendKeys} to comment · Esc to cancel</span>
-          {error && <StatusMessage tone="error" role="alert" className="composer-error">{error}</StatusMessage>}
-        </div>
-        <div className="composer-sent">
-          <SectionToggle expanded={listed} onExpandedChange={setListed} aria-controls={factsID}>What's sent</SectionToggle>
-          {listed && (
-            <dl id={factsID} className="composer-facts">
-              {sentFacts(capture).map((fact) => (
-                <div key={fact.label} className="composer-fact">
-                  <dt>{fact.label}</dt>
-                  {fact.values.map((value, index) => <dd key={`${index}:${value}`} data-plain={fact.label === "Screenshot" || undefined}>{value}</dd>)}
-                </div>
-              ))}
-            </dl>
+    <Panel className="composer" aria-label={`Comment on ${label}`} onHeight={resize ?? undefined}>
+      <PanelHeader>
+        <div className="composer-pick">
+          <span className="composer-pick-label" title={label}>{label}</span>
+          {walks && (
+            <span className="composer-walk" role="group" aria-label="Change the selection">
+              <IconButton size="xs" label="Select parent" title={`Select parent (${walkKeys.parent})`} icon={<ChevronUpIcon aria-hidden="true" />}
+                disabledReason={capture.canWalkUp ? undefined : "No parent to select"} onClick={() => walk("parent")} />
+              <IconButton size="xs" label="Select child" title={`Select child (${walkKeys.child})`} icon={<ChevronDownIcon aria-hidden="true" />}
+                disabledReason={capture.canWalkDown ? undefined : "Select a parent first"} onClick={() => walk("child")} />
+            </span>
           )}
         </div>
-        <footer className="composer-foot">
-          <p className="composer-target" title={`Comments go to ${target}`}>
-            <span className="visually-hidden">Comments go to </span>{target}
-          </p>
+        {origin && <p className="composer-origin" title={origin}>{origin}</p>}
+      </PanelHeader>
+      {/* The review's comment box: the field, then its hint and actions on one row. */}
+      <PanelBody>
+        <TextArea ref={field} className="composer-field" rows={3} value={draft} disabled={busy} placeholder="What should change here?"
+          aria-label={`Comment on ${label}`} aria-keyshortcuts="Control+Enter Meta+Enter Escape"
+          onChange={(event) => setDraft(event.target.value)} />
+        <div className="feedback-reply-footer">
+          <span className="feedback-hint">Markdown · {sendKeys} to comment</span>
           <Button size="sm" variant="ghost" disabled={busy} title="Cancel (Esc)" onClick={cancel}>Cancel</Button>
           <Button size="sm" disabled={busy || !draft.trim()} title={draft.trim() ? `Comment (${sendKeys})` : "Write a comment first"} onClick={send}>
             {busy ? "Sending…" : "Comment"}
           </Button>
-        </footer>
-      </section>
-    </div>
+        </div>
+        {error && <StatusMessage tone="error" role="alert" className="composer-error">{error}</StatusMessage>}
+      </PanelBody>
+      {/* What the comment carries, and where it goes. */}
+      <PanelFooter className="composer-sent">
+        <div className="composer-sent-row">
+          <SectionToggle className="composer-sent-toggle" expanded={listed} onExpandedChange={setListed} aria-controls={factsID}>What's sent</SectionToggle>
+          <p className="composer-target" title={`Comments go to ${target}`}>
+            <span className="visually-hidden">Comments go to </span>{target}
+          </p>
+        </div>
+        {listed && (
+          <dl id={factsID} className="composer-facts">
+            {sentFacts(capture).map((fact) => (
+              <div key={fact.label} className="composer-fact">
+                <dt>{fact.label}</dt>
+                {fact.values.map((value, index) => <dd key={`${index}:${value}`} data-plain={fact.label === "Screenshot" || undefined}>{value}</dd>)}
+              </div>
+            ))}
+          </dl>
+        )}
+      </PanelFooter>
+    </Panel>
   )
 }
