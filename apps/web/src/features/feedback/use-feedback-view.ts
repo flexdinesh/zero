@@ -3,8 +3,6 @@ import { useCallback, useMemo, useState } from "react"
 import { isFeedbackFilter, unseenCount, type FeedbackFilter } from "./feedback-model.ts"
 import { useFeedbackSeen } from "./use-feedback-seen.ts"
 import { useFeedback, useFeedbackList } from "./use-feedback.ts"
-import type { ScreenComposerState } from "./ScreenCommentDialog.tsx"
-import type { ScreenSource } from "./use-screen-comment.ts"
 
 const filterStorageKey = "zero-feedback-filter"
 
@@ -54,13 +52,6 @@ export function useFeedbackView({ onChanged, project, shown, version }: Feedback
     setPath(narrowTo)
   }, [])
   const clearPath = useCallback(() => setPath(""), [])
-  // composer is New screen comment's (decision 0176): open with an image,
-  // or waiting for one (null).
-  const [composer, setComposer] = useState<ScreenComposerState | null>(null)
-  const openComposer = useCallback((source: ScreenSource | null) => {
-    setComposer((current) => ({ source, key: (current?.key ?? 0) + 1 }))
-  }, [])
-  const closeComposer = useCallback(() => setComposer(null), [])
   const setFilter = useCallback((next: FeedbackFilter) => {
     setFilterState(next)
     try {
@@ -70,7 +61,7 @@ export function useFeedbackView({ onChanged, project, shown, version }: Feedback
     }
   }, [])
 
-  return { selectedId, show, path, clearPath, filter, setFilter, session, list, seen, unseen, openThreadCount, composer, openComposer, closeComposer }
+  return { selectedId, show, path, clearPath, filter, setFilter, session, list, seen, unseen, openThreadCount }
 }
 
 export type FeedbackViewState = ReturnType<typeof useFeedbackView>

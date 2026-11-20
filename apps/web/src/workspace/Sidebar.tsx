@@ -1,8 +1,9 @@
-import { FilesIcon, GitBranchIcon, MessageSquareIcon, RouteIcon, SearchIcon } from "lucide-react"
-import type { ReactNode } from "react"
+import { AppWindowIcon, FilesIcon, GitBranchIcon, MessageSquareIcon, RouteIcon, SearchIcon } from "lucide-react"
+import { useMemo, type ReactNode } from "react"
 
 import { DialogShell } from "../components/ui/dialog-shell.tsx"
 import { IconButton } from "../components/ui/icon-button.tsx"
+import { browserAvailable } from "../lib/desktop-bridge.ts"
 import type { SidebarState, SidebarView } from "./use-sidebar.ts"
 
 const mac = typeof navigator !== "undefined" && navigator.platform.includes("Mac")
@@ -13,10 +14,12 @@ const activities: ReadonlyArray<{ view: SidebarView; label: string; shortcut?: s
   { view: "source-control", label: "Source Control", shortcut: mac ? "⌃⇧G" : "Ctrl+Shift+G", keys: "Control+Shift+G Meta+Shift+G", icon: <GitBranchIcon aria-hidden="true" /> },
   { view: "walkthroughs", label: "Walkthroughs", icon: <RouteIcon aria-hidden="true" /> },
   { view: "feedback", label: "Feedback", icon: <MessageSquareIcon aria-hidden="true" /> },
+  // Browser shows only where the desktop app hosts it (decision 0184).
+  { view: "browser", label: "Browser", icon: <AppWindowIcon aria-hidden="true" /> },
 ]
 
 const viewNames: Record<SidebarView, string> = {
-  explorer: "Files", search: "Search", "source-control": "Source Control", walkthroughs: "Walkthroughs", feedback: "Feedback",
+  explorer: "Files", search: "Search", "source-control": "Source Control", walkthroughs: "Walkthroughs", feedback: "Feedback", browser: "Browser",
 }
 
 // sidebarViewName names a view as its mobile drawer does.
@@ -35,6 +38,7 @@ interface SidebarProps {
   sourceControl: ReactNode
   walkthroughs: ReactNode
   feedback: ReactNode
+  browser: ReactNode
   // pendingChanges counts Source Control's changes; 0 shows no badge.
   pendingChanges: number
   // unseenWalkthroughs counts walkthroughs published since the view last
@@ -48,8 +52,9 @@ interface SidebarProps {
 
 // Sidebar groups the VS Code activity bar and its views into one desktop
 // pane; mobile opens it as a modal drawer. Each feature owns its body lifetime.
-export function Sidebar({ explorer, feedback, openFeedbackThreads, pendingChanges, search, sidebar, sourceControl, unseenWalkthroughs, walkthroughs }: SidebarProps) {
+export function Sidebar({ browser, explorer, feedback, openFeedbackThreads, pendingChanges, search, sidebar, sourceControl, unseenWalkthroughs, walkthroughs }: SidebarProps) {
   const { drawer, hidden, mobile, view } = sidebar
+  const shown = useMemo(() => browserAvailable() ? activities : activities.filter((activity) => activity.view !== "browser"), [])
   // Only the mobile drawer is a dialog; inline, the element is presentational.
   return (
     <DialogShell ref={drawer} variant="drawer" className="sidebar-drawer explorer-drawer" role={mobile ? undefined : "none"}
@@ -57,7 +62,7 @@ export function Sidebar({ explorer, feedback, openFeedbackThreads, pendingChange
       onClose={sidebar.syncDrawer}
       onClick={(event) => { if (event.target === drawer.current) sidebar.dismiss() }}>
       <nav className="activity-bar" aria-label="Views">
-        {activities.map((activity) => {
+        {shown.map((activity) => {
           const count = activity.view === "source-control" ? pendingChanges : activity.view === "walkthroughs" ? unseenWalkthroughs
             : activity.view === "feedback" ? openFeedbackThreads : 0
           const badge = count > 0 ? badgeLabel(count) : ""
@@ -82,6 +87,7 @@ export function Sidebar({ explorer, feedback, openFeedbackThreads, pendingChange
         <div className="sidebar-view" hidden={view !== "source-control"}>{sourceControl}</div>
         <div className="sidebar-view" hidden={view !== "walkthroughs"}>{walkthroughs}</div>
         <div className="sidebar-view" hidden={view !== "feedback"}>{feedback}</div>
+        <div className="sidebar-view" hidden={view !== "browser"}>{browser}</div>
       </div>
     </DialogShell>
   )

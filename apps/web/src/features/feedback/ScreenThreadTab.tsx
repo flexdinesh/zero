@@ -22,9 +22,8 @@ interface ScreenThreadTabProps {
   // session reads the feedback holding the thread.
   session: FeedbackSession
   navigate(href: string): void
-  // reviewPage opens a page in the project's review window through its
-  // Browser tab, which remembers it (decisions 0181, 0183); null outside
-  // the desktop app's local window.
+  // reviewPage opens a page in the project's Browser tab, which remembers
+  // it (decision 0184); null where the desktop app does not host the Browser.
   reviewPage: ((url: string) => void) | null
   // onPin keeps the preview tab open once the reviewer writes in it.
   onPin(): void
@@ -206,7 +205,7 @@ function ScreenThread({ actions, feedbackId, navigate, onPin, project, reviewPag
                   <span className="visually-hidden" role="status">{copy === "copied" ? "Crop copied" : copy === "failed" ? "Copy failed" : ""}</span>
                 </>}
                 {opener && (
-                  <Button size="sm" variant="outline" title={opener === "review" ? "Open the page in the review window" : "Open the page in a new tab"} onClick={openPage}>
+                  <Button size="sm" variant="outline" title={opener === "review" ? "Open the page in the Browser tab" : "Open the page in a new tab"} onClick={openPage}>
                     Open page<ArrowUpRightIcon aria-hidden="true" />
                   </Button>
                 )}

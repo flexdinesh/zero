@@ -63,5 +63,7 @@ function viewState(input: EmptyWorkspaceInput): EmptyWorkspace {
         : { heading: "Choose a walkthrough", hint: "Open one from the list to start.", action: null }
     case "feedback":
       return { heading: "Review feedback", hint: "Open a thread to see it in its code, or comment on lines in a diff.", action: null }
+    case "browser":
+      return { heading: "Open a page", hint: "Choose a page from the list to show it in the Browser tab.", action: null }
   }
 }

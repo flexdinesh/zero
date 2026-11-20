@@ -1,34 +1,48 @@
-// Pure model of the project browser tab (decision 0181): what the tab says
-// about its project's guest window, from the state the desktop app reads.
+// Pure model of the Browser tab (decision 0184): what the tab says about
+// its project's guest, the page the desktop app shows over the tab's stage,
+// from the state the app reads.
 
 import type { BrowserFailure, BrowserState } from "../../lib/desktop-bridge.ts"
 import { pageLabel } from "./review-model.ts"
 
-// BrowserPhase is what the tab shows: no page chosen yet, a page whose
-// window is closed, a page loading, one that failed, or one showing.
-export type BrowserPhase = "empty" | "closed" | "loading" | "failed" | "shown"
+// StageView is what the tab's stage holds: nothing yet (no guest), a
+// failure Zero draws in the page's place, or the page itself.
+export type StageView = "empty" | "failed" | "page"
 
-// browserPhase reads the tab's phase from the window's state (null without
-// a window) and the last page the project reviewed.
-export function browserPhase(state: BrowserState | null, lastURL: string): BrowserPhase {
-  if (!state) return lastURL ? "closed" : "empty"
-  if (state.failure) return "failed"
-  return state.loading ? "loading" : "shown"
+// blockingFailure is a failure that leaves no page to show. A refused
+// scheme is not one: the guest keeps the page it had.
+export function blockingFailure(state: BrowserState | null): BrowserFailure | null {
+  return state?.failure && state.failure.kind !== "refused" ? state.failure : null
 }
 
-// currentPage is the page the tab stands for: the window's, else the last
-// one reviewed.
+// refusedFailure is a navigation the guest refused while its page stays.
+export function refusedFailure(state: BrowserState | null): BrowserFailure | null {
+  return state?.failure?.kind === "refused" ? state.failure : null
+}
+
+// stageView reads the stage from the guest's state (null without a guest).
+export function stageView(state: BrowserState | null): StageView {
+  if (!state) return "empty"
+  return blockingFailure(state) ? "failed" : "page"
+}
+
+// currentPage is the page the tab stands for: the guest's, else the last
+// one opened.
 export function currentPage(state: BrowserState | null, lastURL: string): string {
   return state?.url || lastURL
 }
 
+const titleLimit = 120
+
 // browserTabName names the tab by its page's host, "localhost:5173", and
-// "Browser" before it has one.
-export function browserTabName(url: string): { label: string; title: string } {
+// "Browser" before it has one; its title adds the page's own title, one
+// line and bounded, when the guest has read one.
+export function browserTabName(url: string, title = ""): { label: string; title: string } {
   try {
     const parsed = new URL(url)
     if ((parsed.protocol === "http:" || parsed.protocol === "https:") && parsed.host) {
-      return { label: parsed.host, title: `Browser: ${pageLabel(url)}` }
+      const named = [...title.replace(/\s+/g, " ").trim()].slice(0, titleLimit).join("")
+      return { label: parsed.host, title: named ? `Browser: ${named} · ${pageLabel(url)}` : `Browser: ${pageLabel(url)}` }
     }
   } catch {
     // Not an address yet.

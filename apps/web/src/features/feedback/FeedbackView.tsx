@@ -1,5 +1,5 @@
 import { Menu } from "@base-ui/react/menu"
-import { CheckIcon, ChevronDownIcon, ClipboardCopyIcon, EllipsisIcon, GitBranchIcon, ImageIcon, ImagePlusIcon, XIcon } from "lucide-react"
+import { CheckIcon, ChevronDownIcon, ClipboardCopyIcon, EllipsisIcon, GitBranchIcon, ImageIcon, XIcon } from "lucide-react"
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react"
 
 import { FileIcon } from "../../components/FileIcon.tsx"
@@ -22,12 +22,11 @@ import {
   placeLabel, screenRoute, statusLabels, statusWords, threadRoute, threadTitle, type ThreadRoute,
 } from "./feedback-model.ts"
 import { FeedbackStatusIcon, FeedbackThreadZone } from "./FeedbackThreadZone.tsx"
-import { hasImage, imageFile } from "./screen-image.ts"
-import { pastedSource } from "./use-screen-comment.ts"
 import { VisualThumb } from "./VisualTarget.tsx"
 import { isVisualThread } from "./visual-model.ts"
 import type { FeedbackActions } from "./use-feedback.ts"
 import type { FeedbackViewState } from "./use-feedback-view.ts"
+import { OverlayLayer } from "../../lib/overlay-layers.ts"
 
 interface FeedbackViewProps {
   // project is the absolute path the copied prompt names.
@@ -43,13 +42,6 @@ interface FeedbackViewProps {
 }
 
 const emptyHint = "Select lines in a diff or file and press C to comment. Then copy the prompt for your agent."
-const screenHint = "Paste or drop a screenshot here to comment on what it shows."
-
-// typing reports a paste into a field, which keeps its text.
-function typing(target: EventTarget): boolean {
-  return target instanceof HTMLElement && (target.isContentEditable || target.closest("input, textarea, [contenteditable]") !== null)
-}
-
 function copyIcon(status: "idle" | "copied" | "failed") {
   return status === "copied" ? <CheckIcon aria-hidden="true" /> : status === "failed" ? <XIcon aria-hidden="true" /> : <ClipboardCopyIcon aria-hidden="true" />
 }
@@ -113,6 +105,7 @@ function BranchPicker({ branch: checkout, view }: { branch: string; view: Feedba
                 )
               })}
             </Menu.RadioGroup>
+            <OverlayLayer />
           </Menu.Popup>
         </Menu.Positioner>
       </Menu.Portal>
@@ -141,7 +134,6 @@ export function FeedbackView({ branch, mobile, navigate, onDismiss, onOpenThread
   const { actions, feedback } = view.session
   const [confirmation, setConfirmation] = useState<{ actions: FeedbackActions; busy: boolean; error: string } | null>(null)
   const markdown = useClipboardCopy()
-  const [dropping, setDropping] = useState(false)
   const shownThreads = useMemo(() => (feedback?.threads ?? [])
     .filter((thread) => matchesFilter(thread, view.filter) && (!view.path || thread.location?.path === view.path)), [feedback, view.filter, view.path])
   const remove = () => {
@@ -157,35 +149,8 @@ export function FeedbackView({ branch, mobile, navigate, onDismiss, onOpenThread
   }
   const hasThreads = (feedback?.threads.length ?? 0) > 0
   return (
-    <div className="feedback-view" data-dropping={dropping || undefined}
-      onPaste={(event) => {
-        // A screenshot pasted into the view starts a screen comment (decision 0176).
-        if (typing(event.target)) return
-        const file = imageFile(event.clipboardData)
-        if (!file) return
-        event.preventDefault()
-        view.openComposer(pastedSource(file))
-      }}
-      onDragOver={(event) => {
-        if (!hasImage(event.dataTransfer)) return
-        event.preventDefault()
-        event.dataTransfer.dropEffect = "copy"
-        setDropping(true)
-      }}
-      onDragLeave={(event) => {
-        if (!(event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))) setDropping(false)
-      }}
-      onDrop={(event) => {
-        setDropping(false)
-        const file = imageFile(event.dataTransfer)
-        if (!file) return
-        event.preventDefault()
-        view.openComposer(pastedSource(file))
-      }}>
-      {dropping && <p className="feedback-drop" aria-hidden="true"><ImagePlusIcon />Drop to comment on the screenshot</p>}
+    <div className="feedback-view">
       <ViewHeader className="explorer-header sidebar-header" title="Feedback" actions={<>
-        <IconButton label="New Screen Comment" title="New screen comment: paste or drop a screenshot" icon={<ImagePlusIcon aria-hidden="true" />}
-          onClick={() => view.openComposer(null)} />
         <CopyPrompt feedback={feedback} project={project} />
         <Menu.Root>
           <Menu.Trigger render={<IconButton label="More Feedback Actions" tone={markdown.status === "copied" ? "success" : "default"}
@@ -200,6 +165,7 @@ export function FeedbackView({ branch, mobile, navigate, onDismiss, onOpenThread
                 <Menu.Separator className={menuSeparatorClass} />
                 <Menu.Item className={menuItemClass} disabled={!feedback?.id || confirmation?.actions === actions}
                   onClick={() => setConfirmation({ actions, busy: false, error: "" })}>Delete feedback</Menu.Item>
+                <OverlayLayer />
               </Menu.Popup>
             </Menu.Positioner>
           </Menu.Portal>
@@ -282,7 +248,6 @@ function FeedbackBody({ navigate, onOpenThread, project, threads, view, visible 
     return (
       <div className="feedback-note">
         <StatusMessage>{emptyHint}</StatusMessage>
-        <StatusMessage>{screenHint}</StatusMessage>
         <CopyPrompt feedback={feedback} project={project} labeled />
       </div>
     )

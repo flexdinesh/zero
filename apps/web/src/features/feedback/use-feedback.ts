@@ -6,7 +6,8 @@ import {
   postFeedbackMessage, uploadFeedbackAttachment, type FeedbackQuery, type FeedbackVisualDraft,
 } from "../../api/feedback-data.ts"
 import { isAbort } from "../../api/http.ts"
-import { indexFeedback, type FeedbackIndex } from "./feedback-index.ts"
+import { experimentalEnabled } from "../../lib/desktop-bridge.ts"
+import { indexFeedback, shownFeedback, type FeedbackIndex } from "./feedback-index.ts"
 import type { FeedbackAnchorInput } from "./feedback-model.ts"
 
 export type FeedbackLoad =
@@ -64,7 +65,7 @@ function pending(key: string, query: FeedbackQuery): FeedbackRead {
 }
 
 function withFeedback(previous: FeedbackRead, feedback: Feedback): FeedbackRead {
-  const index = indexFeedback(feedback, previous.index ?? undefined)
+  const index = indexFeedback(shownFeedback(feedback, experimentalEnabled()), previous.index ?? undefined)
   return index === previous.index ? previous : { ...previous, feedback: index.feedback, index }
 }
 

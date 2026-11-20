@@ -2,6 +2,7 @@ import { Menu } from "@base-ui/react/menu"
 import { menuItemClass, menuPopupClass, menuPositionerClass, menuSeparatorClass } from "../../components/ui/menu.ts"
 import type { NativeMenuItem } from "../../lib/desktop-bridge.ts"
 import { isTreeMenuAction, type TreeMenuAction } from "./tree-menu.ts"
+import { OverlayLayer } from "../../lib/overlay-layers.ts"
 
 interface TreeRowMenuProps {
   // anchor is the row's menu anchor, which Pierre places on the row.
@@ -34,6 +35,7 @@ export function TreeRowMenu({ anchor, items, name, onAction, onClose }: TreeRowM
               }}>
                 {item.label}
               </Menu.Item>)}
+            <OverlayLayer />
           </Menu.Popup>
         </Menu.Positioner>
       </Menu.Portal>

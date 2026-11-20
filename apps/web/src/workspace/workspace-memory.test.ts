@@ -13,10 +13,13 @@ import {
   restoreTabs,
   restoreExpanded,
   startupTab,
+  type ProjectMemory,
 } from "./workspace-memory.ts"
-import { documentTab, reviewTab, welcomeTab } from "./workspace-tabs.ts"
+import { browserTab, documentTab, reviewTab, screenTab, welcomeTab, type TabFeatures } from "./workspace-tabs.ts"
 
 const working = reviewTab({ kind: "working" })
+// every is a window that offers the Browser and screen tabs.
+const every: TabFeatures = { browser: true, screens: true }
 
 const docs = (...paths: string[]) => paths.map((path) => documentTab(path))
 
@@ -34,7 +37,7 @@ test("a project opens on its remembered tab, else Welcome when nothing was resto
 
 test("the Welcome tab is remembered like any tab", () => {
   const memory = rememberProject(emptyMemory, "/r", "/r", [welcomeTab(), documentTab("a.md")], welcomeTab())
-  assert.deepEqual(restoreTabs(projectMemory(memory, "/r"), new Set(["a.md"])), { tabs: [welcomeTab(), documentTab("a.md")], active: welcomeTab() })
+  assert.deepEqual(restoreTabs(projectMemory(memory, "/r"), new Set(["a.md"]), every), { tabs: [welcomeTab(), documentTab("a.md")], active: welcomeTab() })
 })
 
 test("memory shares a project's tabs across sessions and keeps the last project per session key", () => {
@@ -90,11 +93,11 @@ test("memory caps remembered projects", () => {
 
 test("restored tabs keep only files in the fresh tree", () => {
   const files = new Set(["README.md", "src/main.go"])
-  assert.deepEqual(restoreTabs({ tabs: ["README.md", "gone.md", "src/main.go", "README.md"], active: "gone.md" }, files),
+  assert.deepEqual(restoreTabs({ tabs: ["README.md", "gone.md", "src/main.go", "README.md"], active: "gone.md" }, files, every),
     { tabs: docs("README.md", "src/main.go"), active: null })
-  assert.deepEqual(restoreTabs({ tabs: ["src/main.go"], active: "src/main.go" }, files),
+  assert.deepEqual(restoreTabs({ tabs: ["src/main.go"], active: "src/main.go" }, files, every),
     { tabs: docs("src/main.go"), active: documentTab("src/main.go") })
-  assert.deepEqual(restoreTabs(undefined, files), { tabs: [], active: null })
+  assert.deepEqual(restoreTabs(undefined, files, every), { tabs: [], active: null })
 })
 
 test("parseMemory ignores malformed stored data", () => {
@@ -152,14 +155,14 @@ test("restored review tabs need no tree entry; documents still do", () => {
   const hash = "3577ec6a1b2c3d4e5f60718293a4b5c6d7e8f901"
   const commit = reviewTab({ kind: "commit", hash })
   assert.deepEqual(restoreTabs({ tabs: ["README.md", { review: "commit", commit: hash }, "removed.md"], active: { review: "commit", commit: hash } },
-    new Set(["README.md"])), { tabs: [documentTab("README.md"), commit], active: commit })
+    new Set(["README.md"]), every), { tabs: [documentTab("README.md"), commit], active: commit })
 })
 
 test("restored snapshots need no tree entry", () => {
   const hash = "3577ec6a1b2c3d4e5f60718293a4b5c6d7e8f901"
   const snapshot = documentTab("removed.md", hash)
   assert.deepEqual(restoreTabs({ tabs: [{ path: "removed.md", at: hash }, "removed.md"], active: { path: "removed.md", at: hash } },
-    new Set(["README.md"])), { tabs: [snapshot], active: snapshot })
+    new Set(["README.md"]), every), { tabs: [snapshot], active: snapshot })
 })
 
 test("per-file diff tabs stored before reviews restore as one review per compare", () => {
@@ -172,7 +175,16 @@ test("per-file diff tabs stored before reviews restore as one review per compare
     tabs: ["a.md", { review: "working" }, { review: "working" }, { review: "commit", commit: hash }, { review: "commit", commit: hash }],
     active: { review: "working" },
   })
-  assert.deepEqual(restoreTabs(projectMemory(memory, "p"), new Set(["a.md"])), {
+  assert.deepEqual(restoreTabs(projectMemory(memory, "p"), new Set(["a.md"]), every), {
     tabs: [documentTab("a.md"), working, reviewTab({ kind: "commit", hash })], active: working,
   })
+})
+
+test("Browser and screen tabs restore only where the window offers them (decision 0184)", () => {
+  const memory: ProjectMemory = { tabs: ["a.md", { browser: true }, { screen: "fb-3k2q8m", thread: 5 }], active: { browser: true } }
+  const files = new Set(["a.md"])
+  assert.deepEqual(restoreTabs(memory, files, every), { tabs: [documentTab("a.md"), browserTab(), screenTab("fb-3k2q8m", 5)], active: browserTab() })
+  assert.deepEqual(restoreTabs(memory, files, { browser: false, screens: false }), { tabs: [documentTab("a.md")], active: null })
+  // Experimental features without the browser methods keep screen tabs only.
+  assert.deepEqual(restoreTabs(memory, files, { browser: false, screens: true }).tabs, [documentTab("a.md"), screenTab("fb-3k2q8m", 5)])
 })

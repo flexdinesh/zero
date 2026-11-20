@@ -1,10 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import {
-  centeredRect, clipToBounds, contains, cssCenter, cssToImage, dragRect, expand, fraction, frameSize, imageToCSS, nudge, nudgeStep, regionClip,
-  thumbnail, toImage,
-} from "./visual-geometry.ts"
+import { clipToBounds, cssToImage, expand, fraction, frameSize, imageToCSS, regionClip, thumbnail, toImage } from "./visual-geometry.ts"
 
 // testdata/feedback/visual/README.md: 1440×900 CSS px at 2× is a
 // 2880×1800 frame; the kept clip is 1114,544 612×288; the button is image
@@ -24,7 +21,6 @@ test("the README's worked example maps between frame, image, CSS, and document p
   const css = imageToCSS(buttonImage, clip, 2)
   assert.deepEqual({ x: css.x + 0, y: css.y + 1320 }, { x: 605, y: 1640 })
   assert.deepEqual(cssToImage(buttonCSS, clip, 2, { width: 612, height: 288 }), buttonImage)
-  assert.deepEqual(cssCenter(buttonFrame, 2), { x: 710, y: 344 })
   // Without a clip the image is the frame.
   assert.deepEqual(toImage(buttonFrame, null), buttonFrame)
   assert.deepEqual(cssToImage(buttonCSS, null, 2, frame), buttonFrame)
@@ -34,33 +30,10 @@ test("frames round fractional scales", () => {
   assert.deepEqual(frameSize({ width: 1001, height: 667, deviceScaleFactor: 1.25 }), { width: 1251, height: 834 })
 })
 
-test("drags normalize either corner first and round outward inside the image", () => {
-  const image = { width: 100, height: 50 }
-  assert.deepEqual(dragRect({ x: 80.4, y: 40.2 }, { x: 10.6, y: 5.5 }, image), { x: 10, y: 5, width: 71, height: 36 })
-  assert.deepEqual(dragRect({ x: -20, y: -5 }, { x: 150, y: 70 }, image), { x: 0, y: 0, width: 100, height: 50 })
-  // A zero-area drag inside one pixel still covers it once rounded outward.
-  assert.deepEqual(dragRect({ x: 3.2, y: 3.2 }, { x: 3.4, y: 3.9 }, image), { x: 3, y: 3, width: 1, height: 1 })
-  assert.equal(dragRect({ x: 3, y: 3 }, { x: 3, y: 9 }, image), null)
-  assert.equal(dragRect({ x: 120, y: 3 }, { x: 140, y: 9 }, image), null)
-})
-
-test("rectangles clip, expand, and contain points within bounds", () => {
+test("rectangles clip and expand within bounds, rounded outward", () => {
   assert.equal(clipToBounds({ x: 10, y: 10, width: 5, height: 5 }, { width: 10, height: 10 }), null)
+  assert.deepEqual(clipToBounds({ x: 10.6, y: 5.5, width: 69.8, height: 34.7 }, { width: 100, height: 50 }), { x: 10, y: 5, width: 71, height: 36 })
   assert.deepEqual(expand({ x: 2, y: 2, width: 4, height: 4 }, 3, { width: 8, height: 20 }), { x: 0, y: 0, width: 8, height: 9 })
-  assert.equal(contains(buttonImage, { x: 96, y: 192 }), true)
-  assert.equal(contains(buttonImage, { x: 95, y: 100 }), false)
-})
-
-test("the keyboard moves and resizes the rectangle inside the image", () => {
-  const image = { width: 400, height: 200 }
-  const start = centeredRect(image)
-  assert.deepEqual(start, { x: 150, y: 75, width: 100, height: 50 })
-  assert.equal(nudgeStep(image), 4)
-  assert.equal(nudgeStep({ width: 20, height: 10 }), 1)
-  assert.deepEqual(nudge(start, 4, -4, false, image), { x: 154, y: 71, width: 100, height: 50 })
-  assert.deepEqual(nudge(start, 1000, 1000, false, image), { x: 300, y: 150, width: 100, height: 50 })
-  assert.deepEqual(nudge(start, -1000, 8, true, image), { x: 150, y: 75, width: 1, height: 58 })
-  assert.deepEqual(nudge(start, 1000, 0, true, image), { x: 150, y: 75, width: 250, height: 50 })
 })
 
 test("fractions place rectangles for CSS percentages", () => {

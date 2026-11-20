@@ -20,11 +20,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
-	"image"
-	"image/png"
 	"io"
 	"io/fs"
-	"math"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -56,6 +53,9 @@ type session struct {
 	nextID int
 	// target is the window evals run in; 0 is the focused window.
 	target int
+	// guest is a project whose guest page evals and captures act on,
+	// through the app's own driver; "" is the app's page.
+	guest string
 }
 
 // connectionLink finds the link `zero connect` prints.
@@ -162,6 +162,42 @@ func (s *session) shells() int {
 		}
 	}
 	return count
+}
+
+// shownGuest is what a window of native UI shows over its page, through
+// the app's driver: the guest's project, "" for none, and its frame.
+type shownGuest struct {
+	Project string  `json:"project"`
+	X       float64 `json:"x"`
+	Y       float64 `json:"y"`
+	Width   float64 `json:"width"`
+	Height  float64 `json:"height"`
+	Guests  int     `json:"guests"`
+}
+
+func (s *session) shown() shownGuest {
+	s.t.Helper()
+	var shown shownGuest
+	if err := s.call("shown", nil, &shown); err != nil {
+		s.t.Fatal(err)
+	}
+	return shown
+}
+
+// waitShown waits for the window to show project's guest, "" for none.
+func (s *session) waitShown(what, project string) shownGuest {
+	s.t.Helper()
+	deadline := time.Now().Add(pageTimeout)
+	for {
+		shown := s.shown()
+		if shown.Project == project {
+			return shown
+		}
+		if time.Now().After(deadline) {
+			s.t.Fatalf("timed out waiting for %s: the window shows %+v", what, shown)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }
 
 func newWorld(t *testing.T) (*world, string) {
@@ -716,298 +752,6 @@ func TestWebViewApp(t *testing.T) {
 		app.waitEval("the folder's project", `return location.pathname !== "/api/projects" && location.search.includes("project=")`)
 	})
 
-	// Screen comments (decisions 0175, 0176, 0177, 0180): a page of the
-	// developer's app opens in a guest window of its own that reaches nothing
-	// of Zero's; Comment on Screen (F8) takes its facts, hit map, and frame
-	// while it still has focus and hands them to the local window.
-	run("Review URL opens a guest window whose screen reaches the local window", func(t *testing.T) {
-		fixture, err := os.ReadFile(filepath.Join("..", "..", "..", "testdata", "review", "guest", "index.html"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		guest := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
-			response.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_, _ = response.Write(fixture)
-		}))
-		defer guest.Close()
-		local := app.windowOn(proxyOrigin("local"))
-		app.target = local
-		defer func() { app.target = 0 }()
-		if got := app.eval(`return typeof window.zeroDesktop.openReview`); got != "function" {
-			t.Fatalf("openReview = %v", got)
-		}
-		app.eval(`window.zeroDesktop.openReview(` + strconv.Quote(w.project) + `, ` + strconv.Quote(guest.URL+"/settings") + `); return true`)
-		review := app.waitWindow(guest.URL)
-		if review == local {
-			t.Fatal("the page opened in the local window")
-		}
-		app.target = review
-		app.waitEval("the guest page and its script", `return document.title === "Review fixture" && typeof window.__zeroReview === "object" && typeof window.__fixture === "object"`)
-		if got := app.eval(`return typeof window.zeroDesktop`); got != "undefined" {
-			t.Errorf("guest page: zeroDesktop is %v, want no bridge", got)
-		}
-		// The guest's requests to the app's scheme carry no Origin; the proxy
-		// refuses them by their page.
-		reached := app.eval(`const image = new Image();
-			image.src = "zero-app://local/api/image?project=" + encodeURIComponent(` + strconv.Quote(w.project) + `) + "&path=pic.png";
-			return await new Promise((resolve) => { image.onload = () => resolve("loaded"); image.onerror = () => resolve("refused") })`)
-		if reached != "refused" {
-			t.Errorf("a guest image from zero-app = %v, want refused", reached)
-		}
-		for _, window := range app.listWindows().Windows {
-			if window.ID == review && !strings.Contains(window.Title, "/settings · "+filepath.Base(w.project)+" · ") {
-				t.Errorf("guest window title %q", window.Title)
-			}
-		}
-
-		// The test stands in for the composer: it keeps the event from the
-		// web app, which would take the capture first.
-		app.target = local
-		app.eval(`window.__screenComment = 0
-			window.addEventListener("zero:screen-comment", (event) => { event.stopImmediatePropagation(); window.__screenComment++ }, { capture: true })
-			return true`)
-
-		// focusGuest gives the guest window the keyboard, as it has when the
-		// developer presses F8, so its menu is open until Zero comes forward.
-		focusGuest := func() {
-			t.Helper()
-			found, err := exec.Command("xdotool", "search", "--onlyvisible", "--name", regexp.QuoteMeta("/settings · "+filepath.Base(w.project)+" · ")).Output()
-			ids := strings.Fields(string(found))
-			if err != nil || len(ids) == 0 {
-				t.Fatalf("xdotool search for the guest window: %v %q", err, found)
-			}
-			if output, err := exec.Command("xdotool", "windowfocus", "--sync", ids[len(ids)-1]).CombinedOutput(); err != nil {
-				t.Fatalf("xdotool windowfocus: %v\n%s", err, output)
-			}
-			app.target = review
-			app.waitEval("the guest window's focus", `return document.hasFocus()`)
-		}
-		comments := 0
-		// captureScreen chooses Comment on Screen in the focused guest window
-		// and takes the capture the local window receives, saving its frame
-		// as name.
-		captureScreen := func(name string) (screenCapture, image.Image) {
-			t.Helper()
-			focusGuest()
-			if err := app.call("menu", map[string]any{"window": review, "path": []string{"Review", "Comment on Screen"}}, nil); err != nil {
-				t.Fatal(err)
-			}
-			comments++
-			app.target = local
-			app.waitEval("the screen comment in the local window", `return window.__screenComment === `+strconv.Itoa(comments))
-			raw := app.eval(`return JSON.stringify(await window.zeroDesktop.screenCapture())`)
-			var capture screenCapture
-			text, _ := raw.(string)
-			if err := json.Unmarshal([]byte(text), &capture); err != nil {
-				t.Fatalf("screenCapture() = %.200v: %v", raw, err)
-			}
-			if strings.Contains(text, "hunter2") {
-				t.Error("the capture holds the password field's value")
-			}
-			frame, err := base64.StdEncoding.DecodeString(capture.PNG)
-			if err != nil {
-				t.Fatal(err)
-			}
-			_ = os.WriteFile(filepath.Join(os.Getenv("ZERO_DESKTOP_E2E_OUT"), name), frame, 0o644)
-			decoded, err := png.Decode(bytes.NewReader(frame))
-			if err != nil {
-				t.Fatal(err)
-			}
-			page := capture.Page
-			scale := page.Viewport.DeviceScaleFactor
-			if size := decoded.Bounds().Size(); size.X != int(math.Round(float64(page.Viewport.Width)*scale)) || size.Y != int(math.Round(float64(page.Viewport.Height)*scale)) {
-				t.Errorf("capture is %dx%d, want the %dx%d viewport at %v", size.X, size.Y, page.Viewport.Width, page.Viewport.Height, scale)
-			}
-			if capture.Project != w.project || page.URL != guest.URL+"/settings" || page.Title != "Review fixture" || scale <= 0 {
-				t.Errorf("capture = %s %+v", capture.Project, page)
-			}
-			if capture.Hits == nil {
-				t.Fatal("the capture has no hit map")
-			}
-			return capture, decoded
-		}
-
-		// A transient menu (decision 0180): it closes when the window loses
-		// focus, so the capture must hold it, in both the hit map and the
-		// pixels, before Zero's window takes focus.
-		app.target = review
-		app.eval(`window.__fixture.openMenu(); return true`)
-		capture, frame := captureScreen("screen-capture-menu.png")
-		if capture.Drift {
-			t.Error("the still fixture page drifted while it was captured")
-		}
-		for selector, want := range map[string]screenRect{
-			`[data-testid="project-menu"]`:     {X: 8, Y: 8, Width: 120, Height: 32},
-			`[data-testid="menu-rename"]`:      {X: 12, Y: 48, Width: 212, Height: 32},
-			`[data-testid="menu-delete"]`:      {X: 12, Y: 80, Width: 212, Height: 32},
-			`[data-testid="card-a"]`:           {X: 40, Y: 120, Width: 200, Height: 120},
-			`[data-testid="clipped-dropdown"]`: {X: 60, Y: 340, Width: 200, Height: 40},
-			`[data-testid="chart"]`:            {X: 800, Y: 120, Width: 320, Height: 200},
-		} {
-			element := capture.Hits.bySelector(selector)
-			if element == nil || element.Box == nil || *element.Box != want {
-				t.Errorf("%s in the hit map = %+v, want its box %+v", selector, element, want)
-			}
-		}
-		if element := capture.Hits.bySelector(`[data-testid="menu-delete"]`); element == nil || element.Role != "menuitem" || element.Name != "Delete project" || !element.Meaningful {
-			t.Errorf("the menu item = %+v", element)
-		}
-		// The gap between the cards answers the cards' row.
-		if element := capture.Hits.at(270, 180); element == nil || element.Selector != `[data-testid="cards"]` {
-			t.Errorf("the gap between the cards = %+v, want the row", element)
-		}
-		// Screenshot and hit map agree: each box shows its element's color.
-		scale := capture.Page.Viewport.DeviceScaleFactor
-		for selector, want := range map[string][3]uint8{
-			`[data-testid="project-menu"]`:     {60, 90, 200},
-			`[data-testid="menu-delete"]`:      {200, 30, 90},
-			`[data-testid="menu-rename"]`:      {230, 230, 240},
-			`[data-testid="card-a"]`:           {90, 170, 110},
-			`[data-testid="clipped-dropdown"]`: {120, 60, 180},
-			`[data-testid="chart"]`:            {20, 150, 160},
-		} {
-			if element := capture.Hits.bySelector(selector); element != nil && element.Box != nil {
-				checkPixel(t, frame, selector, float64(element.Box.X+3)*scale, float64(element.Box.Y+3)*scale, want)
-			}
-		}
-		checkPixel(t, frame, "the gap", 270*scale, 180*scale, [3]uint8{235, 238, 245})
-		// The guest loses focus only after the capture, and its menu closes
-		// then. Xvfb has no window manager to move X focus when Zero's window
-		// comes forward, so the test moves it.
-		if output, err := exec.Command("xdotool", "windowfocus", "0x0").CombinedOutput(); err != nil {
-			t.Fatalf("xdotool windowfocus: %v\n%s", err, output)
-		}
-		app.target = review
-		app.waitEval("the guest menu closed by the focus change", `return !window.__fixture.menuOpen && window.__fixture.blurs > 0`)
-		w.report["screenCapture"] = map[string]any{"elements": len(capture.Hits.Elements), "step": capture.Hits.Step, "deviceScaleFactor": scale}
-
-		app.target = local
-		if again := app.eval(`return await window.zeroDesktop.screenCapture()`); again != nil {
-			t.Errorf("a second screenCapture() = %.80v, want null: a capture is taken once", again)
-		}
-		if got := app.eval(`return typeof window.zeroDesktop.screenElement`); got != "undefined" {
-			t.Errorf("screenElement = %v, want none: the hit map answers", got)
-		}
-
-		// A scrolled page: boxes are in the viewport, and the scroll is the page's.
-		app.target = review
-		app.eval(`scrollTo(0, 700); return true`)
-		scrolled, scrolledFrame := captureScreen("screen-capture-scrolled.png")
-		if scrolled.Page.Scroll.Y != 700 {
-			t.Errorf("scroll = %+v, want 700 down", scrolled.Page.Scroll)
-		}
-		far := scrolled.Hits.bySelector(`[data-testid="far"]`)
-		if far == nil || far.Box == nil || *far.Box != (screenRect{X: 40, Y: 300, Width: 160, Height: 40}) {
-			t.Errorf("the far button = %+v, want its box in the viewport", far)
-		} else {
-			checkPixel(t, scrolledFrame, "the far button", float64(far.Box.X+3)*scale, float64(far.Box.Y+3)*scale, [3]uint8{240, 120, 20})
-		}
-
-		if err := app.call("menu", map[string]any{"window": review, "path": []string{"Page", "Close Window"}}, nil); err != nil {
-			t.Fatal(err)
-		}
-		deadline := time.Now().Add(pageTimeout)
-		for app.windowOn(guest.URL) != 0 {
-			if time.Now().After(deadline) {
-				t.Fatal("the guest window did not close")
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-	})
-
-	// The Browser tab (decision 0181): the local window reads and drives the
-	// project's guest window through the bridge and hears of its changes.
-	run("the Browser tab drives the project's guest window", func(t *testing.T) {
-		site := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-			response.Header().Set("Content-Type", "text/html")
-			_, _ = io.WriteString(response, `<!doctype html><title>`+request.URL.Path+`</title><a href="/two">Two</a>`)
-		}))
-		defer site.Close()
-		secure := httptest.NewTLSServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
-			_, _ = io.WriteString(response, "secure")
-		}))
-		defer secure.Close()
-		closed, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			t.Fatal(err)
-		}
-		closedURL := "http://" + closed.Addr().String() + "/"
-		_ = closed.Close()
-
-		local := app.windowOn(proxyOrigin("local"))
-		app.target = local
-		defer func() { app.target = 0 }()
-		project := strconv.Quote(w.project)
-		state := `(await window.zeroDesktop.browserState(` + project + `))`
-		if got := app.eval(`return typeof window.zeroDesktop.browserState + " " + typeof window.zeroDesktop.browserAction`); got != "function function" {
-			t.Fatalf("bridge methods = %v", got)
-		}
-		app.waitEval("no guest window yet", `return `+state+` === null`)
-		app.eval(`window.__browserEvents = []
-			window.__browserFocus = []
-			window.addEventListener("zero:browser", (event) => window.__browserEvents.push(event.detail))
-			window.addEventListener("zero:browser-focus", (event) => { event.stopImmediatePropagation(); window.__browserFocus.push(event.detail) }, { capture: true })
-			return true`)
-
-		app.eval(`window.zeroDesktop.openReview(` + project + `, ` + strconv.Quote(site.URL+"/one") + `); return true`)
-		guest := app.waitWindow(site.URL)
-		app.waitEval("the first page's state", `const s = `+state+`; return s?.url === `+strconv.Quote(site.URL+"/one")+` && !s.loading && !s.canGoBack && !s.canGoForward && s.failure === null`)
-		app.waitEval("a zero:browser event for the project", `return window.__browserEvents.includes(`+project+`)`)
-
-		app.target = guest
-		if got := app.eval(`return typeof window.zeroDesktop`); got != "undefined" {
-			t.Errorf("guest page reaches %v, want no bridge", got)
-		}
-		app.eval(`document.querySelector("a").click(); return true`)
-		app.target = local
-		app.waitEval("the second page's state", `const s = `+state+`; return s?.url === `+strconv.Quote(site.URL+"/two")+` && !s.loading && s.canGoBack && !s.canGoForward`)
-
-		app.eval(`await window.zeroDesktop.browserAction(` + project + `, "back"); return true`)
-		app.waitEval("back on the first page", `const s = `+state+`; return s?.url === `+strconv.Quote(site.URL+"/one")+` && !s.loading && !s.canGoBack && s.canGoForward`)
-
-		// A page asking for the app's scheme is refused, and the failure
-		// names only the scheme and host.
-		app.target = guest
-		app.eval(`location.href = "zero-app://local/view?project=/secret"; return true`)
-		app.target = local
-		app.waitEval("the refused navigation", `const s = `+state+`; return s?.failure?.kind === "refused" && s.failure.url === "zero-app://local" && s.url === `+strconv.Quote(site.URL+"/one"))
-		app.eval(`await window.zeroDesktop.browserAction(` + project + `, "reload"); return true`)
-		app.waitEval("a reload clears the failure", `const s = `+state+`; return s?.failure === null && !s.loading`)
-
-		app.eval(`await window.zeroDesktop.openReview(` + project + `, ` + strconv.Quote(closedURL) + `); return true`)
-		app.waitEval("the failed load", `const s = `+state+`; return s?.failure?.kind === "load" && s.failure.url === `+strconv.Quote(closedURL)+` && s.failure.description !== "" && !s.loading`)
-		app.eval(`await window.zeroDesktop.openReview(` + project + `, ` + strconv.Quote(secure.URL+"/") + `); return true`)
-		app.waitEval("the refused certificate", `const s = `+state+`; return s?.failure?.kind === "certificate" && s.failure.url === `+strconv.Quote(secure.URL+"/")+` && !s.loading`)
-		app.eval(`await window.zeroDesktop.openReview(` + project + `, ` + strconv.Quote(site.URL+"/one") + `); return true`)
-		app.waitEval("a new page clears the failure", `const s = `+state+`; return s?.url === `+strconv.Quote(site.URL+"/one")+` && s.failure === null && !s.loading`)
-
-		if got := app.eval(`return await window.zeroDesktop.browserAction(` + project + `, "navigate").then(() => "done", () => "refused")`); got != "refused" {
-			t.Errorf("an unknown action = %v, want refused", got)
-		}
-		if got := app.eval(`return await window.zeroDesktop.browserAction("/no/such/project", "back").then(() => "done", () => "refused")`); got != "done" {
-			t.Errorf("an action for a project without a window = %v, want a no-op", got)
-		}
-		if got := app.eval(`return await window.zeroDesktop.browserState("relative").then(() => "done", () => "refused")`); got != "refused" {
-			t.Errorf("a relative project = %v, want refused", got)
-		}
-
-		// Open Location… in the guest window hands the keyboard to the tab.
-		if err := app.call("menu", map[string]any{"window": guest, "path": []string{"Page", "Open Location…"}}, nil); err != nil {
-			t.Fatal(err)
-		}
-		app.waitEval("zero:browser-focus for the project", `return window.__browserFocus.length === 1 && window.__browserFocus[0] === `+project)
-
-		app.eval(`window.__browserEvents = []; await window.zeroDesktop.browserAction(` + project + `, "close"); return true`)
-		deadline := time.Now().Add(pageTimeout)
-		for app.windowOn(site.URL) != 0 {
-			if time.Now().After(deadline) {
-				t.Fatal("the guest window did not close")
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-		app.waitEval("no guest window after close", `return `+state+` === null && window.__browserEvents.includes(`+project+`)`)
-	})
-
 	run("a crashed page reloads once, then says so", func(t *testing.T) {
 		app.waitEval("the page", treeShows("README.md"))
 		w.killWebProcess(t, app.cmd.Process.Pid)
@@ -1044,6 +788,265 @@ func TestWebViewApp(t *testing.T) {
 		// A crashed page comes back in a window of native UI too.
 		w.killWebProcess(t, app.cmd.Process.Pid)
 		shell.waitEval("the page after a crash", treeShows("README.md"))
+	})
+
+	// The Browser tab's guest (decision 0184): a page of anyone's shows in
+	// the window, over the rectangle the app's page reports, reaches nothing
+	// of Zero's, and answers the tab through the bridge.
+	t.Run("a guest page shows in the window", func(t *testing.T) {
+		w.t = t
+		w.env = append(w.env, "ZERO_EXPERIMENTAL=1")
+		defer func() { w.env = w.env[:len(w.env)-1] }()
+		app := w.launch(w.project)
+		defer app.stop()
+		shell := w.driver(t)
+		shell.waitEval("the project's tree", treeShows("README.md"))
+		guest := w.driver(t)
+		guest.guest = w.project
+
+		site := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+			response.Header().Set("Content-Type", "text/html")
+			_, _ = io.WriteString(response, `<!doctype html><title>`+request.URL.Path+`</title><body style="margin:0;background:#2a7"><a href="/two">Two</a>
+				<input id="field" style="position:absolute;left:20px;top:60px;width:200px;height:30px">
+				<script>window.clicks = []; addEventListener("click", (event) => clicks.push([event.clientX, event.clientY]))</script>`)
+		}))
+		defer site.Close()
+		secure := httptest.NewTLSServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+			_, _ = io.WriteString(response, "secure")
+		}))
+		defer secure.Close()
+		closed, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		closedURL := "http://" + closed.Addr().String() + "/"
+		_ = closed.Close()
+
+		project := strconv.Quote(w.project)
+		state := `(await window.zeroDesktop.browserState(` + project + `))`
+		frame := func(x, y, width, height int) string {
+			return fmt.Sprintf(`await window.zeroDesktop.browserFrame(%s, {x: %d, y: %d, width: %d, height: %d}); return true`, project, x, y, width, height)
+		}
+		if got := shell.eval(`const d = window.zeroDesktop; return [d.browserOpen, d.browserState, d.browserAction, d.browserFrame, d.browserSnapshot].map((method) => typeof method).join(" ")`); got != "function function function function function" {
+			t.Fatalf("bridge methods = %v", got)
+		}
+		shell.waitEval("no guest yet", `return `+state+` === null`)
+		shell.eval(`window.__browserEvents = []
+			window.__browserCommands = []
+			window.addEventListener("zero:browser", (event) => window.__browserEvents.push(event.detail))
+			window.addEventListener("zero:browser-command", (event) => { event.stopImmediatePropagation(); window.__browserCommands.push(event.detail) }, { capture: true })
+			return true`)
+
+		// A guest loads hidden: it shows once the page says where.
+		shell.eval(`await window.zeroDesktop.browserOpen(` + project + `, ` + strconv.Quote(site.URL+"/one") + `); return true`)
+		shell.waitEval("the first page's state", `const s = `+state+`; return s?.url === `+strconv.Quote(site.URL+"/one")+` && s.title === "/one" && !s.loading && !s.canGoBack && !s.canGoForward && s.failure === null`)
+		shell.waitEval("a zero:browser event for the project", `return window.__browserEvents.includes(`+project+`)`)
+		if shown := shell.shown(); shown.Project != "" || shown.Guests != 1 {
+			t.Errorf("before a frame the window shows %+v, want one hidden guest", shown)
+		}
+		guest.waitEval("the guest page and its script", `return document.title === "/one" && typeof window.__zeroBrowser === "object"`)
+		if got := guest.eval(`return typeof window.zeroDesktop`); got != "undefined" {
+			t.Errorf("guest page: zeroDesktop is %v, want no bridge", got)
+		}
+		// mygo refuses an untrusted page's calls whatever it names.
+		if got := guest.eval(`return window.mygo ? await window.mygo.call("Bridge.BrowserState", ` + project + `).then(() => "answered", () => "refused") : "refused"`); got != "refused" {
+			t.Errorf("a guest's call of the bridge = %v, want refused", got)
+		}
+		// The guest's requests to the app's scheme carry no Origin; the proxy
+		// refuses them by their page.
+		reached := guest.eval(`const image = new Image();
+			image.src = "zero-app://local/api/image?project=" + encodeURIComponent(` + project + `) + "&path=pic.png";
+			return await new Promise((resolve) => { image.onload = () => resolve("loaded"); image.onerror = () => resolve("refused") })`)
+		if reached != "refused" {
+			t.Errorf("a guest image from zero-app = %v, want refused", reached)
+		}
+
+		// The frame is the page's CSS pixels; the guest fills it and takes
+		// the keyboard, as after Enter in the address field.
+		shell.eval(frame(300, 100, 600, 400))
+		if shown := shell.waitShown("the guest at its frame", w.project); shown.X != 300 || shown.Y != 100 || shown.Width != 600 || shown.Height != 400 {
+			t.Errorf("the guest shows at %+v, want 300,100 600x400", shown)
+		}
+		guest.waitEval("the guest filling its frame", `return innerWidth === 600 && innerHeight === 400`)
+		guest.waitEval("the guest with the keyboard", `return document.hasFocus()`)
+		guest.capture("guest.png")
+
+		// A click inside the frame is the guest's, at its own coordinates: it
+		// is above the app's page, which sees nothing of it.
+		shell.eval(`window.__shellClicks = 0; addEventListener("click", () => window.__shellClicks++, true); return true`)
+		windowX, windowY := contentOrigin(t, shell)
+		click := func(x, y int) {
+			t.Helper()
+			xdo(t, "mousemove", strconv.Itoa(windowX+x), strconv.Itoa(windowY+y), "click", "1")
+		}
+		click(300+400, 100+300)
+		guest.waitEval("the click in the guest", `return window.clicks.length === 1 && Math.abs(window.clicks[0][0] - 400) <= 2 && Math.abs(window.clicks[0][1] - 300) <= 2`)
+		if got := shell.eval(`return window.__shellClicks`); got != float64(0) {
+			t.Errorf("the app's page saw %v clicks meant for the guest", got)
+		}
+		// Typing goes where the click went.
+		click(300+60, 100+75)
+		if output, err := exec.Command("xdotool", "type", "--delay", "40", "hello").CombinedOutput(); err != nil {
+			t.Fatalf("xdotool type: %v\n%s", err, output)
+		}
+		guest.waitEval("typing in the guest", `return document.getElementById("field").value === "hello"`)
+
+		// The guest follows its frame, and comes back from hiding at a new
+		// size.
+		shell.eval(frame(320, 120, 500, 300))
+		guest.waitEval("the guest resized with its frame", `return innerWidth === 500 && innerHeight === 300`)
+		shell.eval(`await window.zeroDesktop.browserFrame(` + project + `, null); return true`)
+		shell.waitShown("the hidden guest", "")
+		guest.waitEval("the hidden guest keeps its page", `return document.getElementById("field").value === "hello"`)
+		if got := shell.eval(`const png = await window.zeroDesktop.browserSnapshot(` + project + `); return typeof png === "string" && png.startsWith("iVBOR")`); got != true {
+			t.Errorf("a hidden guest's snapshot is no PNG")
+		}
+		shell.eval(frame(300, 100, 640, 420))
+		shell.waitShown("the guest shown again", w.project)
+		guest.waitEval("the guest shown again at a new size", `return innerWidth === 640 && innerHeight === 420`)
+		// A frame the window cannot show hides the guest.
+		shell.eval(frame(300, 100, 600, 4))
+		shell.waitShown("the guest hidden by a sliver of a frame", "")
+		if got := shell.eval(`return await window.zeroDesktop.browserFrame(` + project + `, {x: 0, y: 0, width: "wide", height: 10}).then(() => "done", () => "refused")`); got != "refused" {
+			t.Errorf("a frame that is no rectangle = %v, want refused", got)
+		}
+		shell.eval(frame(300, 100, 600, 400))
+		shell.waitShown("the guest back", w.project)
+
+		// The page moves; the tab reads its history and failures.
+		guest.eval(`document.querySelector("a").click(); return true`)
+		shell.waitEval("the second page's state", `const s = `+state+`; return s?.url === `+strconv.Quote(site.URL+"/two")+` && s.title === "/two" && !s.loading && s.canGoBack && !s.canGoForward`)
+		shell.eval(`await window.zeroDesktop.browserAction(` + project + `, "back"); return true`)
+		shell.waitEval("back on the first page", `const s = `+state+`; return s?.url === `+strconv.Quote(site.URL+"/one")+` && !s.loading && !s.canGoBack && s.canGoForward`)
+		// A page asking for the app's scheme is refused, and the failure
+		// names only the scheme and host.
+		guest.eval(`location.href = "zero-app://local/view?project=/secret"; return true`)
+		shell.waitEval("the refused navigation", `const s = `+state+`; return s?.failure?.kind === "refused" && s.failure.url === "zero-app://local" && s.url === `+strconv.Quote(site.URL+"/one"))
+		// View › Reload reloads what shows: the guest, not the app's page.
+		shell.eval(`window.__e2eKept = true; return true`)
+		guest.eval(`window.__e2eLoaded = true; return true`)
+		if err := app.call("menu", map[string]any{"path": []string{"View", "Reload"}}, nil); err != nil {
+			t.Errorf("View > Reload: %v", err)
+		}
+		guest.waitEval("the guest reloaded from the menu", `return window.__e2eLoaded === undefined && document.readyState === "complete"`)
+		shell.waitEval("a reload clears the failure", `const s = `+state+`; return s?.failure === null && !s.loading`)
+		if got := shell.eval(`return window.__e2eKept`); got != true {
+			t.Errorf("View > Reload reloaded the app's page under a guest")
+		}
+
+		shell.eval(`await window.zeroDesktop.browserOpen(` + project + `, ` + strconv.Quote(closedURL) + `); return true`)
+		shell.waitEval("the failed load", `const s = `+state+`; return s?.failure?.kind === "load" && s.failure.url === `+strconv.Quote(closedURL)+` && s.failure.description !== "" && !s.loading`)
+		shell.eval(`await window.zeroDesktop.browserOpen(` + project + `, ` + strconv.Quote(secure.URL+"/") + `); return true`)
+		shell.waitEval("the refused certificate", `const s = `+state+`; return s?.failure?.kind === "certificate" && s.failure.url === `+strconv.Quote(secure.URL+"/")+` && !s.loading`)
+		shell.eval(`await window.zeroDesktop.browserOpen(` + project + `, ` + strconv.Quote(site.URL+"/one") + `); return true`)
+		shell.waitEval("a new page clears the failure", `const s = `+state+`; return s?.url === `+strconv.Quote(site.URL+"/one")+` && s.failure === null && !s.loading`)
+
+		if got := shell.eval(`return await window.zeroDesktop.browserAction(` + project + `, "navigate").then(() => "done", () => "refused")`); got != "refused" {
+			t.Errorf("an unknown action = %v, want refused", got)
+		}
+		if got := shell.eval(`return await window.zeroDesktop.browserAction("/no/such/project", "back").then(() => "done", () => "refused")`); got != "done" {
+			t.Errorf("an action for a project without a guest = %v, want a no-op", got)
+		}
+		if got := shell.eval(`return await window.zeroDesktop.browserOpen(` + project + `, "file:///etc/passwd").then(() => "done", () => "refused")`); got != "refused" {
+			t.Errorf("a file URL = %v, want refused", got)
+		}
+		if got := shell.eval(`return await window.zeroDesktop.browserState("relative").then(() => "done", () => "refused")`); got != "refused" {
+			t.Errorf("a relative project = %v, want refused", got)
+		}
+
+		// Browser › Open Location… works while the guest has the keyboard: it
+		// names the project that shows and hands the keyboard to the app's
+		// page.
+		click(300+60, 100+75)
+		guest.waitEval("the guest with the keyboard again", `return document.hasFocus()`)
+		if err := app.call("menu", map[string]any{"path": []string{"Browser", "Open Location…"}}, nil); err != nil {
+			t.Fatal(err)
+		}
+		shell.waitEval("zero:browser-command for the project", `const [first] = window.__browserCommands; return window.__browserCommands.length === 1 && first.project === `+project+` && first.command === "location"`)
+		shell.waitEval("the app's page with the keyboard", `return document.hasFocus()`)
+
+		// A page of the app's that loads anew has no tab showing: the guest
+		// hides, and keeps its page.
+		shell.eval(`location.reload(); return true`)
+		shell.waitShown("the guest hidden by the app's page loading", "")
+		shell.waitEval("the project's tree after the reload", treeShows("README.md"))
+		shell.waitEval("the guest kept across the reload", `const s = `+state+`; return s?.url === `+strconv.Quote(site.URL+"/one"))
+
+		shell.eval(`window.__browserEvents = []
+			window.addEventListener("zero:browser", (event) => window.__browserEvents.push(event.detail))
+			await window.zeroDesktop.browserAction(` + project + `, "close"); return true`)
+		shell.waitEval("no guest after close", `return `+state+` === null && window.__browserEvents.includes(`+project+`)`)
+		if shown := shell.shown(); shown.Project != "" || shown.Guests != 0 {
+			t.Errorf("after close the window shows %+v, want no guest", shown)
+		}
+	})
+
+	t.Run("the Browser tab shows a page where its stage is", func(t *testing.T) {
+		w.t = t
+		w.env = append(w.env, "ZERO_EXPERIMENTAL=1")
+		defer func() { w.env = w.env[:len(w.env)-1] }()
+		app := w.launch(w.project)
+		defer app.stop()
+		shell := w.driver(t)
+		shell.waitEval("the project's tree", treeShows("README.md"))
+		guest := w.driver(t)
+		guest.guest = w.project
+		site := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+			response.Header().Set("Content-Type", "text/html")
+			_, _ = io.WriteString(response, `<!doctype html><title>Shop</title><body style="margin:0;background:#2a7">Shop`)
+		}))
+		defer site.Close()
+
+		// The activity opens the project's Browser tab, empty.
+		shell.waitEval("the Browser activity", `const button = [...document.querySelectorAll('nav[aria-label="Views"] button')].find((each) => (each.getAttribute("aria-label") ?? "").startsWith("Browser"))
+			if (!button) return false
+			button.click()
+			return true`)
+		shell.waitEval("the empty Browser tab", `return document.querySelector(".browser-stage")?.dataset.view === "empty" && document.querySelector('input[aria-label="Page address"]') !== null`)
+		if shown := shell.shown(); shown.Project != "" || shown.Guests != 0 {
+			t.Errorf("before an address the window shows %+v", shown)
+		}
+
+		// An address typed in the field opens the page over the stage, and
+		// the page takes the keyboard.
+		windowX, windowY := contentOrigin(t, shell)
+		center := func(selector string) (string, string) {
+			t.Helper()
+			at, ok := shell.eval(`const box = document.querySelector(` + strconv.Quote(selector) + `).getBoundingClientRect(); return [Math.round(box.left + box.width / 2), Math.round(box.top + box.height / 2)]`).([]any)
+			if !ok || len(at) != 2 {
+				t.Fatalf("no place for %s", selector)
+			}
+			x, _ := at[0].(float64)
+			y, _ := at[1].(float64)
+			return strconv.Itoa(windowX + int(x)), strconv.Itoa(windowY + int(y))
+		}
+		fieldX, fieldY := center(`input[aria-label="Page address"]`)
+		xdo(t, "mousemove", fieldX, fieldY, "click", "1")
+		shell.waitEval("the address field with the keyboard", `return document.activeElement === document.querySelector('input[aria-label="Page address"]')`)
+		xdo(t, "type", "--delay", "20", site.URL+"/")
+		xdo(t, "key", "Return")
+		shown := shell.waitShown("the guest over the stage", w.project)
+		stage := `const box = document.querySelector(".browser-stage").getBoundingClientRect(); const x = Math.round(box.left), y = Math.round(box.top);`
+		shell.waitEval("the guest where the stage is", stage+fmt.Sprintf(` return x === %v && y === %v && Math.round(box.right) - x === %v && Math.round(box.bottom) - y === %v && box.width > 300 && box.height > 300`, shown.X, shown.Y, shown.Width, shown.Height))
+		guest.waitEval("the page filling the stage", fmt.Sprintf(`return document.title === "Shop" && innerWidth === %v && innerHeight === %v`, shown.Width, shown.Height))
+		guest.waitEval("the page with the keyboard", `return document.hasFocus()`)
+		shell.waitEval("the tab following the page", `return document.querySelector('input[aria-label="Page address"]').value === `+strconv.Quote(site.URL+"/")+` && document.querySelector(".browser-stage").dataset.view === "page" && document.querySelector(".browser-view").innerText.includes(`+strconv.Quote(strings.TrimPrefix(site.URL, "http://"))+`)`)
+		shell.capture("browser-tab.png")
+
+		// The address list drops over the stage: the guest gives way to its
+		// snapshot, and comes back when the list closes.
+		if err := app.call("menu", map[string]any{"path": []string{"Browser", "Open Location…"}}, nil); err != nil {
+			t.Fatal(err)
+		}
+		shell.waitEval("the address field from the menu", `return document.hasFocus() && document.activeElement === document.querySelector('input[aria-label="Page address"]')`)
+		xdo(t, "type", "--delay", "20", "localhost")
+		shell.waitShown("the guest hidden under the address list", "")
+		shell.waitEval("the snapshot in the guest's place", `return document.querySelector(".browser-stage-cover")?.naturalWidth > 0 && document.querySelector(".browser-address-list") !== null`)
+		shell.capture("browser-tab-covered.png")
+		xdo(t, "key", "Escape")
+		shell.waitShown("the guest back after the list closed", w.project)
+		shell.waitEval("the snapshot gone", `return document.querySelector(".browser-stage-cover") === null`)
+		guest.waitEval("the page kept", `return document.title === "Shop"`)
 	})
 
 	t.Run("state survives a restart", func(t *testing.T) {
@@ -1873,6 +1876,9 @@ func (s *session) evalErr(script string) (any, error) {
 	if s.target != 0 {
 		params["window"] = s.target
 	}
+	if s.guest != "" {
+		params["project"] = s.guest
+	}
 	err := s.call("eval", params, &result)
 	return result.Value, err
 }
@@ -1910,7 +1916,11 @@ func (s *session) capture(name string) {
 	var result struct {
 		PNG string `json:"png"`
 	}
-	if err := s.call("capture", nil, &result); err != nil {
+	var params map[string]any
+	if s.guest != "" {
+		params = map[string]any{"project": s.guest}
+	}
+	if err := s.call("capture", params, &result); err != nil {
 		s.t.Errorf("capture %s: %v", name, err)
 		return
 	}
@@ -2088,79 +2098,38 @@ func adler32(data []byte) uint32 {
 	return b<<16 | a
 }
 
-// screenCapture is what screenCapture() hands the local window (decisions
-// 0177, 0180).
-type screenCapture struct {
-	ID      string `json:"id"`
-	Project string `json:"project"`
-	PNG     string `json:"png"`
-	Page    struct {
-		URL      string `json:"url"`
-		Title    string `json:"title"`
-		Viewport struct {
-			Width             int     `json:"width"`
-			Height            int     `json:"height"`
-			DeviceScaleFactor float64 `json:"deviceScaleFactor"`
-		} `json:"viewport"`
-		Scroll struct{ X, Y int } `json:"scroll"`
-	} `json:"page"`
-	Hits  *screenHits `json:"hits"`
-	Drift bool        `json:"drift"`
-}
-
-type screenRect struct{ X, Y, Width, Height int }
-
-type screenHits struct {
-	Step     int         `json:"step"`
-	Columns  int         `json:"columns"`
-	Rows     int         `json:"rows"`
-	Grid     []int       `json:"grid"`
-	Elements []screenHit `json:"elements"`
-}
-
-type screenHit struct {
-	Parent     int         `json:"parent"`
-	Tag        string      `json:"tag"`
-	Selector   string      `json:"selector"`
-	Role       string      `json:"role"`
-	Name       string      `json:"name"`
-	Box        *screenRect `json:"box"`
-	Meaningful bool        `json:"meaningful"`
-}
-
-// bySelector is the element the page described by selector, or nil.
-func (h *screenHits) bySelector(selector string) *screenHit {
-	for index := range h.Elements {
-		if h.Elements[index].Selector == selector {
-			return &h.Elements[index]
-		}
-	}
-	return nil
-}
-
-// at is the element the hit map shows at a CSS point: the topmost at its
-// cell, or the nearest ancestor holding the point.
-func (h *screenHits) at(x, y int) *screenHit {
-	cell := h.Grid[min(y/h.Step, h.Rows-1)*h.Columns+min(x/h.Step, h.Columns-1)]
-	for index := cell; index >= 0; index = h.Elements[index].Parent {
-		box := h.Elements[index].Box
-		if box != nil && x >= box.X && x < box.X+box.Width && y >= box.Y && y < box.Y+box.Height {
-			return &h.Elements[index]
-		}
-	}
-	return nil
-}
-
-// checkPixel reports the frame's color at a point that is not want, within
-// the rounding a compositor allows.
-func checkPixel(t *testing.T, frame image.Image, what string, x, y float64, want [3]uint8) {
+// xdo drives the X display's pointer and keyboard.
+func xdo(t *testing.T, args ...string) {
 	t.Helper()
-	r, g, b, _ := frame.At(int(math.Round(x)), int(math.Round(y))).RGBA()
-	got := [3]uint8{uint8(r >> 8), uint8(g >> 8), uint8(b >> 8)}
-	for index := range got {
-		if diff := int(got[index]) - int(want[index]); diff > 8 || diff < -8 {
-			t.Errorf("%s at frame %.0f,%.0f is rgb%v, want rgb%v: the screenshot and the hit map disagree", what, x, y, got, want)
-			return
-		}
+	if output, err := exec.Command("xdotool", args...).CombinedOutput(); err != nil {
+		t.Fatalf("xdotool %s: %v\n%s", strings.Join(args, " "), err, output)
 	}
+}
+
+// contentOrigin is where the window's content starts on the screen: the
+// pointer over the app's page says, under any menu bar.
+func contentOrigin(t *testing.T, shell *session) (int, int) {
+	t.Helper()
+	shell.eval(`window.__origin = null; addEventListener("mousemove", (event) => { window.__origin = [event.screenX - event.clientX, event.screenY - event.clientY] }); return true`)
+	geometry, err := exec.Command("sh", "-c", `xdotool search --onlyvisible --name '^Zero$' | head -1 | xargs -r xdotool getwindowgeometry --shell`).Output()
+	if err != nil {
+		t.Fatalf("xdotool: %v", err)
+	}
+	var x, y int
+	for _, line := range strings.Split(string(geometry), "\n") {
+		_, _ = fmt.Sscanf(line, "X=%d", &x)
+		_, _ = fmt.Sscanf(line, "Y=%d", &y)
+	}
+	for _, step := range []int{120, 140, 160} {
+		xdo(t, "mousemove", strconv.Itoa(x+step), strconv.Itoa(y+500))
+		time.Sleep(100 * time.Millisecond)
+	}
+	shell.waitEval("the pointer over the app's page", `return Array.isArray(window.__origin)`)
+	found, ok := shell.eval(`return window.__origin`).([]any)
+	if !ok || len(found) != 2 {
+		t.Fatalf("the content's origin = %v", found)
+	}
+	left, _ := found[0].(float64)
+	top, _ := found[1].(float64)
+	return int(left), int(top)
 }

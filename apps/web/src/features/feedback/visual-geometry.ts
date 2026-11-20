@@ -11,11 +11,6 @@ export interface Size {
   height: number
 }
 
-export interface Point {
-  x: number
-  y: number
-}
-
 // regionMargin is the margin a region attachment keeps around the
 // rectangle, in CSS pixels (decision 0176, U2).
 export const regionMargin = 48
@@ -37,15 +32,6 @@ export function clipToBounds(rect: FeedbackRect, bounds: Size): FeedbackRect | n
   const bottom = clamp(Math.ceil(rect.y + rect.height), 0, bounds.height)
   if (right - left < 1 || bottom - top < 1) return null
   return { x: left, y: top, width: right - left, height: bottom - top }
-}
-
-// dragRect is the rectangle between two points of a drag in image pixels,
-// either corner first, rounded outward and kept inside the image; null for
-// a drag that covers no whole pixel.
-export function dragRect(start: Point, end: Point, image: Size): FeedbackRect | null {
-  const x = Math.min(start.x, end.x)
-  const y = Math.min(start.y, end.y)
-  return clipToBounds({ x, y, width: Math.abs(end.x - start.x), height: Math.abs(end.y - start.y) }, image)
 }
 
 // expand grows rect by margin on every side, kept inside bounds.
@@ -95,45 +81,6 @@ export function cssToImage(box: FeedbackRect, clip: FeedbackRect | null, deviceS
   }
   // Rounding happens once, after moving into the image.
   return clipToBounds(clip ? { ...frame, x: frame.x - clip.x, y: frame.y - clip.y } : frame, image)
-}
-
-// cssCenter is a frame rectangle's center in CSS pixels, where the page is
-// asked for its element.
-export function cssCenter(rect: FeedbackRect, deviceScaleFactor: number): Point {
-  return { x: (rect.x + rect.width / 2) / deviceScaleFactor, y: (rect.y + rect.height / 2) / deviceScaleFactor }
-}
-
-// contains reports a point inside rect, edges included.
-export function contains(rect: FeedbackRect, point: Point): boolean {
-  return point.x >= rect.x && point.x <= rect.x + rect.width && point.y >= rect.y && point.y <= rect.y + rect.height
-}
-
-// nudge moves rect by (dx, dy) image pixels, or with resize grows its
-// width and height instead, kept at least 1 × 1 and inside the image: the
-// composer's keyboard alternative to dragging.
-export function nudge(rect: FeedbackRect, dx: number, dy: number, resize: boolean, image: Size): FeedbackRect {
-  if (resize) {
-    return {
-      ...rect,
-      width: clamp(rect.width + dx, 1, image.width - rect.x),
-      height: clamp(rect.height + dy, 1, image.height - rect.y),
-    }
-  }
-  return { ...rect, x: clamp(rect.x + dx, 0, image.width - rect.width), y: clamp(rect.y + dy, 0, image.height - rect.height) }
-}
-
-// nudgeStep is one arrow key's step: a hundredth of the image's longer
-// side, at least one pixel.
-export function nudgeStep(image: Size): number {
-  return Math.max(1, Math.round(Math.max(image.width, image.height) / 100))
-}
-
-// centeredRect is the rectangle the keyboard starts from: the middle
-// quarter of the image.
-export function centeredRect(image: Size): FeedbackRect {
-  const width = Math.max(1, Math.round(image.width / 4))
-  const height = Math.max(1, Math.round(image.height / 4))
-  return { x: Math.floor((image.width - width) / 2), y: Math.floor((image.height - height) / 2), width, height }
 }
 
 // Fraction is a rectangle as fractions of an image, for CSS percentages.

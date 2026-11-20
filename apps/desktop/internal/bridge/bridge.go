@@ -306,30 +306,30 @@ func NewDiagnostics(version, commit, logDir string, lines, crash []string, home 
 	return Diagnostics{Version: version, Commit: commit, LogDir: logfile.Redact(logDir, home), LogLines: redact(lines), CrashLines: redact(crash)}
 }
 
-// OpenReview is a request to review a project's page in its guest window
-// (decisions 0175, 0177): an absolute http or https URL.
-type OpenReview struct {
+// BrowserOpen is browserOpen's payload (decision 0184): the page to show in a
+// project's guest, an absolute http or https URL.
+type BrowserOpen struct {
 	Project string
 	URL     string
 }
 
-// ParseOpenReview validates openReview's payload: an absolute project
+// ParseBrowserOpen validates browserOpen's payload: an absolute project
 // directory and a page URL review.CheckURL accepts.
-func ParseOpenReview(project, pageURL any) (OpenReview, bool) {
-	p, okP := project.(string)
+func ParseBrowserOpen(project, pageURL any) (BrowserOpen, bool) {
+	p, okP := ParseBrowserProject(project)
 	u, okU := pageURL.(string)
-	if !okP || !okU || !isPlainAbsolute(p) {
-		return OpenReview{}, false
+	if !okP || !okU {
+		return BrowserOpen{}, false
 	}
 	checked, ok := review.CheckURL(u)
 	if !ok {
-		return OpenReview{}, false
+		return BrowserOpen{}, false
 	}
-	return OpenReview{Project: p, URL: checked}, true
+	return BrowserOpen{Project: p, URL: checked}, true
 }
 
-// ParseBrowserProject validates browserState's payload: an absolute project
-// directory (decision 0181).
+// ParseBrowserProject validates a project of the Browser tab's calls: an
+// absolute project directory.
 func ParseBrowserProject(project any) (string, bool) {
 	p, ok := project.(string)
 	if !ok || !isPlainAbsolute(p) {
@@ -339,23 +339,19 @@ func ParseBrowserProject(project any) (string, bool) {
 }
 
 // BrowserAction is browserAction's payload: what to do with a project's
-// guest window (decision 0181).
+// guest.
 type BrowserAction struct {
 	Project string
 	Action  string
 }
 
-// Browser actions: history moves, loading, the window itself, and Comment on
-// Screen with or without its countdown.
+// Browser actions: history moves, loading, and closing the guest.
 const (
-	BrowserBack           = "back"
-	BrowserForward        = "forward"
-	BrowserReload         = "reload"
-	BrowserStop           = "stop"
-	BrowserShow           = "show"
-	BrowserClose          = "close"
-	BrowserComment        = "comment"
-	BrowserCommentDelayed = "commentDelayed"
+	BrowserBack    = "back"
+	BrowserForward = "forward"
+	BrowserReload  = "reload"
+	BrowserStop    = "stop"
+	BrowserClose   = "close"
 )
 
 // ParseBrowserAction validates browserAction's payload: an absolute project
@@ -367,8 +363,47 @@ func ParseBrowserAction(project, action any) (BrowserAction, bool) {
 		return BrowserAction{}, false
 	}
 	switch a {
-	case BrowserBack, BrowserForward, BrowserReload, BrowserStop, BrowserShow, BrowserClose, BrowserComment, BrowserCommentDelayed:
+	case BrowserBack, BrowserForward, BrowserReload, BrowserStop, BrowserClose:
 		return BrowserAction{Project: p, Action: a}, true
 	}
 	return BrowserAction{}, false
+}
+
+// BrowserFrame is browserFrame's payload: where a project's guest shows, in
+// CSS pixels of the sender's viewport, or Shown false to hide it.
+type BrowserFrame struct {
+	Project             string
+	Shown               bool
+	X, Y, Width, Height float64
+}
+
+// maxFrameCoordinate bounds a frame's numbers; nothing lays out farther.
+const maxFrameCoordinate = 1 << 20
+
+// ParseBrowserFrame validates browserFrame's payload: an absolute project
+// directory, and null or a rectangle of finite numbers with a size.
+func ParseBrowserFrame(project, frame any) (BrowserFrame, bool) {
+	p, ok := ParseBrowserProject(project)
+	if !ok {
+		return BrowserFrame{}, false
+	}
+	if frame == nil {
+		return BrowserFrame{Project: p}, true
+	}
+	fields, ok := frame.(map[string]any)
+	if !ok {
+		return BrowserFrame{}, false
+	}
+	number := func(name string) (float64, bool) {
+		value, ok := fields[name].(float64)
+		return value, ok && !math.IsNaN(value) && math.Abs(value) <= maxFrameCoordinate
+	}
+	x, okX := number("x")
+	y, okY := number("y")
+	width, okW := number("width")
+	height, okH := number("height")
+	if !okX || !okY || !okW || !okH || width <= 0 || height <= 0 {
+		return BrowserFrame{}, false
+	}
+	return BrowserFrame{Project: p, Shown: true, X: x, Y: y, Width: width, Height: height}, true
 }

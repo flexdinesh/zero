@@ -10,7 +10,7 @@ import {
   startupTab,
   updateMemory,
 } from "./workspace-memory.ts"
-import { includesTab, type WorkspaceTab } from "./workspace-tabs.ts"
+import { includesTab, type TabFeatures, type WorkspaceTab } from "./workspace-tabs.ts"
 
 interface ProjectMemoryOptions {
   project: string
@@ -21,13 +21,16 @@ interface ProjectMemoryOptions {
   tabs: readonly WorkspaceTab[]
   // welcome opens the Welcome tab when nothing is routed or restored.
   welcome: boolean
+  // features is which experimental tabs the window offers; the rest are
+  // not restored.
+  features: TabFeatures
   restore(tabs: readonly WorkspaceTab[]): void
   openRemembered(tab: WorkspaceTab): void
 }
 
 // useProjectMemory restores a project's remembered tabs once its first page
 // loads, checked against the fresh tree, then remembers tabs as they change.
-export function useProjectMemory({ project, page, active, tabs, welcome, restore, openRemembered }: ProjectMemoryOptions) {
+export function useProjectMemory({ project, page, active, tabs, welcome, features, restore, openRemembered }: ProjectMemoryOptions) {
   const [restored, setRestored] = useState<{ opening: boolean } | null>(null)
   const ready = page !== null && !page.error && page.project === project
   const sessionKey = page?.sessionKey ?? ""
@@ -35,12 +38,12 @@ export function useProjectMemory({ project, page, active, tabs, welcome, restore
 
   useEffect(() => {
     if (restored || !ready) return
-    const remembered = restoreTabs(projectMemory(readMemory(), project), files)
+    const remembered = restoreTabs(projectMemory(readMemory(), project), files, features)
     restore(remembered.tabs)
     const opening = startupTab(active, remembered, welcome)
     setRestored({ opening: opening !== null })
     if (opening) openRemembered(opening)
-  }, [active, files, openRemembered, project, ready, restore, restored, welcome])
+  }, [active, features, files, openRemembered, project, ready, restore, restored, welcome])
 
   useEffect(() => {
     // Restoration schedules tab state and possibly navigation. Wait for those

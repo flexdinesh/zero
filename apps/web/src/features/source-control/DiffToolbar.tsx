@@ -7,6 +7,7 @@ import { menuGroupLabelClass, menuItemClass, menuPopupClass, menuPositionerClass
 import { SegmentedControl, SegmentedItem } from "../../components/ui/segmented-control.tsx"
 import { diffOptionsModified, effectiveDiffStyle, inlineChoices, type DiffOptions } from "./diff-options.ts"
 import { reviewKeyShortcuts } from "./review-keys.ts"
+import { OverlayLayer } from "../../lib/overlay-layers.ts"
 
 interface DiffToolbarProps {
   options: DiffOptions
@@ -86,6 +87,7 @@ export function DiffToolbar({ anyExpanded, files, hasChanges, narrow, onChange, 
                   ))}
                 </Menu.RadioGroup>
               </Menu.Group>
+              <OverlayLayer />
             </Menu.Popup>
           </Menu.Positioner>
         </Menu.Portal>

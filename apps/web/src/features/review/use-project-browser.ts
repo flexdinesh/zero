@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
-import { desktopBridge, type BrowserAction, type BrowserState } from "../../lib/desktop-bridge.ts"
+import { desktopBridge, hostsBrowser, type BrowserAction, type BrowserState } from "../../lib/desktop-bridge.ts"
 import { parseRecent, recentStorageKey, rememberURL, type RecentURLs } from "./review-model.ts"
 
 function readRecent(): RecentURLs {
@@ -24,35 +24,37 @@ function writeRecent(recent: RecentURLs) {
 // window switches to that project; its workspace takes it once mounted.
 let pendingFocus: string | null = null
 
-// ProjectBrowser is a project's Browser tab's link to its guest window
-// (decision 0181).
+// ProjectBrowser is a project's link to its guest, the page its Browser tab
+// shows (decision 0184).
 export interface ProjectBrowser {
-  // available says this window can open a guest window: the desktop app's
-  // local window.
+  // available says this window hosts the Browser: the desktop app with
+  // experimental features on.
   available: boolean
-  // state is the guest window's, or null without one.
+  // state is the guest's, or null without one.
   state: BrowserState | null
-  // recent is the project's pages, most recent first; the first is the last
-  // page reviewed, which a closed window reopens.
+  // recent is the project's pages, most recent first.
   recent: readonly string[]
+  // open shows a page in the guest, making it first if the project has
+  // none, and remembers the page.
   open(url: string): void
   act(action: BrowserAction): void
-  // requestFocus gives the address field the keyboard, once the tab has
-  // registered it with registerField.
+  // requestFocus gives the address field the keyboard and selects its
+  // text, once the tab has registered it with registerField.
   requestFocus(): void
   registerField(focus: (() => void) | null): void
 }
 
-// useProjectBrowser follows a project's guest window: it reads the window's
-// state on mount, when the app announces a change (zero:browser, whose
-// detail is the project), and when this window regains focus, which
-// catches a page's own history moves.
+// useProjectBrowser follows a project's guest: it reads the guest's state
+// on mount, when the app announces a change (zero:browser, whose detail is
+// the project), after each thing it asks of the guest, and when this window
+// regains focus, which catches a page's own history moves. The newest read
+// wins.
 export function useProjectBrowser(project: string): ProjectBrowser {
   const bridge = useMemo(() => desktopBridge(), [])
-  const openReview = bridge?.openReview ?? null
-  const browserState = bridge?.browserState ?? null
-  const browserAction = bridge?.browserAction ?? null
-  const available = Boolean(openReview && browserState && browserAction)
+  const available = hostsBrowser(bridge)
+  const browserOpen = available ? bridge?.browserOpen ?? null : null
+  const browserState = available ? bridge?.browserState ?? null : null
+  const browserAction = available ? bridge?.browserAction ?? null : null
   const [state, setState] = useState<BrowserState | null>(null)
   const [recent, setRecent] = useState<readonly string[]>(() => readRecent()[project] ?? [])
   const reads = useRef(0)
@@ -69,7 +71,7 @@ export function useProjectBrowser(project: string): ProjectBrowser {
   }, [browserState, project])
 
   useEffect(() => {
-    if (!available) return
+    if (!browserState) return
     refresh()
     function onChange(event: Event) {
       if (event instanceof CustomEvent && event.detail === project) refresh()
@@ -80,19 +82,19 @@ export function useProjectBrowser(project: string): ProjectBrowser {
       window.removeEventListener("zero:browser", onChange)
       window.removeEventListener("focus", refresh)
     }
-  }, [available, project, refresh])
+  }, [browserState, project, refresh])
 
   const open = useCallback((url: string) => {
-    if (!openReview) return
+    if (!browserOpen) return
     const remembered = rememberURL(readRecent(), project, url)
     writeRecent(remembered)
     setRecent(remembered[project] ?? [])
-    openReview(project, url)
-  }, [openReview, project])
+    void browserOpen(project, url).then(refresh)
+  }, [browserOpen, project, refresh])
 
   const act = useCallback((action: BrowserAction) => {
-    browserAction?.(project, action)
-  }, [browserAction, project])
+    void browserAction?.(project, action).then(refresh)
+  }, [browserAction, project, refresh])
 
   // Focus moves a frame later: a palette or menu that asked for it closes
   // first and puts focus back where it was.
@@ -125,30 +127,40 @@ export function focusBrowserLater(project: string) {
   pendingFocus = project
 }
 
-// useDesktopBrowserFocus answers the desktop app's requests for the address
-// field: Review › Review URL… (zero:review-url, for this window's project)
-// and a guest window's Open Location… (zero:browser-focus, whose detail is
-// the guest's project).
-export function useDesktopBrowserFocus(focus: (project: string | null) => void) {
-  const latest = useRef(focus)
+const mac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform)
+
+// useBrowserLocation answers Open Location (Ctrl/Cmd+L), which takes the
+// address field of a project's Browser tab. The desktop app's Browser menu
+// sends it as zero:browser-command with command "location", since its
+// accelerator works while the guest has the keyboard; its project is the
+// one whose guest shows in this window, or null for the window's own. The
+// same keys pressed in Zero's page do the same for its project.
+export function useBrowserLocation(enabled: boolean, locate: (project: string | null) => void) {
+  const latest = useRef(locate)
   useEffect(() => {
-    latest.current = focus
-  }, [focus])
+    latest.current = locate
+  }, [locate])
   useEffect(() => {
-    function onReviewURL(event: Event) {
+    if (!enabled) return
+    function onCommand(event: Event) {
+      if (!(event instanceof CustomEvent)) return
+      const detail: unknown = event.detail
+      if (typeof detail !== "object" || detail === null || !("command" in detail) || detail.command !== "location") return
+      const target = "project" in detail && typeof detail.project === "string" && detail.project ? detail.project : null
+      event.preventDefault()
+      latest.current(target)
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.defaultPrevented || event.code !== "KeyL" || event.altKey || event.shiftKey) return
+      if (!(mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey)) return
       event.preventDefault()
       latest.current(null)
     }
-    function onFocus(event: Event) {
-      if (!(event instanceof CustomEvent) || typeof event.detail !== "string" || !event.detail) return
-      event.preventDefault()
-      latest.current(event.detail)
-    }
-    window.addEventListener("zero:review-url", onReviewURL)
-    window.addEventListener("zero:browser-focus", onFocus)
+    window.addEventListener("zero:browser-command", onCommand)
+    window.addEventListener("keydown", onKey)
     return () => {
-      window.removeEventListener("zero:review-url", onReviewURL)
-      window.removeEventListener("zero:browser-focus", onFocus)
+      window.removeEventListener("zero:browser-command", onCommand)
+      window.removeEventListener("keydown", onKey)
     }
-  }, [])
+  }, [enabled])
 }

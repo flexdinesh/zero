@@ -11,7 +11,7 @@ import { routeFeedback, routeThread } from "../features/feedback/feedback-model.
 // compare: uncommitted changes, the branch, a commit, or a commit range
 // (decision 0035), a walkthrough's own tab: its cover and notes (decision
 // 0047), the Welcome tab (decision 0052), the project's Browser tab
-// (decision 0181), or a visual feedback thread's screen tab: its screenshot
+// (decision 0184), or a visual feedback thread's screen tab: its screenshot
 // and conversation (decision 0182). Pure helpers; components and memory
 // share them.
 
@@ -91,6 +91,21 @@ export function browserTab(): WorkspaceTab {
 // screenTab is a visual thread's tab: thread number of feedback id.
 export function screenTab(feedback: string, thread: number): WorkspaceTab {
   return { kind: "screen", feedback, thread }
+}
+
+// TabFeatures is which experimental tabs this window offers (decision
+// 0184): the Browser tab, where the desktop app hosts its page, and screen
+// tabs, with experimental features on.
+export interface TabFeatures {
+  browser: boolean
+  screens: boolean
+}
+
+// offeredTab reports a tab this window can show. The others neither open
+// from a route nor restore from memory.
+export function offeredTab(tab: WorkspaceTab, features: TabFeatures): boolean {
+  if (tab.kind === "browser") return features.browser
+  return tab.kind !== "screen" || features.screens
 }
 
 // tabKey identifies a tab uniquely across kinds.

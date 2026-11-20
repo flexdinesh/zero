@@ -8,6 +8,7 @@ import { desktopBridge } from "../lib/desktop-bridge.ts"
 import { buttonTitle, historyMenuDelta, historyMenuItems, type HistoryDirection } from "./history-controls.ts"
 import { canGoBack, canGoForward, steps, type HistoryLog } from "./navigation-history.ts"
 import type { NavigationHistoryStore } from "./navigation-history-store.ts"
+import { OverlayLayer } from "../lib/overlay-layers.ts"
 
 const mac = typeof navigator !== "undefined" && navigator.platform.includes("Mac")
 // A held button opens its list, as a browser's Back does.
@@ -127,6 +128,7 @@ export function NavigationButtons({ log, project, store }: NavigationButtonsProp
                     {item.label}
                   </Menu.Item>
                 ))}
+                <OverlayLayer />
               </Menu.Popup>
             </Menu.Positioner>
           </Menu.Portal>

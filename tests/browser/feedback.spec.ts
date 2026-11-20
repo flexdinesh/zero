@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process"
 import { createHash } from "node:crypto"
-import { existsSync, writeFileSync } from "node:fs"
+import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import path from "node:path"
 
 import { expect, type APIRequestContext, type Page } from "@playwright/test"
@@ -8,12 +8,16 @@ import { isFeedback } from "../../packages/contracts/src/index.ts"
 import { test } from "./live-test.ts"
 
 import { copiedText, grantClipboard, recordClipboard } from "./clipboard.ts"
+import { experimentalDesktop } from "./desktop-fake.ts"
 import { gitFixtureRoot, upperBranch } from "./git-fixture.ts"
 
 // Review feedback threads (decision 0120). Each test serves its own copy of
 // the git fixture, so its repository's feedback starts empty.
 test.skip(() => !existsSync(path.join(gitFixtureRoot, ".git")), "git is not installed")
 test.use({ seed: gitFixtureRoot })
+
+// The contract fixture's screenshot: 612 × 288.
+const screenshot = readFileSync(path.join(import.meta.dirname, "../../testdata/api/default/feedback-attachment.png"))
 
 function reviewFile(page: Page, file: string) {
   return page.getByRole("main").getByRole("region", { name: file, exact: true })
@@ -591,9 +595,11 @@ test("narrowing Feedback to a file keeps every open thread in the badge", async 
 
 // A branch review takes code and screen comments into one feedback (decision
 // 0176): the review places only the code thread, the Feedback view lists
-// both, and the screenshot loads again in a browser opened afresh.
+// both, and the screenshot loads again in a browser opened afresh. Screen
+// threads show where experimental features are on (decision 0184).
 test("a branch review holds code and screen comments, and the screenshot outlives the browser", async ({ page, browser, request, live }) => {
   test.setTimeout(60_000)
+  await experimentalDesktop(page)
   await page.setViewportSize({ width: 1440, height: 1000 })
   const project = encodeURIComponent(live.root)
   await page.goto(`${live.origin}/view?project=${project}&review=branch#f=docs/history.md`)
@@ -601,41 +607,31 @@ test("a branch review holds code and screen comments, and the screenshot outlive
   await comment(page, "docs/history.md", 1, "Say when this changed.")
   await expectFeedbackBadge(page, 1)
 
-  // A screenshot dropped on the Feedback view opens the composer.
+  // A screen comment joins the same feedback.
+  const id = await feedbackId(request, live.origin, live.root)
+  const upload = await request.post(`${live.origin}/api/feedback-attachments?project=${project}`, {
+    data: screenshot, headers: { "Content-Type": "image/png", Origin: live.origin },
+  })
+  expect(upload.ok()).toBe(true)
+  const { id: attachment }: { id: string } = await upload.json()
+  const created = await request.post(`${live.origin}/api/feedback-threads`, {
+    data: { project: live.root, id, body: "The badge clips at this width.", visual: { attachment, rect: { x: 96, y: 96, width: 420, height: 96 } } },
+    headers: { Origin: live.origin },
+  })
+  expect(created.ok()).toBe(true)
+  await expectFeedbackBadge(page, 2)
   await page.getByRole("navigation", { name: "Views" }).getByRole("button", { name: /^Feedback/ }).click()
   const view = page.locator(".feedback-view")
-  const dataTransfer = await page.evaluateHandle(async () => {
-    const canvas = document.createElement("canvas")
-    canvas.width = 320
-    canvas.height = 200
-    const context = canvas.getContext("2d")
-    if (!context) throw new Error("no 2d context")
-    context.fillStyle = "#3366cc"
-    context.fillRect(40, 40, 120, 60)
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"))
-    if (!blob) throw new Error("no PNG")
-    const transfer = new DataTransfer()
-    transfer.items.add(new File([blob], "shot.png", { type: "image/png" }))
-    return transfer
-  })
-  await view.dispatchEvent("drop", { dataTransfer })
-  const stage = page.getByRole("group", { name: /^Screenshot\. Drag to mark a region/ })
-  await expect(stage).toBeVisible()
-  await stage.focus()
-  await page.keyboard.press("ArrowRight")
-  await page.getByRole("textbox", { name: "Comment", exact: true }).fill("The badge clips at this width.")
-  await page.getByRole("button", { name: "Send", exact: true }).click()
-  await expect(stage).toHaveCount(0)
-  await expectFeedbackBadge(page, 2)
 
   // One feedback, numbered in turn: the code thread under its file, the
   // screen thread under Screenshots.
   const rows = view.getByRole("listbox", { name: "Threads" })
   await expect(rows.getByRole("group", { name: "docs/history.md" }).getByRole("option", { name: /^Thread 1, Open: / })).toBeVisible()
   await expect(rows.getByRole("group", { name: "Screenshots" }).getByRole("option", { name: /^Thread 2, Open: / })).toBeVisible()
-  // Send opened the screen thread's tab (decision 0182); back in the
+  // The screen thread opens its own tab (decision 0182); back in the
   // review, the code thread is placed and the screenshot left out.
   const main = page.getByRole("main")
+  await rows.getByRole("group", { name: "Screenshots" }).getByRole("option").click()
   await expect(page.locator('[data-tab^="screen:"]')).toHaveAttribute("aria-selected", "true")
   await page.locator('[data-tab^="review:"]').click()
   await expect(main.getByRole("region", { name: /^Thread 1: / })).toBeVisible()
@@ -648,19 +644,20 @@ test("a branch review holds code and screen comments, and the screenshot outlive
   const shot = stored.threads.find((each) => each.number === 2)?.visual
   if (!shot) throw new Error("thread 2 has no screenshot")
   expect(stored.threads.find((each) => each.number === 1)?.anchor?.path).toBe("docs/history.md")
-  expect([shot.attachment.width, shot.attachment.height, shot.available]).toEqual([320, 200, true])
+  expect([shot.attachment.width, shot.attachment.height, shot.available]).toEqual([612, 288, true])
 
   // Close the browser that took it; a fresh one loads it from the server.
   await page.context().close()
   const context = await browser.newContext()
   try {
     const fresh = await context.newPage()
+    await experimentalDesktop(fresh)
     await fresh.goto(`${live.origin}/?project=${project}`)
     await fresh.getByRole("navigation", { name: "Views" }).getByRole("button", { name: /^Feedback/ }).click()
     await fresh.getByRole("option", { name: /^Thread 2, Open: / }).click()
     const image = fresh.getByRole("main").getByRole("region", { name: "Screenshot" }).locator("img.visual-image")
     await expect(image).toBeVisible()
-    await expect.poll(() => image.evaluate((element) => element instanceof HTMLImageElement && element.complete ? element.naturalWidth : 0)).toBe(320)
+    await expect.poll(() => image.evaluate((element) => element instanceof HTMLImageElement && element.complete ? element.naturalWidth : 0)).toBe(612)
     const served = await request.get(`${live.origin}/api/feedback-attachment?project=${project}&id=${stored.id}&attachment=${shot.attachment.id}`)
     expect(served.headers()["content-type"]).toBe("image/png")
     expect(createHash("sha256").update(await served.body()).digest("hex")).toBe(shot.attachment.sha256)

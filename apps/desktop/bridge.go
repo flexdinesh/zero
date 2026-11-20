@@ -23,15 +23,24 @@ import (
 // preloadScript is window.zeroDesktop (decisions 0081, 0098) over mygo's IPC,
 // on the app's origins only. The UI feature-detects every method. A remote
 // server's page gets what its window needs, nothing of this machine: its files
-// are elsewhere, its problem report carries none of this app's logs, and the
-// review windows (decision 0177) and their Browser tab (decision 0181) are
-// this machine's. The methods check again, since a page can call mygo
-// directly. experimental is the state the window opened with (decision 0184):
-// a change reopens the windows, so it stays true.
+// are elsewhere, and its problem report carries none of this app's logs. The
+// methods check again, since a page can call mygo directly. experimental is
+// the state the window opened with (decision 0184): a change reopens the
+// windows, so it stays true. With it on, every connection's window drives
+// the guests of its own Browser tabs.
 func preloadScript(state experimental.State) string {
 	experiments, err := json.Marshal(state)
 	if err != nil {
 		experiments = []byte("null")
+	}
+	browser := ""
+	if state.Enabled {
+		browser = `
+    browserOpen(project, url) { return call("BrowserOpen", project, url) },
+    browserState(project) { return call("BrowserState", project) },
+    browserAction(project, action) { return call("BrowserAction", project, action) },
+    browserFrame(project, frame) { return call("BrowserFrame", project, frame) },
+    browserSnapshot(project) { return call("BrowserSnapshot", project) },`
 	}
 	return `(() => {
   if (location.protocol !== "` + proxy.Scheme + `:") return
@@ -43,17 +52,13 @@ func preloadScript(state experimental.State) string {
     showAppMenu(x, y) { void call("ShowAppMenu", x, y).catch(() => undefined) },
     showContextMenu(items, x, y) { return call("ShowContextMenu", items, x, y) },
     configureNotifications(config) { return call("ConfigureNotifications", config) },
-    setAppearance(source) { void call("SetAppearance", source).catch(() => undefined) },
+    setAppearance(source) { void call("SetAppearance", source).catch(() => undefined) },` + browser + `
   }
   window.zeroDesktop = Object.freeze(location.host === "` + proxy.Host + `" ? {
     version: 2,
     ...window_,
     revealPath(project, path) { return call("RevealPath", project, path) },
     diagnostics() { return call("Diagnostics") },
-    openReview(project, url) { return call("OpenReview", project, url) },
-    screenCapture() { return call("ScreenCapture") },
-    browserState(project) { return call("BrowserState", project) },
-    browserAction(project, action) { return call("BrowserAction", project, action) },
   } : { version: 2, ...window_ })
 })()`
 }
@@ -189,55 +194,80 @@ func (b *bridgeService) RevealPath(ctx context.Context, project, relative any) (
 	return true, nil
 }
 
-// OpenReview shows a page of the developer's app in the project's guest
-// window (decision 0177), from the local window only: its screen comments
-// read and write this machine's feedback.
-func (b *bridgeService) OpenReview(ctx context.Context, project, pageURL any) error {
-	if _, ok := callerWindow(ctx, isLocal); !ok {
-		return errRefused
-	}
-	request, ok := bridge.ParseOpenReview(project, pageURL)
+// BrowserOpen shows a page in the project's guest in the sender's window,
+// making the guest when the project has none (decision 0184). Any
+// connection's window may: the guest is that window's, in its connection's
+// own browsing session.
+func (b *bridgeService) BrowserOpen(ctx context.Context, project, pageURL any) error {
+	window, ok := callerWindow(ctx, b.anyConnection)
 	if !ok {
 		return errRefused
 	}
-	b.host.reviews.open(request)
+	request, ok := bridge.ParseBrowserOpen(project, pageURL)
+	if !ok {
+		return errRefused
+	}
+	b.host.browserOpen(window, request)
 	return nil
 }
 
-// BrowserState answers what the Browser tab shows of the project's guest
-// window, or null when it has none (decision 0181), to the local window only.
+// BrowserState answers what the Browser tab shows of the project's guest in
+// the sender's window, or null when it has none.
 func (b *bridgeService) BrowserState(ctx context.Context, project any) (*review.BrowserState, error) {
-	if _, ok := callerWindow(ctx, isLocal); !ok {
+	window, ok := callerWindow(ctx, b.anyConnection)
+	if !ok {
 		return nil, errRefused
 	}
 	name, ok := bridge.ParseBrowserProject(project)
 	if !ok {
 		return nil, errRefused
 	}
-	return b.host.reviews.state(name), nil
+	return b.host.browserState(window, name), nil
 }
 
-// BrowserAction does what the Browser tab asks of the project's guest window
-// (decision 0181), from the local window only; nothing when it has none.
+// BrowserAction does what the Browser tab asks of the project's guest in the
+// sender's window; nothing when it has none.
 func (b *bridgeService) BrowserAction(ctx context.Context, project, action any) error {
-	if _, ok := callerWindow(ctx, isLocal); !ok {
+	window, ok := callerWindow(ctx, b.anyConnection)
+	if !ok {
 		return errRefused
 	}
 	request, ok := bridge.ParseBrowserAction(project, action)
 	if !ok {
 		return errRefused
 	}
-	b.host.reviews.act(request)
+	b.host.browserAct(window, request)
 	return nil
 }
 
-// ScreenCapture answers the screen capture waiting for a comment, once, or
-// null (decision 0177), to the local window only.
-func (b *bridgeService) ScreenCapture(ctx context.Context) (*review.Capture, error) {
-	if _, ok := callerWindow(ctx, isLocal); !ok {
+// BrowserFrame shows the project's guest over the rectangle of the sender's
+// page its Browser tab fills, or hides it for null.
+func (b *bridgeService) BrowserFrame(ctx context.Context, project, frame any) error {
+	window, ok := callerWindow(ctx, b.anyConnection)
+	if !ok {
+		return errRefused
+	}
+	request, ok := bridge.ParseBrowserFrame(project, frame)
+	if !ok {
+		return errRefused
+	}
+	b.host.browserFrame(window, request)
+	return nil
+}
+
+// BrowserSnapshot answers the frame the project's guest shows now, a base64
+// PNG, or null: the page draws it in the guest's place while one of its own
+// layers covers the tab.
+func (b *bridgeService) BrowserSnapshot(ctx context.Context, project any) (*string, error) {
+	window, ok := callerWindow(ctx, b.anyConnection)
+	if !ok {
 		return nil, errRefused
 	}
-	return b.host.reviews.takeCapture(), nil
+	name, ok := bridge.ParseBrowserProject(project)
+	if !ok {
+		return nil, errRefused
+	}
+	return b.host.browserSnapshot(window, name), nil
 }
 
 // ShowContextMenu pops a native menu at a point in the page and answers the
@@ -292,10 +322,11 @@ func (b *bridgeService) ShowAppMenu(ctx context.Context, x, y any) error {
 // the kind of window the app opens now (decision 0184).
 func (h *host) menu() *mygo.Menu {
 	view := &mygo.MenuItem{Role: mygo.RoleViewMenu}
-	if h.experimental().Enabled {
+	experiments := h.experimental().Enabled
+	if experiments {
 		view = h.viewMenu(runtime.GOOS)
 	}
-	return mygo.NewMenu([]*mygo.MenuItem{
+	items := []*mygo.MenuItem{
 		{Role: mygo.RoleAppMenu},
 		{Label: "File", Submenu: []*mygo.MenuItem{
 			{Label: "Open Folder…", Accelerator: "CmdOrCtrl+O", Click: func(_ *mygo.MenuItem, window *mygo.Window) { go h.chooseFolder(window) }},
@@ -305,16 +336,18 @@ func (h *host) menu() *mygo.Menu {
 		{Role: mygo.RoleEditMenu},
 		view,
 		h.goMenu(runtime.GOOS),
-		h.reviewMenu(),
-		h.windowMenu(runtime.GOOS),
-		h.helpMenu(),
-	})
+	}
+	if experiments {
+		items = append(items, h.browserMenu())
+	}
+	return mygo.NewMenu(append(items, h.windowMenu(runtime.GOOS), h.helpMenu()))
 }
 
 // viewMenu is the View menu of windows of native UI (decision 0184). mygo's
 // own reload, inspector, and zoom items act on a page window's page and do
 // nothing there, so these act on the app's page in the window's web view,
-// with the same keys.
+// with the same keys. Reload reloads what the user looks at: the Browser
+// tab's page while it shows.
 func (h *host) viewMenu(goos string) *mygo.MenuItem {
 	inspector := "Ctrl+Shift+I"
 	if goos == "darwin" {
@@ -322,18 +355,27 @@ func (h *host) viewMenu(goos string) *mygo.MenuItem {
 	}
 	item := func(label, accelerator string, act func(page *mygo.Page)) *mygo.MenuItem {
 		return &mygo.MenuItem{Label: label, Accelerator: accelerator, Click: func(_ *mygo.MenuItem, window *mygo.Window) {
-			if window == nil || h.shellOf(window) == nil {
+			if window == nil {
 				return
 			}
-			go act(h.page(window))
+			if page := h.page(window); page != nil {
+				go act(page)
+			}
+		}}
+	}
+	reload := func(label, accelerator string, ignoreCache bool) *mygo.MenuItem {
+		return &mygo.MenuItem{Label: label, Accelerator: accelerator, Click: func(_ *mygo.MenuItem, window *mygo.Window) {
+			if window != nil {
+				go h.reloadShown(window, ignoreCache)
+			}
 		}}
 	}
 	zoom := func(direction int) func(page *mygo.Page) {
 		return func(page *mygo.Page) { page.SetZoomFactor(nextZoom(page.ZoomFactor(), direction)) }
 	}
 	return &mygo.MenuItem{Label: "View", Submenu: []*mygo.MenuItem{
-		item("Reload", "CmdOrCtrl+R", (*mygo.Page).Reload),
-		item("Force Reload", "Shift+CmdOrCtrl+R", (*mygo.Page).ReloadIgnoringCache),
+		reload("Reload", "CmdOrCtrl+R", false),
+		reload("Force Reload", "Shift+CmdOrCtrl+R", true),
 		item("Toggle Developer Tools", inspector, (*mygo.Page).ToggleDevTools),
 		mygo.Separator(),
 		item("Actual Size", "CmdOrCtrl+0", func(page *mygo.Page) { page.SetZoomFactor(1) }),
@@ -368,17 +410,8 @@ func (h *host) goMenu(goos string) *mygo.MenuItem {
 }
 
 // navigate asks the page to make a history move; pages without a
-// workspace ignore it. A guest window moves through its page's history.
+// workspace ignore it.
 func (h *host) navigate(window *mygo.Window, move string) {
-	if h.reviews.isReview(window) {
-		switch move {
-		case "back":
-			h.reviews.actOn(window, bridge.BrowserBack)
-		case "forward":
-			h.reviews.actOn(window, bridge.BrowserForward)
-		}
-		return
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_, _ = h.page(window).EvalContext(ctx, `return window.dispatchEvent(new CustomEvent("zero:navigate", { detail: `+strconv.Quote(move)+`, cancelable: true }))`)
@@ -408,10 +441,6 @@ func (h *host) windowMenu(goos string) *mygo.MenuItem {
 // closeTab asks the UI to close its active tab. Pages without a workspace
 // (including startup failures) retain the native close behavior.
 func (h *host) closeTab(window *mygo.Window) {
-	if h.reviews.isReview(window) {
-		window.Close()
-		return
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	unhandled, err := h.page(window).EvalContext(ctx, `return window.dispatchEvent(new Event("zero:close-tab", { cancelable: true }))`)
@@ -436,78 +465,32 @@ func (h *host) chooseFolder(window *mygo.Window) {
 	_, _ = h.page(window).EvalContext(ctx, `return window.dispatchEvent(new Event("zero:open-folder", { cancelable: true }))`)
 }
 
-// reviewMenu reviews the developer's app (decision 0177): Review URL… asks
-// the local window for a page to open in a guest window; F8 captures the
-// focused guest window's page for a comment; Shift+F8 captures it after a
-// countdown, for menus and hovers that a key press would close.
-func (h *host) reviewMenu() *mygo.MenuItem {
-	return &mygo.MenuItem{Label: "Review", Submenu: []*mygo.MenuItem{
-		{Label: "Review URL…", Click: func(*mygo.MenuItem, *mygo.Window) { go h.reviewURL() }},
-		mygo.Separator(),
-		h.commentItem(false),
-		h.commentItem(true),
-	}}
-}
-
-// commentItem is Comment on Screen, or its countdown, acting on a guest
-// window.
-func (h *host) commentItem(delay bool) *mygo.MenuItem {
-	item := &mygo.MenuItem{Label: "Comment on Screen", Accelerator: "F8"}
-	if delay {
-		item = &mygo.MenuItem{Label: "Comment on Screen in 3 Seconds", Accelerator: "Shift+F8"}
-	}
-	item.Click = func(_ *mygo.MenuItem, window *mygo.Window) { h.reviews.comment(window, delay) }
-	return item
-}
-
-// reviewWindowMenu is a guest window's own menu bar (decision 0175) on
-// Linux and Windows; macOS shows the app's, whose items act on it too. Open
-// Location… hands the keyboard to the Browser tab's address field in the
-// local window (decision 0181): the guest window has none.
-func (h *host) reviewWindowMenu() *mygo.Menu {
-	page := func(action string) func(*mygo.MenuItem, *mygo.Window) {
-		return func(_ *mygo.MenuItem, window *mygo.Window) {
-			if window != nil {
-				go h.reviews.actOn(window, action)
+// browserMenu drives the window's Browser tab (decision 0184) with keys that
+// work while the guest has the keyboard, which the page's own never do.
+// Open Location… hands the keyboard to the tab's address field; Back and
+// Forward move the guest that shows, whose own Alt+Left and Alt+Right
+// guest.js answers.
+func (h *host) browserMenu() *mygo.MenuItem {
+	move := func(label, action string) *mygo.MenuItem {
+		return &mygo.MenuItem{Label: label, Click: func(_ *mygo.MenuItem, window *mygo.Window) {
+			if window == nil {
+				return
 			}
-		}
+			if frame := h.shellOf(window); frame != nil {
+				if shown := frame.shownGuest(); shown != nil {
+					go shown.act(action)
+				}
+			}
+		}}
 	}
-	return mygo.NewMenu([]*mygo.MenuItem{
-		{Label: "Page", Submenu: []*mygo.MenuItem{
-			{Label: "Open Location…", Accelerator: "CmdOrCtrl+L", Click: func(_ *mygo.MenuItem, window *mygo.Window) {
-				if window != nil {
-					go h.reviews.openLocation(window)
-				}
-			}},
-			mygo.Separator(),
-			{Label: "Back", Accelerator: "Alt+Left", Click: page(bridge.BrowserBack)},
-			{Label: "Forward", Accelerator: "Alt+Right", Click: page(bridge.BrowserForward)},
-			{Label: "Reload", Accelerator: "CmdOrCtrl+R", Click: page(bridge.BrowserReload)},
-			mygo.Separator(),
-			{Label: "Close Window", Accelerator: "CmdOrCtrl+W", Click: func(_ *mygo.MenuItem, window *mygo.Window) {
-				if window != nil {
-					window.Close()
-				}
-			}},
+	return &mygo.MenuItem{Label: "Browser", Submenu: []*mygo.MenuItem{
+		{Label: "Open Location…", Accelerator: "CmdOrCtrl+L", Click: func(_ *mygo.MenuItem, window *mygo.Window) {
+			if window != nil {
+				go h.browserCommand(window, "location")
+			}
 		}},
-		{Role: mygo.RoleEditMenu},
-		{Label: "Review", Submenu: []*mygo.MenuItem{h.commentItem(false), h.commentItem(true)}},
-	})
-}
-
-// reviewURL asks the local window to choose a page to review, opening it
-// first when it is closed.
-func (h *host) reviewURL() {
-	h.mu.Lock()
-	window := h.windows[proxy.Host]
-	h.mu.Unlock()
-	if window == nil {
-		h.load(proxy.Origin + "/")
-		return
-	}
-	window.Restore()
-	window.Focus()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	_, _ = h.page(window).EvalContext(ctx, `return window.dispatchEvent(new Event("zero:review-url", { cancelable: true }))`)
+		mygo.Separator(),
+		move("Back", bridge.BrowserBack),
+		move("Forward", bridge.BrowserForward),
+	}}
 }

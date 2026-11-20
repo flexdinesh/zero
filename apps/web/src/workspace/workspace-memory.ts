@@ -4,7 +4,7 @@
 // readMemory/writeMemory are the only storage access and never throw.
 
 import { isRecord } from "../api/http.ts"
-import { includesTab, parseStoredTab, sameTab, storedTab, welcomeTab, type StoredTab, type WorkspaceTab } from "./workspace-tabs.ts"
+import { includesTab, offeredTab, parseStoredTab, sameTab, storedTab, welcomeTab, type StoredTab, type TabFeatures, type WorkspaceTab } from "./workspace-tabs.ts"
 
 export const MEMORY_STORAGE_KEY = "zero-workspaces-v2"
 
@@ -128,13 +128,14 @@ export interface RestoredTabs {
 
 // restoreTabs keeps remembered documents that still exist in the fresh tree.
 // Diff and commit tabs restore regardless: a deleted file has a diff but no
-// tree entry.
-export function restoreTabs(memory: ProjectMemory | undefined, files: ReadonlySet<string>): RestoredTabs {
+// tree entry. Browser and screen tabs restore only where the window offers
+// them (decision 0184).
+export function restoreTabs(memory: ProjectMemory | undefined, files: ReadonlySet<string>, features: TabFeatures): RestoredTabs {
   const tabs: WorkspaceTab[] = []
   for (const entry of memory?.tabs ?? []) {
     const tab = parseStoredTab(entry)
     // Snapshots read git, not the tree; they restore whatever the tree holds.
-    if (tab && (tab.kind !== "document" || tab.at || files.has(tab.path)) && !includesTab(tabs, tab)) tabs.push(tab)
+    if (tab && offeredTab(tab, features) && (tab.kind !== "document" || tab.at || files.has(tab.path)) && !includesTab(tabs, tab)) tabs.push(tab)
   }
   const remembered = parseStoredTab(memory?.active)
   const active = tabs.find((tab) => sameTab(tab, remembered)) ?? null

@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 
 import type { Feedback, FeedbackCompare, FeedbackThread } from "@zero/contracts"
-import { emptyFeedbackFile, indexFeedback, type FeedbackIndex } from "./feedback-index.ts"
+import { emptyFeedbackFile, indexFeedback, shownFeedback, type FeedbackIndex } from "./feedback-index.ts"
 import type { CodeThread } from "./feedback-model.ts"
 
 const date = "2026-11-10T09:12:00Z"
@@ -230,4 +230,23 @@ test("visual threads join no file; their open ones count apart, and their target
   const next = indexFeedback(feedback(code, gone, closed), first)
   assert.equal(next.byNumber.get(2), gone)
   assert.equal(file(next), file(first))
+})
+
+test("without experimental features, visual threads leave the list, the counts, and the badge", () => {
+  const code = thread(1)
+  const all = feedback(code, screenshot(2), thread(3, "b.go"), screenshot(4))
+  assert.equal(shownFeedback(all, true), all)
+
+  const shown = shownFeedback(all, false)
+  assert.deepEqual(shown.threads.map((entry) => entry.number), [1, 3])
+  assert.equal(shown.threads[0], code)
+  assert.equal(shown.id, all.id)
+  const index = indexFeedback(shown)
+  assert.equal(index.visualOpen, 0)
+  assert.equal(index.byNumber.has(2), false)
+  assert.deepEqual(index.counts, new Map([["a.go", 1], ["b.go", 1]]))
+
+  // Feedback with no visual thread is the same object either way.
+  const codeOnly = feedback(code)
+  assert.equal(shownFeedback(codeOnly, false), codeOnly)
 })

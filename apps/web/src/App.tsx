@@ -24,7 +24,7 @@ import { documentView, resolveDocumentMode } from "./features/documents/document
 import { FileTree } from "./features/explorer/FileTree.tsx"
 import { ImageZoomControls } from "./features/documents/ImageZoomControls.tsx"
 import { clampLineRange, lineAnchor, parseLineAnchor, splitSourceLines, type LineRange } from "./lib/line-selection.ts"
-import type { FeedbackThread, NavigationLocation, PageData } from "@zero/contracts"
+import type { NavigationLocation, PageData } from "@zero/contracts"
 import {
   emptyPage,
   isPageLoadResult,
@@ -63,7 +63,8 @@ import { useSourceControlCommands, useSourceControlQuery } from "./features/sour
 import { filePaths } from "./api/page-data.ts"
 import { isCommitHash } from "./lib/commit-hash.ts"
 import {
-  browserTab, documentKey, documentTab, includesTab, reviewTab, screenTab, tabKey, tabName, tabSearch, walkthroughTab, welcomeTab, type WorkspaceTab,
+  browserTab, documentKey, documentTab, includesTab, reviewTab, screenTab, tabKey, tabName, tabSearch, walkthroughTab, welcomeTab,
+  type TabFeatures, type WorkspaceTab,
 } from "./workspace/workspace-tabs.ts"
 import { FindBar } from "./features/find/FindBar.tsx"
 import { FindButton } from "./features/find/FindButton.tsx"
@@ -81,8 +82,10 @@ import type { NavigationKind } from "./features/navigation/code-navigation.ts"
 import type { CommandAction } from "./workspace/commands.ts"
 import { ReportProblemDialog } from "./features/diagnostics/ReportProblemDialog.tsx"
 import { BrowserTab } from "./features/review/BrowserTab.tsx"
+import { BrowserView } from "./features/review/BrowserView.tsx"
 import { browserTabName, currentPage } from "./features/review/browser-model.ts"
-import { focusBrowserLater, useDesktopBrowserFocus, useProjectBrowser } from "./features/review/use-project-browser.ts"
+import { focusBrowserLater, useBrowserLocation, useProjectBrowser } from "./features/review/use-project-browser.ts"
+import { browserAvailable, experimentalEnabled } from "./lib/desktop-bridge.ts"
 import type { SourceChanges } from "./features/documents/SourceDocument.tsx"
 import { NavigationProvider, NavigationStatus, type NavigationCaret } from "./features/navigation/NavigationProvider.tsx"
 import { useSettings } from "./settings/SettingsProvider.tsx"
@@ -96,7 +99,6 @@ import { TabBar } from "./workspace/TabBar.tsx"
 import { NavigationButtons } from "./workspace/NavigationButtons.tsx"
 import { RecentLocations } from "./workspace/RecentLocations.tsx"
 import { entryKey, useNavigationHistory } from "./workspace/navigation-history-store.ts"
-import { projectName } from "./workspace/navigation-history.ts"
 import { useNavigationKeys } from "./workspace/use-navigation-keys.ts"
 import { useSelectAllGuard } from "./workspace/use-select-all-guard.ts"
 import { useDocumentFormats } from "./features/documents/use-document-format.ts"
@@ -133,10 +135,8 @@ import { FeedbackSidebarView } from "./features/feedback/FeedbackView.tsx"
 import { routeFeedback, routeThread, screenRoute, threadTitle, type ThreadRoute } from "./features/feedback/feedback-model.ts"
 import { useFeedback } from "./features/feedback/use-feedback.ts"
 import { useFeedbackView } from "./features/feedback/use-feedback-view.ts"
-import { ScreenCommentDialog } from "./features/feedback/ScreenCommentDialog.tsx"
 import { ScreenThreadTab } from "./features/feedback/ScreenThreadTab.tsx"
 import { isVisualThread, visualPlace } from "./features/feedback/visual-model.ts"
-import { useDesktopScreenComment, type ScreenSource } from "./features/feedback/use-screen-comment.ts"
 import { useReviewFeedback } from "./features/feedback/use-review-feedback.tsx"
 import { useSourceFeedback } from "./features/feedback/use-source-feedback.tsx"
 import { useSourceBlame } from "./features/blame/use-source-blame.tsx"
@@ -233,20 +233,25 @@ export function App({ project }: AppProps) {
   const searchWalkthrough = useSearch({ strict: false, select: (search) => routeWalkthrough(search.wt) ?? "" })
   const searchStep = useSearch({ strict: false, select: (search) => routeStep(search.step) })
   const walkthroughRoute = !searchPath && !reviewRoute ? searchWalkthrough : ""
+  // The Browser tab and screen tabs exist only where the desktop app's
+  // experimental features offer them (decision 0184): elsewhere their routes
+  // open nothing and their remembered tabs stay closed.
+  const tabFeatures = useMemo((): TabFeatures => ({ browser: browserAvailable(), screens: experimentalEnabled() }), [])
   // fb=<id> reveals the Feedback view at that feedback; with thread=<n> and
   // without a path, review, or walkthrough, the route is that visual
   // thread's screen tab (decision 0182).
   const searchFeedback = useSearch({ strict: false, select: (search) => routeFeedback(search.fb) ?? "" })
   const searchThread = useSearch({ strict: false, select: (search) => routeThread(search.thread) ?? 0 })
-  const screenRouted = useMemo((): ScreenRoute | null => !searchPath && !reviewRoute && !walkthroughRoute && searchFeedback && searchThread
+  const screenRouted = useMemo((): ScreenRoute | null => tabFeatures.screens && !searchPath && !reviewRoute && !walkthroughRoute
+    && searchFeedback && searchThread
     ? { feedback: searchFeedback, thread: searchThread }
-    : null, [reviewRoute, searchFeedback, searchPath, searchThread, walkthroughRoute])
+    : null, [reviewRoute, searchFeedback, searchPath, searchThread, tabFeatures, walkthroughRoute])
   // welcome=1 alone routes the Welcome tab (decision 0052).
   const searchWelcome = useSearch({ strict: false, select: (search) => search.welcome === 1 })
   const welcomeRoute = !searchPath && !reviewRoute && !walkthroughRoute && !screenRouted && searchWelcome
-  // browser=1 alone routes the project's Browser tab (decision 0181).
+  // browser=1 alone routes the project's Browser tab (decision 0184).
   const searchBrowser = useSearch({ strict: false, select: (search) => search.browser === 1 })
-  const browserRoute = !searchPath && !reviewRoute && !walkthroughRoute && !screenRouted && !welcomeRoute && searchBrowser
+  const browserRoute = tabFeatures.browser && !searchPath && !reviewRoute && !walkthroughRoute && !screenRouted && !welcomeRoute && searchBrowser
   const openSearch = useRef<() => void>(() => {})
   const searchCommands = useRef<SearchCommands | null>(null)
   const openFiles = useRef<() => void>(() => {})
@@ -312,7 +317,7 @@ export function App({ project }: AppProps) {
   }, [])
   const reportProblem = useCallback(() => openReport.current(), [])
   useDesktopReportProblem(reportProblem)
-  // The project's Browser tab steers its guest window (decision 0181).
+  // The project's Browser tab and view share its guest (decision 0184).
   const projectBrowser = useProjectBrowser(project)
   const runNavigation = useRef<(kind: NavigationKind) => void>(() => {})
   const registerNavigation = useCallback((command: ((kind: NavigationKind) => void) | null) => {
@@ -347,20 +352,6 @@ export function App({ project }: AppProps) {
     showFeedback(id, path)
     revealSidebar("feedback")
   }, [revealSidebar, showFeedback])
-  // The desktop app's Comment on Screen opens the composer on the checkout's
-  // branch's feedback, in the capture's project (decision 0176).
-  const { openComposer } = feedbackView
-  const commentOnScreen = useCallback((source: ScreenSource) => {
-    showFeedback("")
-    revealSidebar("feedback")
-    openComposer(source)
-  }, [openComposer, revealSidebar, showFeedback])
-  // A capture of another project opens it as a project switch does, on its
-  // startup tab: /view without a file would ask for one and fail (0183).
-  const switchToProject = useCallback((next: string) => {
-    void navigate({ to: "/", search: { project: next }, hash: "" })
-  }, [navigate])
-  useDesktopScreenComment(project, commentOnScreen, switchToProject)
   const revealExplorer = useCallback(() => revealSidebar("explorer"), [revealSidebar])
   const revealSearch = useCallback(() => revealSidebar("search"), [revealSidebar])
   const sourceControlActive = sidebar.visibleView === "source-control"
@@ -429,6 +420,7 @@ export function App({ project }: AppProps) {
     active: routedTab,
     tabs: workspace.tabs,
     welcome: settings.showWelcome === "on",
+    features: tabFeatures,
     restore: workspace.restore,
     openRemembered,
   })
@@ -457,7 +449,7 @@ export function App({ project }: AppProps) {
     else if (action.kind === "recent-locations") openRecent.current()
     else if (action.kind === "select-color-theme") openColorTheme.current()
     else if (action.kind === "report-problem") openReport.current()
-    else if (action.kind === "review-url") openBrowserCommand.current(true)
+    else if (action.kind === "browser-location") openBrowserCommand.current(true)
     else if (action.kind === "toggle-word-wrap") {
       if (wordWrap !== null) toggleWordWrap(pageKey, defaultWordWrap)
     } else if (action.kind === "find") findCommands.current?.open()
@@ -670,24 +662,6 @@ export function App({ project }: AppProps) {
     prepareDocumentNavigation()
     void navigate({ to: "/view", search: { ...route.search }, hash: route.hash })
   }, [navigate, prepareDocumentNavigation])
-  // A sent screen comment opens its screen tab once its feedback names it:
-  // a branch's first thread creates the feedback (decision 0182). The
-  // Resolved filter would hide the new open thread, so Open shows it.
-  const sentScreen = useRef<number | null>(null)
-  const { closeComposer, filter: feedbackFilter, setFilter: setFeedbackFilter } = feedbackView
-  const openSentScreen = useCallback(() => {
-    const number = sentScreen.current
-    if (number === null || !listedThreads?.id || !listedThreads.threads.some((thread) => thread.number === number)) return
-    sentScreen.current = null
-    openThread(screenRoute(project, listedThreads.id, number))
-  }, [listedThreads, openThread, project])
-  const screenSent = useCallback((thread: FeedbackThread) => {
-    closeComposer()
-    if (feedbackFilter === "resolved") setFeedbackFilter("open")
-    sentScreen.current = thread.number
-    openSentScreen()
-  }, [closeComposer, feedbackFilter, openSentScreen, setFeedbackFilter])
-  useEffect(openSentScreen, [openSentScreen])
   const hasReviewTabs = workspace.tabs.some((tab) => tab.kind === "review")
   // Closing the last review tab frees its workers and caches until the next one.
   useEffect(() => {
@@ -708,6 +682,7 @@ export function App({ project }: AppProps) {
   }), [defaultBase, listed])
   const listedWalkthroughs = walkthroughs.list.result
   const browserPage = currentPage(projectBrowser.state, projectBrowser.recent[0] ?? "")
+  const browserTitle = projectBrowser.state?.title ?? ""
   const nameScreen = useCallback((id: string, number: number) => {
     for (const feedback of [listedThreads, screenThreads]) {
       if (feedback?.id !== id) continue
@@ -718,7 +693,7 @@ export function App({ project }: AppProps) {
   }, [listedThreads, screenThreads])
   const nameTab = useCallback((tab: WorkspaceTab) => tabName(tab, compareContext,
     (id) => listedWalkthroughs?.find((entry) => entry.id === id)?.title ?? "",
-    () => browserTabName(browserPage), nameScreen), [browserPage, compareContext, listedWalkthroughs, nameScreen])
+    () => browserTabName(browserPage, browserTitle), nameScreen), [browserPage, browserTitle, compareContext, listedWalkthroughs, nameScreen])
   // The history entry on screen takes the name its tab shows.
   const historyKey = useRouterState({ select: (state) => entryKey(state.location) })
   useEffect(() => {
@@ -737,14 +712,15 @@ export function App({ project }: AppProps) {
   // the keyboard, once the tab has mounted.
   const { requestFocus: focusBrowser } = projectBrowser
   const openBrowser = useCallback((focus: boolean) => {
+    if (!tabFeatures.browser) return
     if (focus) focusBrowser()
     if (browserRoute) return
     prepareDocumentNavigation()
     void navigate({ to: "/view", search: tabSearch(project, browserTab()), hash: "" })
-  }, [browserRoute, focusBrowser, navigate, prepareDocumentNavigation, project])
-  // Review URL… asks for this project's address; a guest window's Open
-  // Location… for its own project's, switching to it first.
-  useDesktopBrowserFocus(useCallback((target: string | null) => {
+  }, [browserRoute, focusBrowser, navigate, prepareDocumentNavigation, project, tabFeatures])
+  // Open Location asks for this project's address field, or for that of the
+  // project whose page shows, switching to it first.
+  useBrowserLocation(tabFeatures.browser, useCallback((target: string | null) => {
     if (target === null || target === project) {
       openBrowser(true)
       return
@@ -752,6 +728,21 @@ export function App({ project }: AppProps) {
     focusBrowserLater(target)
     void navigate({ to: "/view", search: tabSearch(target, browserTab()), hash: "" })
   }, [navigate, openBrowser, project]))
+  // openBrowserPage shows a page in the Browser tab and brings the tab
+  // forward: the page shows only there.
+  const { open: openGuestPage } = projectBrowser
+  const openBrowserPage = useCallback((url: string) => {
+    openGuestPage(url)
+    openBrowser(false)
+  }, [openBrowser, openGuestPage])
+  // Choosing the Browser activity brings the tab forward too: its view
+  // lists pages for that tab.
+  const browserViewShown = sidebar.visibleView === "browser"
+  const browserViewWasShown = useRef(browserViewShown)
+  useEffect(() => {
+    if (browserViewShown && !browserViewWasShown.current) openBrowser(false)
+    browserViewWasShown.current = browserViewShown
+  }, [browserViewShown, openBrowser])
   useLayoutEffect(() => {
     openWelcomeCommand.current = openWelcome
     openBrowserCommand.current = openBrowser
@@ -927,7 +918,7 @@ export function App({ project }: AppProps) {
     const closed = workspace.closeTabs(tabs, activeTab)
     if (!closed) return
     for (const tab of closed.tabs) if (tab.kind === "document") forgetDocumentScroll(documentKey(tab.path, tab.at))
-    // The Browser tab owns its guest window (decision 0181).
+    // Closing the Browser tab closes its page (decision 0184).
     if (closed.tabs.some((tab) => tab.kind === "browser")) projectBrowser.act("close")
     if (!activeTab || !includesTab(closed.tabs, activeTab)) return
     if (closed.replacement) {
@@ -1059,6 +1050,9 @@ export function App({ project }: AppProps) {
           openFeedbackThreads={feedbackView.openThreadCount}
           feedback={<FeedbackSidebarView project={project} branch={page.branch} view={feedbackView} mobile={mobileSidebar}
             visible={visibleSidebarView === "feedback"} onDismiss={sidebar.dismiss} onOpenThread={openThread} navigate={navigateToHref} />}
+          browser={tabFeatures.browser ? <SidebarBody visible={visibleSidebarView === "browser"}>
+            <BrowserView browser={projectBrowser} mobile={mobileSidebar} onDismiss={sidebar.dismiss} onOpen={openBrowserPage} />
+          </SidebarBody> : null}
           walkthroughs={<SidebarBody visible={walkthroughsShown}>
             <WalkthroughsView project={project} session={walkthroughs} context={compareContext} mobile={mobileSidebar}
               shown={walkthroughsShown} onPresent={present} onDismiss={sidebar.dismiss} />
@@ -1130,10 +1124,9 @@ export function App({ project }: AppProps) {
               }}
               onAction={runWelcomeAction} onOpenProject={switchProject}
               onStartupSetting={() => openSettings.current("showWelcome")} /> : undefined}
-            browser={browserRoute ? <BrowserTab browser={projectBrowser}
-              name={projectName(project)} branch={page.branch} folder={page.projectKind === "folder"} /> : undefined}
+            browser={browserRoute ? <BrowserTab browser={projectBrowser} project={project} /> : undefined}
             screen={screenRouted ? <ScreenThreadTab project={project} feedbackId={screenRouted.feedback} number={screenRouted.thread}
-              session={screenSession} navigate={navigateToHref} reviewPage={projectBrowser.available ? projectBrowser.open : null} onOpenThread={openThread}
+              session={screenSession} navigate={navigateToHref} reviewPage={tabFeatures.browser ? openBrowserPage : null} onOpenThread={openThread}
               onPin={() => workspace.pin(screenTab(screenRouted.feedback, screenRouted.thread))}
               onClose={() => closeTab(screenTab(screenRouted.feedback, screenRouted.thread))} /> : undefined}
             empty={<WorkspaceEmptyState input={emptyInput} viewName={sidebarViewName(sidebar.view)}
@@ -1191,9 +1184,6 @@ export function App({ project }: AppProps) {
       <ColorThemePicker registerOpen={registerColorTheme} />
       <RecentLocations log={historyLog} project={project} registerOpen={registerRecent} onOpen={navigateToHref} />
       <ReportProblemDialog registerOpen={registerReport} />
-      <ScreenCommentDialog composer={feedbackView.composer} actions={feedbackView.session.actions}
-        target={{ name: projectName(project), branch: page.branch, folder: page.projectKind === "folder" }}
-        onSource={openComposer} onClose={closeComposer} onSent={screenSent} />
       <OverlayScrollbars />
     </FindProvider>
     </SearchProvider>

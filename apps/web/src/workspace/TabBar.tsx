@@ -9,6 +9,7 @@ import { menuItemClass, menuPopupClass, menuPositionerClass, menuSeparatorClass 
 import { desktopBridge } from "../lib/desktop-bridge.ts"
 import { FILE_HISTORY_LABEL, isTabMenuAction, KEEP_OPEN_LABEL, REVEAL_LABEL, revealablePath, tabMenuItems, type TabMenuAction } from "./tab-menu.ts"
 import { includesTab, sameTab, tabKey, type TabName, type WorkspaceTab } from "./workspace-tabs.ts"
+import { OverlayLayer } from "../lib/overlay-layers.ts"
 
 interface TabBarProps {
   active: WorkspaceTab | null
@@ -224,6 +225,7 @@ export function TabBar({ active, name: tabName, onClose, onCloseMany, onPin, onS
                       </ContextMenu.Item>
                     )}
                   </>}
+                  <OverlayLayer />
                 </ContextMenu.Popup>
               </ContextMenu.Positioner>
             </ContextMenu.Portal>

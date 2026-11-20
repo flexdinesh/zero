@@ -3,7 +3,7 @@ import { clipToBounds, cssToImage, frameSize, imageToCSS, regionClip, toImage, t
 
 // Pure model of visual feedback threads (decision 0176): how a screenshot
 // thread is labelled, whether its page can be opened, its Markdown as
-// `zero feedback show` prints it, and the draft a composer sends.
+// `zero feedback show` prints it, and the draft a screen comment sends.
 
 // VisualThread is a thread on a screenshot rather than code.
 export type VisualThread = FeedbackThread & { visual: FeedbackVisual }
@@ -51,13 +51,13 @@ export function canOpenPage(page: FeedbackPage): boolean {
 }
 
 // PageOpener is where Open page shows a visual thread's page: the project's
-// review window in the desktop app's local window (decisions 0177, 0182),
-// else a browser tab; null when the page cannot be opened as the agent would.
+// Browser tab where the desktop app hosts it (decisions 0182, 0184), else a
+// browser's own tab; null when the page cannot be opened as the agent would.
 export type PageOpener = "review" | "browser" | null
 
-export function pageOpener(page: FeedbackPage, reviewWindow: boolean): PageOpener {
+export function pageOpener(page: FeedbackPage, browserTab: boolean): PageOpener {
   if (!canOpenPage(page)) return null
-  return reviewWindow ? "review" : "browser"
+  return browserTab ? "review" : "browser"
 }
 
 // pageWhere says what a page's loopback host refers to: "localhost on your
@@ -66,8 +66,8 @@ export function pageWhere(page: FeedbackPage): string {
   return page.localhost === "viewer" ? "localhost on your machine" : ""
 }
 
-// elementLabel names an element hint as the composer's readout does
-// (hitLabel): by its role, else its tag, with its name or text:
+// elementLabel names an element hint by its role, else its tag, with its
+// name or text:
 // `menuitem "Export data"`, `button "Save changes"`, or the kind alone.
 export function elementLabel(element: Pick<FeedbackElement, "tag" | "role" | "name" | "text">): string {
   const kind = element.role || element.tag
@@ -155,7 +155,7 @@ export function visualLines(feedbackId: string, visual: FeedbackVisual): string[
   return lines
 }
 
-// ScreenPage is the page a capture froze, as the composer edits it.
+// ScreenPage is the page a capture froze.
 export interface ScreenPage {
   url: string
   title: string
@@ -175,14 +175,6 @@ export interface ScreenHint {
 }
 
 export type AttachMode = "region" | "full"
-
-// pageURLProblem says why an edited page URL cannot be sent, "" when it can.
-export function pageURLProblem(url: string): string {
-  const parsed = parseURL(url.trim())
-  if (!parsed || (parsed.protocol !== "http:" && parsed.protocol !== "https:")) return "Enter an http or https URL."
-  if (url.trim().length > 2048) return "The URL is longer than 2048 characters."
-  return ""
-}
 
 function oneLine(text: string, limit: number): string {
   return [...text.replace(/\s+/g, " ").trim()].slice(0, limit).join("")

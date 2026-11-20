@@ -101,6 +101,14 @@ interface FileGroup {
   outdatedOpen: number
 }
 
+// shownFeedback is what a page shows of a read: where experimental features
+// are off (visual false), visual threads are left out of every list, count,
+// and badge (decision 0184).
+export function shownFeedback(feedback: Feedback, visual: boolean): Feedback {
+  if (visual || feedback.threads.every((thread) => thread.visual === undefined)) return feedback
+  return { ...feedback, threads: feedback.threads.filter((thread) => thread.visual === undefined) }
+}
+
 export function indexFeedback(feedback: Feedback, previous?: FeedbackIndex): FeedbackIndex {
   if (previous?.feedback.id !== feedback.id || previous.feedback.project !== feedback.project
     || previous.feedback.branch !== feedback.branch) previous = undefined

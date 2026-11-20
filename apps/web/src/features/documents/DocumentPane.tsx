@@ -30,7 +30,8 @@ interface DocumentPaneProps {
   walkthrough?: ReactNode
   // welcome is the Welcome tab's content, shown without a file.
   welcome?: ReactNode
-  // browser is the Browser tab's content, shown without a file (decision 0181).
+  // browser is the Browser tab's content, shown without a file (decision
+  // 0184); it fills the pane.
   browser?: ReactNode
   // screen is a visual thread's screen tab, shown without a file (decision
   // 0182); it fills the pane.
@@ -88,7 +89,7 @@ export function DocumentPane({
 
   return (
     <main
-      className={viewKind === "source" || viewKind === "format" || viewKind === "diff" ? "source-mode" : viewKind === "image" ? "image-mode" : viewKind === "screen" ? "screen-mode" : undefined}
+      className={viewKind === "source" || viewKind === "format" || viewKind === "diff" ? "source-mode" : viewKind === "image" ? "image-mode" : viewKind === "screen" ? "screen-mode" : viewKind === "browser" ? "browser-mode" : undefined}
       id="document-pane"
       ref={main}
       tabIndex={-1}

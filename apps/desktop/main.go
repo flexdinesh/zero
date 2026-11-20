@@ -79,8 +79,8 @@ type host struct {
 	// logDir holds desktop.log and its crash output; "" keeps none
 	// (decision 0152).
 	logDir string
-	// reviews holds the guest windows and their screen captures (decision 0177).
-	reviews *reviews
+	// browsers coalesces the news of guest pages (decision 0184).
+	browsers browserNews
 	// experiments remembers the user's choice of experimental features
 	// (decision 0184).
 	experiments *experimental.Store
@@ -107,7 +107,7 @@ func main() {
 		logDir:         logs,
 	}
 	app.notify = app.showWarning
-	app.reviews = newReviews(app)
+	app.browsers.announcing = map[browserTopic]bool{}
 	storePath, err := connection.DefaultStorePath()
 	if err != nil {
 		log.Printf("zero-app: %v", err)
@@ -129,12 +129,9 @@ func main() {
 	mygo.App.OnNotificationClick(app.noticeClicked)
 
 	pages := proxy.New(app.connections)
-	// Only Zero's own windows reach the daemon: a guest page's no-cors
+	// Only Zero's own pages reach the daemon: a guest page's no-cors
 	// requests carry no Origin to refuse (decision 0175).
-	pages.Admit(func(r *http.Request) bool {
-		page := mygo.CallerPage(r.Context())
-		return page != nil && !app.reviews.isGuestPage(page)
-	})
+	pages.Admit(func(r *http.Request) bool { return app.isAppPage(mygo.CallerPage(r.Context())) })
 	if err := mygo.Protocol.Handle(proxy.Scheme, pages); err != nil {
 		log.Fatal(err)
 	}
@@ -176,10 +173,9 @@ func (h *host) raise() {
 	}
 }
 
-// frontWindow is the focused window, else the local one, else any. A review
-// window is never one: its page is not the app's.
+// frontWindow is the focused window, else the local one, else any.
 func (h *host) frontWindow() *mygo.Window {
-	if focused := mygo.FocusedWindow(); focused != nil && !h.reviews.isReview(focused) {
+	if focused := mygo.FocusedWindow(); focused != nil {
 		return focused
 	}
 	h.mu.Lock()
@@ -215,7 +211,7 @@ func (h *host) openWindow(start string) {
 	}
 	var frame *shell
 	if state.Enabled {
-		frame = &shell{}
+		frame = newShell()
 		options.Content = ui.View(frame.view)
 	} else {
 		options.URL = start
@@ -224,6 +220,7 @@ func (h *host) openWindow(start string) {
 	window := mygo.NewWindow(options)
 	page := window.Page()
 	if frame != nil {
+		frame.window = window
 		zero, err := window.NewWebView(mygo.WebViewOptions{URL: start, Page: pageOptions, BackgroundColor: background})
 		if err != nil {
 			window.Close()
@@ -248,6 +245,9 @@ func (h *host) openWindow(start string) {
 		}
 		delete(h.shells, window)
 		h.mu.Unlock()
+		if frame != nil {
+			frame.close()
+		}
 		if current {
 			h.stopNotifier(connectionHost)
 			// A sandbox's zero stops with its window.
@@ -260,6 +260,11 @@ func (h *host) openWindow(start string) {
 		h.followThemeColor(connectionHost, window, c, ok)
 	})
 	window.OnFocus(func() { h.applyAppearance(connectionHost) })
+	if frame != nil {
+		// A page that loads anew has no Browser tab showing yet: the guest
+		// hides until the tab reports its rectangle again.
+		page.OnDidNavigate(func(string) { frame.hide("") })
+	}
 	// Pages get nothing the web app does not use.
 	page.SetPermissionHandler(func(mygo.PermissionRequest) bool { return false })
 	page.OnWillNavigate(func(event *mygo.NavigateEvent) {
@@ -274,6 +279,9 @@ func (h *host) openWindow(start string) {
 	// A crashed page comes back where it was, unless it just did that.
 	var reloads reloadLimiter
 	page.OnRenderProcessGone(func(string) {
+		if frame != nil {
+			frame.hide("")
+		}
 		if reloads.allow(time.Now()) {
 			page.Reload()
 			return
@@ -398,10 +406,13 @@ func (h *host) reopenWindows() {
 }
 
 // page is a window's page of the app: the window's own, or its web view's in
-// a window of native UI.
+// a window of native UI. A window that closed has none.
 func (h *host) page(window *mygo.Window) *mygo.Page {
 	if frame := h.shellOf(window); frame != nil {
-		return frame.zeroView().Page()
+		if zero := frame.zeroView(); zero != nil {
+			return zero.Page()
+		}
+		return nil
 	}
 	return window.Page()
 }
