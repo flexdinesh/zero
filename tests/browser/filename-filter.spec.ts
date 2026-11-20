@@ -110,6 +110,8 @@ test("collapse and expand all include filtered folders and the filter survives r
   await expect(drawer).toBeVisible()
   await expect(drawer.getByRole("treeitem", { name: "getting-started.md" })).toBeVisible()
   await drawerFilter.fill("settings.*")
+  // The filter applies after its debounce; a click before then loses its row.
+  await expect(drawer.getByRole("treeitem", { name: "getting-started.md" })).toHaveCount(0)
   await drawer.getByRole("treeitem", { name: "settings.yaml" }).click()
   await expect(drawer).toBeHidden()
   await expect(page.getByRole("tab", { name: "settings.yaml" })).toHaveAttribute("aria-selected", "true")

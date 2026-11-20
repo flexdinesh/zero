@@ -81,43 +81,43 @@ on Linux, `~/Library/Application Support/zero/feedback` on macOS), up to 200
 branches per repository; the least recently updated go first. It is per
 machine and is not shared through git.
 
-## Commenting on screenshots
+## Commenting on a running app (experimental)
 
-A thread can point at a screenshot instead of code. In the Feedback view,
-choose **New Screen Comment**, paste a screenshot, or drop an image. Drag a
-rectangle over what you mean (or press Enter, then the arrow keys; Shift
-resizes), write your comment, and send. The screenshot is kept with the thread,
-so you and the agent see what you saw even after the page changes.
+A thread can point at a place in your running app instead of code. In the
+[desktop app](/docs/desktop#browser-experimental), with experimental features
+on, open the page in the project's **Browser** tab and browse it as usual:
+sign in, open pages, fill forms. Press **Comment** (**Ctrl+Shift+C**, or
+**⌘⇧C** on macOS): the page stops taking your clicks and outlines what is
+under the pointer. Click an element, or drag a rectangle anywhere, such as
+over part of a chart. **Alt+Up** (**Option+Up** on macOS) selects the element
+around your selection, and **Alt+Down** goes back. Write your comment beside
+it and press **Ctrl+Enter** (**⌘Enter**); **Escape** drops it, and **Escape**
+again leaves comment mode.
 
-In the [desktop app](/docs/desktop#review-a-running-app), you can capture a
-page of your running app instead. Choose **Review › Review URL…** (or **Review
-URL…** in the command palette) and enter the page in the project's **Browser**
-tab, such as `localhost:5173/settings`; your project's recent pages are
-listed. The page opens in the project's review window, and the tab says which
-folder and branch your comments join. Browse it as usual: sign in, open menus,
-fill forms. Then press **F8** (**Review › Comment on Screen**, or **Comment on
-Screen** in the tab): Zero comes forward with the screenshot. For a menu or hover that closes when you press a
-key, press **Shift+F8**: the screenshot is taken 3 seconds later. A capture
-also records the page's address, title, viewport, and scroll, and what
-element is where, so a menu that closed is still there to pick. Hover the
-screenshot to see what a click would select, then click it, or drag a
-rectangle anywhere, such as over part of a chart. **Alt+Up** (**Option+Up**
-on macOS) selects the element around your selection, and **Alt+Down** goes
-back; **Escape** or **Clear** clears it. By default only the rectangle
-and 48 pixels around it are attached; choose **Full view** to attach the
-whole screenshot. Addresses are stored with secrets such as `token=` or
-`session=` replaced by `REDACTED`, and form field values are never read.
+A comment carries a screenshot of the rectangle and 48 pixels around it, the
+page's address, title, viewport, scroll, and color scheme, and what the page
+says of the element: its name and role, a selector, its place in the page,
+classes, a few attributes and computed styles, nearby text, and, when your
+app runs a development build of React, Vue, or Svelte, the component and its
+source file. Addresses are stored with secrets such as `token=` or `session=`
+replaced by `REDACTED`. Form field values and the text of fields are never
+read.
 
-Screenshot threads are listed after the files. Open one and it gets its own
-tab: the screenshot as it was captured, with your rectangle marked, beside the
-page it came from and the conversation, where agent replies show and you reply,
-resolve, or reopen. The screenshot stays as it was even after the page changes.
-Switch between **Fit** and **Actual size**, copy the region, or open the page
-again; in the desktop app it opens in the review window, where **F8** comments
-on it again. Like a walkthrough step, the tab is replaced by the next thread you
-open until you reply or double-click it.
-Screenshots count against a storage budget; when it is full, resolved threads'
-screenshots go first, and an open thread's never do.
+Sent comments show on the page as numbered pins and in the Browser view under
+**On this page**; the pins toggle in the tab hides them. Screenshot threads
+are also listed in the Feedback view after the files. Open one and it gets its
+own tab: the screenshot as it was captured, with your rectangle marked, beside
+the page it came from, the element's details, and the conversation, where
+agent replies show and you reply, resolve, or reopen. The screenshot stays as
+it was even after the page changes. Switch between **Fit** and **Actual
+size**, copy the region, or open the page again in the Browser tab. Like a
+walkthrough step, the tab is replaced by the next thread you open until you
+reply or double-click it. Screenshots count against a storage budget; when it
+is full, resolved threads' screenshots go first, and an open thread's never
+do.
+
+With experimental features off, screenshot threads do not show in the app;
+agents still read them with the CLI.
 
 ## Answering feedback (for agents)
 

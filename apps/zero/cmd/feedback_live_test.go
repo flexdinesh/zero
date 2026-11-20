@@ -121,7 +121,7 @@ func TestFeedbackShowReadsLiveStorage(t *testing.T) {
 		"## Thread 1 · open · doc.md:2\n```markdown\nline two\n```\n**user** · ",
 		"Say what line two is for.\n",
 		"## Thread 2 · open · screenshot · `http://localhost:5173/settings?tab=billing&session=REDACTED#plan`\n" +
-			"Page: `Settings · Acme` · viewport 1440×900 CSS px at 2× · scrolled 0,1320\n" +
+			"Page: `Settings · Acme` · viewport 1440×900 CSS px at 2× · scrolled 0,1320 · dark scheme\n" +
 			"Localhost: this machine, where the project is; the URL opens as written\n" +
 			"Region: image 96,96 420×96 of 612×288 · CSS 605,320 210×48 · document 605,1640\n" +
 			"Element (page's hint, unverified): button `Save changes` · `main form > button[data-testid=\"save\"]`\n",

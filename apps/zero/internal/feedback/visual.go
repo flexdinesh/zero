@@ -27,8 +27,26 @@ const (
 	MaxTagBytes = 32
 	// MaxRoleLength bounds an element's role, in characters.
 	MaxRoleLength = 64
-	// MaxElementTextLength bounds an element's name and text, in characters.
+	// MaxElementTextLength bounds an element's name, its text, the text
+	// near it, and the text selected in it, in characters.
 	MaxElementTextLength = 256
+	// MaxPathBytes bounds an element's ancestor path.
+	MaxPathBytes = 512
+	// MaxClassesBytes bounds an element's class names.
+	MaxClassesBytes = 256
+	// MaxComponentLength bounds an element's component chain, in characters.
+	MaxComponentLength = 256
+	// MaxSourceBytes bounds an element's source location.
+	MaxSourceBytes = 512
+	// MaxAttributes and MaxStyles bound an element's attributes and computed
+	// styles; MaxPairNameBytes bounds a name of either.
+	MaxAttributes    = 8
+	MaxStyles        = 24
+	MaxPairNameBytes = 64
+	// MaxAttributeValueLength and MaxStyleValueLength bound their values, in
+	// characters.
+	MaxAttributeValueLength = 256
+	MaxStyleValueLength     = 128
 )
 
 // Localhost values say what a loopback page URL refers to: the project's
@@ -68,28 +86,54 @@ type Scroll struct {
 	Y int `json:"y"`
 }
 
+// Color schemes a page showed in.
+const (
+	ColorSchemeLight = "light"
+	ColorSchemeDark  = "dark"
+)
+
 // Page is the page a screenshot was captured from. URL is normalized and
 // redacted; Clip, in frame pixels, is the part of the frame kept as the
 // image (nil for the whole frame). Localhost is the server's, absent for a
-// URL whose host is not loopback.
+// URL whose host is not loopback. ColorScheme is light or dark, "" when
+// the capture did not say.
 type Page struct {
-	URL       string   `json:"url"`
-	Title     string   `json:"title,omitempty"`
-	Viewport  Viewport `json:"viewport"`
-	Scroll    Scroll   `json:"scroll"`
-	Clip      *Rect    `json:"clip,omitempty"`
-	Localhost string   `json:"localhost,omitempty"`
+	URL         string   `json:"url"`
+	Title       string   `json:"title,omitempty"`
+	Viewport    Viewport `json:"viewport"`
+	Scroll      Scroll   `json:"scroll"`
+	Clip        *Rect    `json:"clip,omitempty"`
+	Localhost   string   `json:"localhost,omitempty"`
+	ColorScheme string   `json:"colorScheme,omitempty"`
 }
 
-// Element is the page's advisory word on the element at a target's center.
-// Box is in image pixels.
+// ElementPair is one attribute or computed style of an element.
+type ElementPair struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+// Element is the page's advisory word on a target's element (decisions
+// 0176, 0184): what finds it (Selector, Path), what it is (Tag, Role, Name,
+// Text, Classes, Attributes, Styles), what rendered it when a framework's
+// development build says (Component, Source), and the text around and
+// selected in it. Box is in image pixels. Attributes never hold a field's
+// value.
 type Element struct {
-	Selector string `json:"selector"`
-	Tag      string `json:"tag"`
-	Role     string `json:"role,omitempty"`
-	Name     string `json:"name,omitempty"`
-	Text     string `json:"text,omitempty"`
-	Box      *Rect  `json:"box,omitempty"`
+	Selector     string        `json:"selector,omitempty"`
+	Tag          string        `json:"tag"`
+	Role         string        `json:"role,omitempty"`
+	Name         string        `json:"name,omitempty"`
+	Text         string        `json:"text,omitempty"`
+	Box          *Rect         `json:"box,omitempty"`
+	Path         string        `json:"path,omitempty"`
+	Classes      string        `json:"classes,omitempty"`
+	Attributes   []ElementPair `json:"attributes,omitempty"`
+	Styles       []ElementPair `json:"styles,omitempty"`
+	Component    string        `json:"component,omitempty"`
+	Source       string        `json:"source,omitempty"`
+	Nearby       string        `json:"nearby,omitempty"`
+	SelectedText string        `json:"selectedText,omitempty"`
 }
 
 // Attachment is a stored image's metadata, fixed when it was uploaded.
@@ -125,6 +169,7 @@ type VisualDraft struct {
 var (
 	attachmentPattern = regexp.MustCompile(`^at-[a-z0-9]{10}$`)
 	tagPattern        = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
+	pairNamePattern   = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 	jwtPattern        = regexp.MustCompile(`^eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*$`)
 )
 
@@ -156,6 +201,12 @@ func (v VisualDraft) normalize() VisualDraft {
 		element.Role = strings.TrimSpace(element.Role)
 		element.Name = strings.TrimSpace(element.Name)
 		element.Text = strings.TrimSpace(element.Text)
+		element.Path = strings.TrimSpace(element.Path)
+		element.Classes = strings.TrimSpace(element.Classes)
+		element.Component = strings.TrimSpace(element.Component)
+		element.Source = strings.TrimSpace(element.Source)
+		element.Nearby = strings.TrimSpace(element.Nearby)
+		element.SelectedText = strings.TrimSpace(element.SelectedText)
 		v.Element = &element
 	}
 	return v
@@ -187,16 +238,15 @@ func checkVisual(add addProblem, visual VisualDraft) {
 			width, height := viewport.Frame()
 			checkInside(add, "visual.page.clip", *page.Clip, width, height, "frame")
 		}
+		if scheme := page.ColorScheme; scheme != "" && scheme != ColorSchemeLight && scheme != ColorSchemeDark {
+			add("visual.page.colorScheme", "must be light or dark")
+		}
 	}
 	if element := visual.Element; element != nil {
 		if visual.Page == nil {
 			add("visual.element", "needs page: only a captured page has elements")
 		}
-		if element.Selector == "" {
-			add("visual.element.selector", "is required")
-		} else {
-			checkLine(add, "visual.element.selector", element.Selector, MaxSelectorBytes, "bytes")
-		}
+		checkLine(add, "visual.element.selector", element.Selector, MaxSelectorBytes, "bytes")
 		if len(element.Tag) > MaxTagBytes || !tagPattern.MatchString(element.Tag) {
 			add("visual.element.tag", "must be a lowercase tag name of at most %d bytes, such as button", MaxTagBytes)
 		}
@@ -206,6 +256,35 @@ func checkVisual(add addProblem, visual VisualDraft) {
 		if element.Box != nil {
 			checkRect(add, "visual.element.box", *element.Box)
 		}
+		checkLine(add, "visual.element.path", element.Path, MaxPathBytes, "bytes")
+		checkLine(add, "visual.element.classes", element.Classes, MaxClassesBytes, "bytes")
+		checkLine(add, "visual.element.component", element.Component, MaxComponentLength, "characters")
+		checkLine(add, "visual.element.source", element.Source, MaxSourceBytes, "bytes")
+		checkLine(add, "visual.element.nearby", element.Nearby, MaxElementTextLength, "characters")
+		checkLine(add, "visual.element.selectedText", element.SelectedText, MaxElementTextLength, "characters")
+		checkPairs(add, "visual.element.attributes", element.Attributes, MaxAttributes, MaxAttributeValueLength)
+		checkPairs(add, "visual.element.styles", element.Styles, MaxStyles, MaxStyleValueLength)
+		for index, attribute := range element.Attributes {
+			// A field's value is never captured (decision 0176).
+			if attribute.Name == "value" {
+				add(fmt.Sprintf("visual.element.attributes[%d].name", index), "is value, which is never captured")
+			}
+		}
+	}
+}
+
+// checkPairs reports more than limit pairs, a name that is not a lowercase
+// attribute or property name, and a value over valueLimit characters or
+// spanning lines.
+func checkPairs(add addProblem, field string, pairs []ElementPair, limit, valueLimit int) {
+	if len(pairs) > limit {
+		add(field, "has %d entries; the most is %d", len(pairs), limit)
+	}
+	for index, pair := range pairs {
+		if len(pair.Name) > MaxPairNameBytes || !pairNamePattern.MatchString(pair.Name) {
+			add(fmt.Sprintf("%s[%d].name", field, index), "must be a lowercase name of at most %d bytes, such as aria-label", MaxPairNameBytes)
+		}
+		checkLine(add, fmt.Sprintf("%s[%d].value", field, index), pair.Value, valueLimit, "characters")
 	}
 }
 

@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react"
 import {
   createRootRoute,
   createRoute,
@@ -97,12 +98,18 @@ function isChoosing(value: unknown): boolean {
   return typeof value === "object" && value !== null && "choosing" in value && value.choosing === true
 }
 
+// The composer's page (decision 0184) loads on its own route only.
+const ComposerPage = lazy(() => import("./features/review/ComposerPage.tsx").then((module) => ({ default: module.ComposerPage })))
+
 function RoutedApp() {
   // Committed (not pending) search: the workspace switches once the new
   // project's page has loaded, then remounts without the old project's state.
   const project = useSearch({ strict: false, select: (search) => typeof search.project === "string" ? search.project : "" })
   // The index route without a project asks which to open (decision 0153).
   const asking = useRouterState({ select: (state) => state.matches.some((match) => match.routeId === indexRoute.id && isChoosing(match.loaderData)) })
+  // /composer is the composer alone: no workspace, no project to load.
+  const composing = useRouterState({ select: (state) => state.matches.some((match) => match.routeId === composerRoute.id) })
+  if (composing) return <Suspense fallback={null}><ComposerPage /></Suspense>
   if (asking) return <ChooseProject />
   return <SourceControlProvider key={project} project={project}><App project={project} /></SourceControlProvider>
 }
@@ -182,7 +189,15 @@ const viewRoute = createRoute({
   }),
 })
 
-const routeTree = rootRoute.addChildren([indexRoute, viewRoute])
+// composerRoute is the page the desktop app shows beside a pick on the
+// Browser's page (decision 0184). It loads nothing: the pick names its
+// project.
+const composerRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "composer",
+})
+
+const routeTree = rootRoute.addChildren([indexRoute, viewRoute, composerRoute])
 
 export const router = createRouter({
   defaultPreload: "intent",

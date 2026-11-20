@@ -11,10 +11,16 @@ Reply: zero feedback reply fb-3k2q8m <thread> -m "<what you did>" [--resolve | -
 Keep the greeting in a constant so the CLI and tests share it.
 
 ## Thread 5 · open · screenshot · `http://localhost:5173/settings?tab=billing&session=REDACTED#plan`
-Page: `Settings · Acme` · viewport 1440×900 CSS px at 2× · scrolled 0,1320
+Page: `Settings · Acme` · viewport 1440×900 CSS px at 2× · scrolled 0,1320 · dark scheme
 Localhost: the reviewer's machine, not this one; the port may not reach the project
 Region: image 96,96 420×96 of 612×288 · CSS 605,320 210×48 · document 605,1640
 Element (page's hint, unverified): button `Save changes` · `main form > button[data-testid="save"]`
+Path: `main › form.settings › div.actions › button.btn.btn-primary`
+Component: `SettingsForm › Card › Button` · source `src/settings/SettingsForm.tsx:42`
+Classes: `btn btn-primary`
+Attributes: `type=submit` `data-testid=save`
+Styles (computed): `color: rgb(255, 255, 255)` `background-color: rgb(50, 93, 200)` `font-size: 14px` `padding: 8px 16px`
+Nearby text: `Cancel`
 Code at: 4e1d8c2b7a9f0e3d5c6b1a2f8e7d9c0b3a4f5e6d
 Screenshot: zero feedback attachment fb-3k2q8m at-7hq2mx4kpa [--crop -o region.png]
 

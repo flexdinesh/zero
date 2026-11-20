@@ -135,6 +135,37 @@ UI, and the same stacking and keyboard rules, are unverified there.
 - **Gone.** Review windows, the Review menu, F8 and Shift+F8, the frozen
   frame composer, the hit map, and pasted screenshots.
 
+### As built
+
+- **Keys.** The app's menus carry the keys that must work while a guest has
+  the keyboard: View › Reload (the guest that shows, else Zero's page),
+  Zoom, and Developer Tools act on Zero's page; Browser › Open Location…
+  (Ctrl/Cmd+L), Back, Forward, and Comment act on the guest that shows.
+  guest.js gives the page Alt+Left, Alt+Right (Cmd+[ and Cmd+] on macOS),
+  and F5.
+- **Events, not a new channel.** The app awaits `__zeroBrowser.next()` in
+  the guest and asks again: a pick, Escape, a press while a pick waits, and
+  a click on a pin each answer one. A pick hides everything the script
+  drew, waits two frames, and answers; the app takes the frame, then has
+  the script outline the pick. Whatever the page answers is validated and
+  bounded in `internal/review` (`ParseEvent`, `ParseSelection`).
+- **Composer.** `<origin>/composer`, loaded when comment mode first turns
+  on and kept hidden between picks. Only that web view on that path may
+  call `composerCapture`, `composerWalk`, `composerResize`, and
+  `composerClose`; it calls no other bridge method. `PlaceComposer` puts it
+  under the pick, else over it, inside the guest's frame.
+- **A page that leaves** ends comment mode and drops a waiting pick. Pins
+  are placed again after each load.
+- **Contract.** A visual element's `selector` is optional; it gains `path`,
+  `classes`, `attributes`, `styles`, `component`, `source`, `nearby`, and
+  `selectedText`, and the page `colorScheme`. The server stores a `source`
+  inside the project relative to it. An attribute named `value` is refused.
+- **Tests of the window.** The built app serves its own driver on a Unix
+  socket under `-tags e2e` (`e2e_driver.go`): eval and capture in Zero's
+  page, a guest, or the composer, and what the window shows where. The
+  desktop group drives the real tab over a real page, a pick by pointer,
+  the frame's pixels, the walk, a region, pins, and the composer's bridge.
+
 ## Consequences
 
 - Reviewing a UI happens in one window: the page, the pick, and the comment.
@@ -154,3 +185,7 @@ UI, and the same stacking and keyboard rules, are unverified there.
 - Run the window and the comment loop on macOS.
 - Hover menus and animations: a delayed pick or a freeze.
 - Report mygo's stale size for a web view shown again.
+- The branch picker's open counts and Delete Feedback still include visual
+  threads with experimental features off.
+- A pick in a page that scrolls by dragging its scrollbar can leave the
+  composer behind its element.

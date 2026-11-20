@@ -36,7 +36,8 @@
         "width": 612,
         "height": 288
       },
-      "localhost": "viewer"
+      "localhost": "viewer",
+      "colorScheme": "dark"
     },
     "element": {
       "selector": "main form > button[data-testid=\"save\"]",
@@ -49,7 +50,40 @@
         "y": 96,
         "width": 420,
         "height": 96
-      }
+      },
+      "path": "main › form.settings › div.actions › button.btn.btn-primary",
+      "classes": "btn btn-primary",
+      "attributes": [
+        {
+          "name": "type",
+          "value": "submit"
+        },
+        {
+          "name": "data-testid",
+          "value": "save"
+        }
+      ],
+      "styles": [
+        {
+          "name": "color",
+          "value": "rgb(255, 255, 255)"
+        },
+        {
+          "name": "background-color",
+          "value": "rgb(50, 93, 200)"
+        },
+        {
+          "name": "font-size",
+          "value": "14px"
+        },
+        {
+          "name": "padding",
+          "value": "8px 16px"
+        }
+      ],
+      "component": "SettingsForm › Card › Button",
+      "source": "src/settings/SettingsForm.tsx:42",
+      "nearby": "Cancel"
     },
     "head": "4e1d8c2b7a9f0e3d5c6b1a2f8e7d9c0b3a4f5e6d",
     "available": true

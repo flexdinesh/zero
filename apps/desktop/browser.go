@@ -19,9 +19,10 @@ import (
 // tab reports: it calls nothing of the app's, and the app reads it only
 // through Page.Eval and guest.js, which runs before the page's own scripts.
 // The tab drives it: browserOpen makes it and loads a page, browserState
-// reads the page and its load failures, browserAction moves it,
-// browserFrame places or hides it, browserSnapshot answers its frame, and
-// zero:browser tells the tab when its state changed.
+// reads the page and its load failures, browserAction moves it and turns
+// comment mode on and off (comment.go), browserFrame places or hides it,
+// browserSnapshot answers its frame, browserPins marks earlier comments on
+// it, and zero:browser tells the tab when its state changed.
 
 // browserDelay coalesces a guest's bursts of changes into one zero:browser
 // event.
@@ -31,6 +32,7 @@ const browserDelay = 100 * time.Millisecond
 type guest struct {
 	host    *host
 	window  *mygo.Window
+	frame   *shell
 	project string
 	view    *mygo.WebView
 	// ctx ends when the guest closes.
@@ -40,6 +42,16 @@ type guest struct {
 	mu sync.Mutex
 	// browsing follows the page's load events for the Browser tab.
 	browsing review.Browsing
+	// commenting says comment mode is on.
+	commenting bool
+	// pins are the marks of earlier comments the tab last sent.
+	pins        []review.Pin
+	pinsVisible bool
+	// interrupt ends the wait for guest.js's next event: the page that
+	// would answer left.
+	interrupt context.CancelFunc
+	// loaded pulses when a page finishes loading.
+	loaded chan struct{}
 }
 
 // browserNews holds the guests with a zero:browser event on its way.
@@ -95,7 +107,7 @@ func (h *host) newGuest(window *mygo.Window, frame *shell, project string) (*gue
 		return nil, err
 	}
 	ctx, stop := context.WithCancel(context.Background())
-	made := &guest{host: h, window: window, project: project, view: view, ctx: ctx, stop: stop}
+	made := &guest{host: h, window: window, frame: frame, project: project, view: view, ctx: ctx, stop: stop, loaded: make(chan struct{}, 1)}
 	page := view.Page()
 	page.SetPermissionHandler(func(mygo.PermissionRequest) bool { return false })
 	// OnWillNavigate sees what the page asks for, never LoadURL or history
@@ -121,7 +133,10 @@ func (h *host) newGuest(window *mygo.Window, frame *shell, project string) (*gue
 		shown := page.URL()
 		made.record(func(browsing *review.Browsing) { browsing.Crash(shown, reason) })
 	})
-	page.OnDidFinishLoad(func() { h.browserChanged(window, project) })
+	page.OnDidFinishLoad(func() {
+		made.pageLoaded()
+		h.browserChanged(window, project)
+	})
 	page.SetWindowOpenHandler(func(open mygo.WindowOpenRequest) *mygo.WindowOptions {
 		if target, ok := review.CheckURL(open.URL); ok {
 			go func() { _ = mygo.Shell.OpenExternal(target) }()
@@ -130,6 +145,7 @@ func (h *host) newGuest(window *mygo.Window, frame *shell, project string) (*gue
 	})
 	// A new page has no title until it says one.
 	page.OnDidNavigate(func(string) {
+		made.navigated()
 		made.record(func(browsing *review.Browsing) { browsing.Title("") })
 	})
 	// The window's title is the app's; the tab shows the page's.
@@ -140,11 +156,13 @@ func (h *host) newGuest(window *mygo.Window, frame *shell, project string) (*gue
 	if evicted := frame.add(made); evicted != nil {
 		evicted.close()
 	}
+	go made.listen()
 	return made, nil
 }
 
 // close ends the guest and its web view, and tells its tab.
 func (g *guest) close() {
+	g.host.endComposing(g.frame, g, false)
 	g.stop()
 	g.view.Destroy()
 	g.host.browserChanged(g.window, g.project)
@@ -166,9 +184,12 @@ func (g *guest) state() *review.BrowserState {
 	if g.ctx.Err() != nil {
 		return nil
 	}
+	composing := g.frame.composed()
 	g.mu.Lock()
 	state := g.browsing.State(shown, loading, back, forward)
+	state.Commenting = g.commenting
 	g.mu.Unlock()
+	state.Composing = composing != nil && composing.guest == g
 	return &state
 }
 
@@ -193,6 +214,10 @@ func (g *guest) act(action string) {
 	case bridge.BrowserStop:
 		page.Stop()
 		g.host.browserChanged(g.window, g.project)
+	case bridge.BrowserComment:
+		g.setCommenting(true)
+	case bridge.BrowserEndComment:
+		g.setCommenting(false)
 	}
 }
 
@@ -245,7 +270,10 @@ func (h *host) browserFrame(window *mygo.Window, request bridge.BrowserFrame) {
 		frame.hide(request.Project)
 		return
 	}
-	frame.place(request.Project, at)
+	frame.place(request.Project, at, layout{width: width, height: height, zoom: app.ZoomFactor()})
+	if composer := frame.composerView(); composer != nil {
+		composer.Page().SetZoomFactor(app.ZoomFactor())
+	}
 }
 
 // browserSnapshot answers the frame the project's guest shows now as a
@@ -325,8 +353,8 @@ func (h *host) reloadShown(window *mygo.Window, ignoreCache bool) {
 }
 
 // isAppPage reports a page of the app's own: a page window's, or the web
-// view of the app's page in a window of native UI. A guest's is not, and the
-// proxy refuses it.
+// view of the app's page or of its composer in a window of native UI. A
+// guest's is not, and the proxy refuses it.
 func (h *host) isAppPage(page *mygo.Page) bool {
 	if page == nil {
 		return false
@@ -336,7 +364,7 @@ func (h *host) isAppPage(page *mygo.Page) bool {
 		return true
 	}
 	frame := h.shellOf(view.Window())
-	return frame != nil && frame.zeroView() == view
+	return frame != nil && (frame.zeroView() == view || frame.composerView() == view)
 }
 
 // tell dispatches a CustomEvent with detail to window's page of the app.

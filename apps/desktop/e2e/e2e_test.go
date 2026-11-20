@@ -20,8 +20,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
+	"image"
+	"image/png"
 	"io"
 	"io/fs"
+	"math"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -56,6 +59,8 @@ type session struct {
 	// guest is a project whose guest page evals and captures act on,
 	// through the app's own driver; "" is the app's page.
 	guest string
+	// composer makes them act on the window's composer instead.
+	composer bool
 }
 
 // connectionLink finds the link `zero connect` prints.
@@ -173,6 +178,13 @@ type shownGuest struct {
 	Width   float64 `json:"width"`
 	Height  float64 `json:"height"`
 	Guests  int     `json:"guests"`
+	// Composer is where the composer shows over the guest, nil for hidden.
+	Composer *struct {
+		X      float64 `json:"x"`
+		Y      float64 `json:"y"`
+		Width  float64 `json:"width"`
+		Height float64 `json:"height"`
+	} `json:"composer"`
 }
 
 func (s *session) shown() shownGuest {
@@ -1047,6 +1059,405 @@ func TestWebViewApp(t *testing.T) {
 		shell.waitShown("the guest back after the list closed", w.project)
 		shell.waitEval("the snapshot gone", `return document.querySelector(".browser-stage-cover") === null`)
 		guest.waitEval("the page kept", `return document.title === "Shop"`)
+
+		// Closing the tab closes its page; the next launch starts on files.
+		shell.waitEval("the tab's close button", `const button = document.querySelector('.buffer-tab.active [role="tab"][data-tab^="browser"]')?.parentElement.querySelector(".buffer-tab-close")
+			if (!button) return false
+			button.click()
+			return true`)
+		shell.waitEval("no page after the tab closed", `return (await window.zeroDesktop.browserState(`+strconv.Quote(w.project)+`)) === null && document.querySelector(".browser-stage") === null`)
+		if closed := shell.shown(); closed.Project != "" || closed.Guests != 0 {
+			t.Errorf("after the tab closed the window shows %+v", closed)
+		}
+		shell.waitEval("the Explorer activity", `const button = [...document.querySelectorAll('nav[aria-label="Views"] button')].find((each) => (each.getAttribute("aria-label") ?? "").startsWith("Explorer"))
+			if (!button) return false
+			button.click()
+			return true`)
+		shell.waitEval("the project's tree again", treeShows("README.md"))
+	})
+
+	t.Run("comments on a guest page", func(t *testing.T) {
+		w.t = t
+		w.env = append(w.env, "ZERO_EXPERIMENTAL=1")
+		defer func() { w.env = w.env[:len(w.env)-1] }()
+		app := w.launch(w.project)
+		defer app.stop()
+		shell := w.driver(t)
+		shell.waitEval("the project's tree", treeShows("README.md"))
+		guest := w.driver(t)
+		guest.guest = w.project
+		composer := w.driver(t)
+		composer.composer = true
+
+		site := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+			response.Header().Set("Content-Type", "text/html")
+			_, _ = io.WriteString(response, `<!doctype html><title>Settings</title><body style="margin:0;background:#fff">
+				<main><form class="settings" style="position:absolute;left:60px;top:40px;width:400px;height:200px;background:#eee">
+				<button id="save" type="button" data-testid="save" class="btn btn-primary" style="position:absolute;left:40px;top:40px;width:120px;height:40px;border:0;background:rgb(34,85,204);color:#fff">Save changes</button>
+				<input id="secret" value="hunter2" style="position:absolute;left:40px;top:120px;width:200px;height:30px">
+				</form></main>
+				<script>window.clicks = 0; addEventListener("click", () => window.clicks++)</script>`)
+		}))
+		defer site.Close()
+
+		project := strconv.Quote(w.project)
+		state := `(await window.zeroDesktop.browserState(` + project + `))`
+		act := func(action string) {
+			t.Helper()
+			shell.eval(`await window.zeroDesktop.browserAction(` + project + `, "` + action + `"); return true`)
+		}
+		shell.eval(`window.__pins = []
+			window.__commented = []
+			window.addEventListener("zero:browser-pin", (event) => window.__pins.push(event.detail))
+			window.addEventListener("zero:browser-commented", (event) => window.__commented.push(event.detail))
+			return true`)
+		shell.eval(`await window.zeroDesktop.browserOpen(` + project + `, ` + strconv.Quote(site.URL+"/") + `); return true`)
+		shell.eval(`await window.zeroDesktop.browserFrame(` + project + `, {x: 300, y: 100, width: 600, height: 400}); return true`)
+		shell.waitShown("the guest", w.project)
+		guest.waitEval("the page", `return document.title === "Settings" && innerWidth === 600 && innerHeight === 400`)
+		shell.waitEval("a loaded page, not commenting", `const s = `+state+`; return s?.url === `+strconv.Quote(site.URL+"/")+` && !s.loading && s.commenting === false && s.composing === false`)
+		windowX, windowY := contentOrigin(t, shell)
+		// at is a point of the guest's viewport on the screen.
+		at := func(x, y int) (string, string) {
+			return strconv.Itoa(windowX + 300 + x), strconv.Itoa(windowY + 100 + y)
+		}
+		move := func(x, y int) {
+			t.Helper()
+			screenX, screenY := at(x, y)
+			xdo(t, "mousemove", screenX, screenY)
+			time.Sleep(80 * time.Millisecond)
+		}
+		click := func(x, y int) {
+			t.Helper()
+			move(x, y)
+			xdo(t, "click", "1")
+		}
+
+		// Comment mode swallows the page's input and picks what is clicked.
+		act("comment")
+		shell.waitEval("comment mode", `return `+state+`.commenting === true`)
+		guest.waitEval("the page with the keyboard", `return document.hasFocus()`)
+		click(160, 100)
+		shell.waitEval("a pick waiting for its comment", `return `+state+`.composing === true`)
+		if got := guest.eval(`return window.clicks`); got != float64(0) {
+			t.Errorf("the page heard %v clicks in comment mode", got)
+		}
+		composer.waitEval("the composer's page showing the pick", `return location.pathname === "/composer" && typeof window.zeroDesktop?.composerCapture === "function" && document.querySelector(".composer-pick-label")?.textContent.includes("Save changes") === true`)
+		composer.waitEval("the composer with the keyboard", `return document.hasFocus() && document.activeElement?.tagName === "TEXTAREA"`)
+		// The composer's page asks for its content's height.
+		placed := shell.shown()
+		if placed.Composer == nil || placed.Composer.X != 400 || placed.Composer.Y != 228 || placed.Composer.Width != 360 || placed.Composer.Height < 120 || placed.Composer.Height > 480 {
+			t.Errorf("the composer shows at %+v, want 400,228 and 360 wide under the pick", placed.Composer)
+		}
+		picked := composer.readCapture(`await window.zeroDesktop.composerCapture()`)
+		if picked == nil || picked.Element == nil {
+			t.Fatalf("composerCapture = %+v", picked)
+		}
+		element := picked.Element
+		if picked.Project != w.project || picked.Kind != "element" || picked.Rect.X != 100 || picked.Rect.Y != 80 || picked.Rect.Width != 120 || picked.Rect.Height != 40 || !picked.CanWalkUp || picked.CanWalkDown {
+			t.Errorf("the pick = %+v", picked)
+		}
+		if element.Tag != "button" || !strings.Contains(element.Selector, `[data-testid="save"]`) || element.Name != "Save changes" || element.Classes != "btn btn-primary" || element.Path != "main › form.settings › button#save" || element.Nearby != "" {
+			t.Errorf("the element = %+v", element)
+		}
+		attributes, styles := map[string]string{}, map[string]string{}
+		for _, each := range element.Attributes {
+			attributes[each.Name] = each.Value
+		}
+		for _, each := range element.Styles {
+			styles[each.Name] = each.Value
+		}
+		if attributes["type"] != "button" || attributes["data-testid"] != "save" || styles["background-color"] != "rgb(34, 85, 204)" || styles["color"] != "rgb(255, 255, 255)" {
+			t.Errorf("attributes = %v, styles = %v", attributes, styles)
+		}
+		if picked.Page.URL != site.URL+"/" || picked.Page.Title != "Settings" || picked.Page.Viewport.Width != 600 || picked.Page.Viewport.Height != 400 || picked.Page.ColorScheme == "" {
+			t.Errorf("the page = %+v", picked.Page)
+		}
+		// The frame is the page alone: nothing of the app's is drawn on it.
+		data, err := base64.StdEncoding.DecodeString(picked.PNG)
+		if err != nil {
+			t.Fatal(err)
+		}
+		shot, err := png.Decode(bytes.NewReader(data))
+		if err != nil {
+			t.Fatal(err)
+		}
+		scale := picked.Page.Viewport.DeviceScaleFactor
+		if bounds := shot.Bounds(); math.Abs(float64(bounds.Dx())-600*scale) > 1 || math.Abs(float64(bounds.Dy())-400*scale) > 1 {
+			t.Errorf("the frame is %v at %vx, want the viewport", bounds, scale)
+		}
+		checkPixel(t, shot, "the button", 106*scale, 86*scale, [3]uint8{34, 85, 204})
+		checkPixel(t, shot, "the button's edge", 100.5*scale, 80.5*scale, [3]uint8{34, 85, 204})
+		checkPixel(t, shot, "the form beside the button", 98*scale, 78*scale, [3]uint8{238, 238, 238})
+		// The page then shows the pick outlined, for the reviewer.
+		guest.capture("comment-pick.png")
+		composer.capture("composer.png")
+
+		// Only the composer reads the pick.
+		if got := shell.eval(`return await window.zeroDesktop.composerCapture().then(() => "answered", () => "refused")`); got != "refused" {
+			t.Errorf("the app's page read the composer's pick: %v", got)
+		}
+		if got := guest.eval(`return window.mygo ? await window.mygo.call("Bridge.ComposerCapture").then(() => "answered", () => "refused") : "refused"`); got != "refused" {
+			t.Errorf("the guest read the composer's pick: %v", got)
+		}
+
+		// Alt+Up and Alt+Down in the composer walk the pick.
+		parent := composer.readCapture(`await window.zeroDesktop.composerWalk("parent")`)
+		if parent == nil || parent.Element == nil || parent.Element.Tag != "form" || parent.Rect.X != 60 || parent.Rect.Width != 400 || !parent.CanWalkDown || parent.PNG != picked.PNG {
+			t.Errorf("the parent = %+v", parent)
+		}
+		if again := composer.readCapture(`await window.zeroDesktop.composerCapture()`); again == nil || again.Element == nil || again.Element.Tag != "form" {
+			t.Errorf("the capture after a walk = %+v", again)
+		}
+		if moved := shell.shown(); moved.Composer == nil || moved.Composer.X != 360 || moved.Composer.Y != 348 {
+			t.Errorf("the composer after a walk shows at %+v, want 360,348", moved.Composer)
+		}
+		child := composer.readCapture(`await window.zeroDesktop.composerWalk("child")`)
+		if child == nil || child.Element == nil || child.Element.Tag != "button" || child.CanWalkDown {
+			t.Errorf("the child = %+v", child)
+		}
+		if got := composer.eval(`return await window.zeroDesktop.composerWalk("sideways").then(() => "answered", () => "refused")`); got != "refused" {
+			t.Errorf("a walk nowhere = %v", got)
+		}
+		composer.eval(`await window.zeroDesktop.composerResize(260); return true`)
+		if grown := shell.shown(); grown.Composer == nil || grown.Composer.Height != 260 || grown.Composer.Y != 228 {
+			t.Errorf("the composer after a resize shows at %+v, want 260 tall", grown.Composer)
+		}
+
+		// A press on the page while its pick waits gives the keyboard back
+		// to the composer, and the page hears none of it.
+		click(500, 350)
+		composer.waitEval("the composer with the keyboard again", `return document.hasFocus()`)
+		if got := guest.eval(`return window.clicks`); got != float64(0) {
+			t.Errorf("the page heard %v clicks while its pick waited", got)
+		}
+
+		// Dropping the comment goes back to picking.
+		composer.eval(`await window.zeroDesktop.composerClose(false); return true`)
+		shell.waitEval("picking again", `const s = `+state+`; return s.composing === false && s.commenting === true`)
+		if closed := shell.shown(); closed.Composer != nil {
+			t.Errorf("a closed composer still shows at %+v", closed.Composer)
+		}
+		if got := composer.eval(`return await window.zeroDesktop.composerCapture()`); got != nil {
+			t.Errorf("a capture after close = %v", got)
+		}
+		if got := shell.eval(`return window.__commented.length`); got != float64(0) {
+			t.Errorf("a dropped comment announced %v comments", got)
+		}
+
+		// A drag picks a region; a field's value is never read.
+		move(60, 140)
+		xdo(t, "mousedown", "1")
+		for _, step := range [][2]int{{120, 170}, {220, 200}, {320, 220}} {
+			move(step[0], step[1])
+		}
+		xdo(t, "mouseup", "1")
+		shell.waitEval("a region waiting for its comment", `return `+state+`.composing === true`)
+		raw, _ := composer.eval(`const c = await window.zeroDesktop.composerCapture(); return JSON.stringify({ ...c, png: "" })`).(string)
+		region := composer.readCapture(`await window.zeroDesktop.composerCapture()`)
+		if region == nil || region.Kind != "region" || region.CanWalkUp || math.Abs(float64(region.Rect.X-60)) > 2 || math.Abs(float64(region.Rect.Y-140)) > 2 || math.Abs(float64(region.Rect.Width-260)) > 3 || math.Abs(float64(region.Rect.Height-80)) > 3 {
+			t.Errorf("the region = %+v", region)
+		}
+		if strings.Contains(raw, "hunter2") {
+			t.Errorf("a pick over a field carries its value: %s", raw)
+		}
+		// A sent comment is announced to the Browser tab.
+		composer.eval(`await window.zeroDesktop.composerClose(true); return true`)
+		shell.waitEval("the comment announced", `return window.__commented.length === 1 && window.__commented[0] === `+project+` && `+state+`.composing === false`)
+
+		// Escape while picking leaves comment mode, and the page hears its
+		// input again.
+		guest.waitEval("the page with the keyboard after the comment", `return document.hasFocus()`)
+		xdo(t, "key", "Escape")
+		shell.waitEval("comment mode left", `return `+state+`.commenting === false`)
+		click(160, 100)
+		guest.waitEval("the page hearing a click again", `return window.clicks === 1`)
+
+		// Pins mark earlier comments; a click on one names its thread, and
+		// a load puts them back.
+		shell.eval(`await window.zeroDesktop.browserPins(` + project + `, [{thread: 3, resolved: false, selector: '[data-testid="save"]', x: 0, y: 0}], true); return true`)
+		time.Sleep(300 * time.Millisecond)
+		click(220, 80)
+		shell.waitEval("the pin's thread", `return window.__pins.length === 1 && window.__pins[0].project === `+project+` && window.__pins[0].thread === 3`)
+		if got := guest.eval(`return window.clicks`); got != float64(1) {
+			t.Errorf("the page heard a click on a pin: %v clicks", got)
+		}
+		guest.capture("comment-pins.png")
+		act("reload")
+		guest.waitEval("the page loaded again", `return window.clicks === 0 && document.readyState === "complete"`)
+		shell.waitEval("the reload done", `return `+state+`.loading === false`)
+		time.Sleep(700 * time.Millisecond)
+		click(220, 80)
+		shell.waitEval("the pin after a reload", `return window.__pins.length === 2`)
+		// Hidden pins take no clicks.
+		shell.eval(`await window.zeroDesktop.browserPins(` + project + `, [{thread: 3, resolved: false, selector: '[data-testid="save"]', x: 0, y: 0}], false); return true`)
+		time.Sleep(300 * time.Millisecond)
+		click(220, 80)
+		guest.waitEval("a click through a hidden pin", `return window.clicks === 1`)
+		if got := shell.eval(`return await window.zeroDesktop.browserPins(` + project + `, [{thread: 0, resolved: false, x: 0, y: 0}], true).then(() => "done", () => "refused")`); got != "refused" {
+			t.Errorf("a pin without a thread = %v, want refused", got)
+		}
+
+		// Browser › Comment toggles the mode while the page has the
+		// keyboard, and a page that leaves ends it.
+		if err := app.call("menu", map[string]any{"path": []string{"Browser", "Comment"}}, nil); err != nil {
+			t.Fatal(err)
+		}
+		shell.waitEval("comment mode from the menu", `return `+state+`.commenting === true`)
+		if err := app.call("menu", map[string]any{"path": []string{"Browser", "Comment"}}, nil); err != nil {
+			t.Fatal(err)
+		}
+		shell.waitEval("comment mode off from the menu", `return `+state+`.commenting === false`)
+		act("comment")
+		shell.waitEval("comment mode before a pick", `return `+state+`.commenting === true`)
+		click(160, 100)
+		shell.waitEval("a pick before the page leaves", `return `+state+`.composing === true`)
+		shell.eval(`await window.zeroDesktop.browserOpen(` + project + `, ` + strconv.Quote(site.URL+"/next") + `); return true`)
+		shell.waitEval("a new page ends the pick and the mode", `const s = `+state+`; return s.url === `+strconv.Quote(site.URL+"/next")+` && !s.loading && s.commenting === false && s.composing === false`)
+		if left := shell.shown(); left.Composer != nil {
+			t.Errorf("the composer outlived its page: %+v", left.Composer)
+		}
+		// The new page comments like the first.
+		act("comment")
+		shell.waitEval("comment mode on the new page", `return `+state+`.commenting === true`)
+		click(160, 100)
+		shell.waitEval("a pick on the new page", `return `+state+`.composing === true`)
+		act("endComment")
+		shell.waitEval("the mode ended with its pick", `const s = `+state+`; return s.commenting === false && s.composing === false`)
+
+		// Closing the tab's page ends everything of it.
+		act("comment")
+		shell.waitEval("comment mode before close", `return `+state+`.commenting === true`)
+		click(160, 100)
+		shell.waitEval("a pick before close", `return `+state+`.composing === true`)
+		act("close")
+		shell.waitEval("no guest after close", `return `+state+` === null`)
+		if gone := shell.shown(); gone.Composer != nil || gone.Guests != 0 {
+			t.Errorf("after close the window shows %+v", gone)
+		}
+	})
+
+	t.Run("a comment through the Browser tab", func(t *testing.T) {
+		w.t = t
+		w.env = append(w.env, "ZERO_EXPERIMENTAL=1")
+		defer func() { w.env = w.env[:len(w.env)-1] }()
+		app := w.launch(w.project)
+		defer app.stop()
+		shell := w.driver(t)
+		shell.waitEval("the project's tree", treeShows("README.md"))
+		guest := w.driver(t)
+		guest.guest = w.project
+		composer := w.driver(t)
+		composer.composer = true
+		site := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+			response.Header().Set("Content-Type", "text/html")
+			_, _ = io.WriteString(response, `<!doctype html><title>Settings</title><body style="margin:0;background:#fff">
+				<main><form class="settings" style="position:absolute;left:60px;top:40px;width:400px;height:200px;background:#eee">
+				<button id="save" type="button" data-testid="save" class="btn btn-primary" style="position:absolute;left:40px;top:40px;width:120px;height:40px;border:0;background:rgb(34,85,204);color:#fff">Save changes</button>
+				</form></main>`)
+		}))
+		defer site.Close()
+		project := strconv.Quote(w.project)
+		state := `(await window.zeroDesktop.browserState(` + project + `))`
+		press := func(what, find string) {
+			t.Helper()
+			shell.waitEval(what, `const button = `+find+`
+				if (!button || button.getAttribute("aria-disabled") === "true") return false
+				button.click()
+				return true`)
+		}
+
+		// The page opens in the tab, as a reviewer opens it.
+		press("the Browser activity", `[...document.querySelectorAll('nav[aria-label="Views"] button')].find((each) => (each.getAttribute("aria-label") ?? "").startsWith("Browser"))`)
+		shell.waitEval("the address field", `return document.querySelector('input[aria-label="Page address"]') !== null`)
+		windowX, windowY := contentOrigin(t, shell)
+		field, ok := shell.eval(`const box = document.querySelector('input[aria-label="Page address"]').getBoundingClientRect(); return [Math.round(box.left + box.width / 2), Math.round(box.top + box.height / 2)]`).([]any)
+		if !ok || len(field) != 2 {
+			t.Fatalf("the address field's place = %v", field)
+		}
+		fieldX, _ := field[0].(float64)
+		fieldY, _ := field[1].(float64)
+		xdo(t, "mousemove", strconv.Itoa(windowX+int(fieldX)), strconv.Itoa(windowY+int(fieldY)), "click", "1")
+		shell.waitEval("the address field with the keyboard", `return document.activeElement === document.querySelector('input[aria-label="Page address"]')`)
+		xdo(t, "type", "--delay", "20", site.URL+"/")
+		xdo(t, "key", "Return")
+		shown := shell.waitShown("the guest over the stage", w.project)
+		guest.waitEval("the page", `return document.title === "Settings" && document.readyState === "complete"`)
+		shell.waitEval("the page loaded in the tab", `const s = `+state+`; return s?.url === `+strconv.Quote(site.URL+"/")+` && !s.loading`)
+		click := func(x, y int) {
+			t.Helper()
+			xdo(t, "mousemove", strconv.Itoa(windowX+int(shown.X)+x), strconv.Itoa(windowY+int(shown.Y)+y))
+			time.Sleep(80 * time.Millisecond)
+			xdo(t, "click", "1")
+		}
+
+		// Comment in the toolbar, a click on the button, and the composer
+		// shows beside it with the keyboard.
+		press("the Comment toggle", `document.querySelector(".browser-comment-toggle")`)
+		shell.waitEval("comment mode from the toolbar", `return `+state+`.commenting === true && document.querySelector(".browser-comment-hint") !== null`)
+		guest.waitEval("the page with the keyboard", `return document.hasFocus()`)
+		click(160, 100)
+		composer.waitEval("the composer naming the pick", `return document.querySelector(".composer-pick-label")?.textContent.includes("Save changes") === true && document.hasFocus() && document.activeElement?.tagName === "TEXTAREA"`)
+		wantX, wantY := shown.X+100, shown.Y+80+40+8
+		if placed := shell.shown(); placed.Composer == nil || placed.Composer.X != wantX || placed.Composer.Y != wantY || placed.Composer.Width != 360 {
+			t.Errorf("the composer shows at %+v, want %v,%v under the button", placed.Composer, wantX, wantY)
+		}
+		// The composer's page fits its web view: nothing scrolls.
+		composer.waitEval("the composer fitting its view", `return innerWidth === 360 && document.documentElement.scrollWidth <= 360 && document.documentElement.scrollHeight <= innerHeight + 1`)
+		composer.capture("composer.png")
+
+		// Alt+Up and Alt+Down walk the pick from the composer.
+		xdo(t, "key", "alt+Up")
+		composer.waitEval("the form picked from the composer", `return document.querySelector(".composer-pick-label")?.textContent.includes("form") === true`)
+		xdo(t, "key", "alt+Down")
+		composer.waitEval("the button picked again", `return document.querySelector(".composer-pick-label")?.textContent.includes("Save changes") === true`)
+
+		// The comment is typed and sent from the keyboard, and becomes a
+		// thread with the screenshot and what the page said of the element.
+		xdo(t, "type", "--delay", "20", "Keep this inside the card.")
+		xdo(t, "key", "ctrl+Return")
+		shell.waitEval("the comment sent", `const s = `+state+`; return s.composing === false && s.commenting === true`)
+		read := `const feedback = await (await fetch("/api/feedback?project=" + encodeURIComponent(` + project + `))).json(); const thread = feedback.threads?.[0];`
+		shell.waitEval("the thread in the project's feedback", read+` const element = thread?.visual?.element
+			return feedback.threads.length === 1 && thread.messages[0].body === "Keep this inside the card." && thread.visual.available === true &&
+				thread.visual.page.url === `+strconv.Quote(site.URL+"/")+` && thread.visual.page.title === "Settings" && thread.visual.page.colorScheme === "light" &&
+				element.tag === "button" && element.name === "Save changes" && element.selector.includes('[data-testid="save"]') && element.path === "main › form.settings › button#save" &&
+				element.classes === "btn btn-primary" && element.attributes.some((each) => each.name === "data-testid" && each.value === "save") &&
+				element.styles.some((each) => each.name === "background-color" && each.value === "rgb(34, 85, 204)") &&
+				thread.visual.rect.width === 120 && thread.visual.rect.height === 40 && thread.visual.attachment.width === 216 && thread.visual.attachment.height === 136`)
+		shell.waitEval("the comment listed on its page", `const view = document.querySelector(".browser-view"); return view?.innerText.includes("On this page") === true && view.innerText.includes("Keep this inside the card.") && view.innerText.includes("Comments go to")`)
+		shell.capture("browser-comments.png")
+
+		// The page shows the comment's pin; a click on it opens the thread's
+		// screen tab, which shows the element's facts.
+		guest.waitEval("the page with the keyboard after the comment", `return document.hasFocus()`)
+		time.Sleep(700 * time.Millisecond)
+		guest.capture("comment-pin.png")
+		click(220, 80)
+		shell.waitEval("the thread's screen tab", `return document.querySelector('.buffer-tab.active [role="tab"][data-tab^="screen"]') !== null && document.querySelector("main")?.innerText.includes("Keep this inside the card.") === true && document.querySelector("main").innerText.includes("form.settings")`)
+		shell.waitShown("the guest hidden under the screen tab", "")
+		shell.capture("screen-thread.png")
+
+		// Back in the Browser tab the mode is as it was; Escape in the page
+		// leaves it.
+		press("the Browser tab", `document.querySelector('[role="tab"][data-tab^="browser"]')`)
+		shell.waitShown("the guest back", w.project)
+		shell.waitEval("still commenting", `return `+state+`.commenting === true`)
+		click(300, 150)
+		shell.waitEval("a second pick", `return `+state+`.composing === true`)
+		composer.waitEval("the composer with the keyboard again", `return document.hasFocus() && document.querySelector(".composer-pick-label") !== null`)
+		xdo(t, "key", "Escape")
+		shell.waitEval("the pick dropped from the composer", `const s = `+state+`; return s.composing === false && s.commenting === true`)
+		guest.waitEval("the page with the keyboard to leave", `return document.hasFocus()`)
+		xdo(t, "key", "Escape")
+		shell.waitEval("comment mode left from the page", `return `+state+`.commenting === false && document.querySelector(".browser-comment-hint") === null`)
+
+		// Leave the project as it was found.
+		shell.eval(read + ` await fetch("/api/feedback-threads?" + new URLSearchParams({project: ` + project + `, id: feedback.id, thread: "1"}), {method: "DELETE"}); return true`)
+		press("the tab's close button", `document.querySelector('.buffer-tab.active [role="tab"][data-tab^="browser"]')?.parentElement.querySelector(".buffer-tab-close")`)
+		shell.waitEval("no page after the tab closed", `return `+state+` === null`)
+		press("the Explorer activity", `[...document.querySelectorAll('nav[aria-label="Views"] button')].find((each) => (each.getAttribute("aria-label") ?? "").startsWith("Explorer"))`)
+		shell.waitEval("the project's tree again", treeShows("README.md"))
 	})
 
 	t.Run("state survives a restart", func(t *testing.T) {
@@ -1879,6 +2290,9 @@ func (s *session) evalErr(script string) (any, error) {
 	if s.guest != "" {
 		params["project"] = s.guest
 	}
+	if s.composer {
+		params["composer"] = true
+	}
 	err := s.call("eval", params, &result)
 	return result.Value, err
 }
@@ -1919,6 +2333,9 @@ func (s *session) capture(name string) {
 	var params map[string]any
 	if s.guest != "" {
 		params = map[string]any{"project": s.guest}
+	}
+	if s.composer {
+		params = map[string]any{"composer": true}
 	}
 	if err := s.call("capture", params, &result); err != nil {
 		s.t.Errorf("capture %s: %v", name, err)
@@ -2132,4 +2549,76 @@ func contentOrigin(t *testing.T, shell *session) (int, int) {
 	left, _ := found[0].(float64)
 	top, _ := found[1].(float64)
 	return int(left), int(top)
+}
+
+// composerCapture is what composerCapture() hands the composer's page
+// (decision 0184).
+type composerCapture struct {
+	Project string `json:"project"`
+	PNG     string `json:"png"`
+	Kind    string `json:"kind"`
+	Rect    struct {
+		X      int `json:"x"`
+		Y      int `json:"y"`
+		Width  int `json:"width"`
+		Height int `json:"height"`
+	} `json:"rect"`
+	CanWalkUp   bool `json:"canWalkUp"`
+	CanWalkDown bool `json:"canWalkDown"`
+	Element     *struct {
+		Tag        string `json:"tag"`
+		Selector   string `json:"selector"`
+		Role       string `json:"role"`
+		Name       string `json:"name"`
+		Text       string `json:"text"`
+		Path       string `json:"path"`
+		Classes    string `json:"classes"`
+		Attributes []struct {
+			Name  string `json:"name"`
+			Value string `json:"value"`
+		} `json:"attributes"`
+		Styles []struct {
+			Name  string `json:"name"`
+			Value string `json:"value"`
+		} `json:"styles"`
+		Nearby string `json:"nearby"`
+	} `json:"element"`
+	Page struct {
+		URL      string `json:"url"`
+		Title    string `json:"title"`
+		Viewport struct {
+			Width             int     `json:"width"`
+			Height            int     `json:"height"`
+			DeviceScaleFactor float64 `json:"deviceScaleFactor"`
+		} `json:"viewport"`
+		ColorScheme string `json:"colorScheme"`
+	} `json:"page"`
+}
+
+// readCapture reads a capture the composer's page was handed by script.
+func (s *session) readCapture(script string) *composerCapture {
+	s.t.Helper()
+	raw, ok := s.eval(`return JSON.stringify(` + script + `)`).(string)
+	if !ok {
+		s.t.Fatalf("%s answered no capture", script)
+	}
+	var capture *composerCapture
+	if err := json.Unmarshal([]byte(raw), &capture); err != nil {
+		s.t.Fatalf("%s: %v", script, err)
+	}
+	return capture
+}
+
+// checkPixel reports the frame's color at a point that is not want, within
+// the rounding a compositor allows.
+func checkPixel(t *testing.T, frame image.Image, what string, x, y float64, want [3]uint8) {
+	t.Helper()
+	r, g, b, _ := frame.At(int(math.Round(x)), int(math.Round(y))).RGBA()
+	got := [3]uint8{uint8(r >> 8), uint8(g >> 8), uint8(b >> 8)}
+	for index := range got {
+		if diff := int(got[index]) - int(want[index]); diff > 8 || diff < -8 {
+			t.Errorf("%s at frame %.0f,%.0f is rgb%v, want rgb%v: the frame and the page disagree", what, x, y, got, want)
+			return
+		}
+	}
 }

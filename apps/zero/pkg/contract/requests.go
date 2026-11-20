@@ -238,6 +238,8 @@ type FeedbackPageDraft struct {
 	Viewport FeedbackViewport `json:"viewport"`
 	Scroll   FeedbackScroll   `json:"scroll"`
 	Clip     *FeedbackRect    `json:"clip,omitempty"`
+	// ColorScheme is the scheme the page showed in (decision 0184).
+	ColorScheme FeedbackColorScheme `json:"colorScheme,omitempty"`
 }
 
 // FeedbackAttachmentRequest names one attachment of a project's feedback:

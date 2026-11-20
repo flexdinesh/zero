@@ -1,6 +1,6 @@
 # 0181: Project browser tab
 
-- Status: Accepted
+- Status: Superseded by [0184](0184-browser-view-and-in-page-comments.md)
 - Date: 2026-11-20
 - Extends: [0175](0175-guest-browser-host-window.md) (guest windows),
   [0177](0177-ui-review-in-the-desktop-app.md) (review windows; supersedes

@@ -40,7 +40,12 @@ func preloadScript(state experimental.State) string {
     browserState(project) { return call("BrowserState", project) },
     browserAction(project, action) { return call("BrowserAction", project, action) },
     browserFrame(project, frame) { return call("BrowserFrame", project, frame) },
-    browserSnapshot(project) { return call("BrowserSnapshot", project) },`
+    browserSnapshot(project) { return call("BrowserSnapshot", project) },
+    browserPins(project, pins, visible) { return call("BrowserPins", project, pins, visible) },
+    composerCapture() { return call("ComposerCapture") },
+    composerWalk(direction) { return call("ComposerWalk", direction) },
+    composerResize(height) { return call("ComposerResize", height) },
+    composerClose(sent) { return call("ComposerClose", sent) },`
 	}
 	return `(() => {
   if (location.protocol !== "` + proxy.Scheme + `:") return
@@ -270,6 +275,91 @@ func (b *bridgeService) BrowserSnapshot(ctx context.Context, project any) (*stri
 	return b.host.browserSnapshot(window, name), nil
 }
 
+// BrowserPins marks earlier comments on the page of the project's guest in
+// the sender's window, shown or hidden; the app places them again after
+// each load.
+func (b *bridgeService) BrowserPins(ctx context.Context, project, pins, visible any) error {
+	window, ok := callerWindow(ctx, b.anyConnection)
+	if !ok {
+		return errRefused
+	}
+	request, ok := bridge.ParseBrowserPins(project, pins, visible)
+	if !ok {
+		return errRefused
+	}
+	b.host.browserPins(window, request)
+	return nil
+}
+
+// callerComposer returns the sender's window, if the sender is the composer
+// of that window on its own page: the composer's methods answer no other
+// page, and the composer's page calls no others.
+func (b *bridgeService) callerComposer(ctx context.Context) (*mygo.Window, bool) {
+	page := mygo.CallerPage(ctx)
+	if page == nil || !bridge.IsComposerPage(page.URL(), proxy.Scheme, composerPath, b.anyConnection) || !b.host.isComposer(page) {
+		return nil, false
+	}
+	window := mygo.CallerWindow(ctx)
+	return window, window != nil
+}
+
+// ComposerCapture answers the pick waiting for the sender, the composer of
+// its window: the page's frame with nothing of the app's on it, and what
+// was picked. null when none waits.
+func (b *bridgeService) ComposerCapture(ctx context.Context) (*review.Capture, error) {
+	window, ok := b.callerComposer(ctx)
+	if !ok {
+		return nil, errRefused
+	}
+	return b.host.composerCapture(window), nil
+}
+
+// ComposerWalk moves the waiting pick to its parent or back to its child
+// and answers it, null when it did not move.
+func (b *bridgeService) ComposerWalk(ctx context.Context, direction any) (*review.Capture, error) {
+	window, ok := b.callerComposer(ctx)
+	if !ok {
+		return nil, errRefused
+	}
+	walk, ok := bridge.ParseWalk(direction)
+	if !ok {
+		return nil, errRefused
+	}
+	return b.host.composerWalk(window, walk), nil
+}
+
+// ComposerResize gives the composer the height its content asks for, in
+// its CSS pixels.
+func (b *bridgeService) ComposerResize(ctx context.Context, height any) error {
+	window, ok := b.callerComposer(ctx)
+	if !ok {
+		return errRefused
+	}
+	asked, ok := bridge.ParseComposerHeight(height)
+	if !ok {
+		return errRefused
+	}
+	b.host.composerResize(window, asked)
+	return nil
+}
+
+// ComposerClose ends the waiting pick: the composer hides and the page
+// goes back to picking. sent says a comment was made of it.
+func (b *bridgeService) ComposerClose(ctx context.Context, sent any) error {
+	window, ok := b.callerComposer(ctx)
+	if !ok {
+		return errRefused
+	}
+	made, ok := sent.(bool)
+	if !ok {
+		return errRefused
+	}
+	if frame := b.host.shellOf(window); frame != nil {
+		b.host.endComposing(frame, nil, made)
+	}
+	return nil
+}
+
 // ShowContextMenu pops a native menu at a point in the page and answers the
 // chosen id, or null when dismissed.
 func (b *bridgeService) ShowContextMenu(ctx context.Context, items, x, y any) (*string, error) {
@@ -469,7 +559,7 @@ func (h *host) chooseFolder(window *mygo.Window) {
 // work while the guest has the keyboard, which the page's own never do.
 // Open Location… hands the keyboard to the tab's address field; Back and
 // Forward move the guest that shows, whose own Alt+Left and Alt+Right
-// guest.js answers.
+// guest.js answers; Comment turns its comment mode on and off.
 func (h *host) browserMenu() *mygo.MenuItem {
 	move := func(label, action string) *mygo.MenuItem {
 		return &mygo.MenuItem{Label: label, Click: func(_ *mygo.MenuItem, window *mygo.Window) {
@@ -492,5 +582,16 @@ func (h *host) browserMenu() *mygo.MenuItem {
 		mygo.Separator(),
 		move("Back", bridge.BrowserBack),
 		move("Forward", bridge.BrowserForward),
+		mygo.Separator(),
+		{Label: "Comment", Accelerator: "CmdOrCtrl+Shift+C", Click: func(_ *mygo.MenuItem, window *mygo.Window) {
+			if window == nil {
+				return
+			}
+			if frame := h.shellOf(window); frame != nil {
+				if shown := frame.shownGuest(); shown != nil {
+					go shown.setCommenting(!shown.isCommenting())
+				}
+			}
+		}},
 	}}
 }

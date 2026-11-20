@@ -94,6 +94,22 @@ func TestFeedbackVisualThreadsFromTheDraftFixtures(t *testing.T) {
 		t.Errorf("localhost for a host that is not loopback = %+v, %v", thread.Visual, err)
 	}
 
+	// A development build names an element's source by its absolute path;
+	// the thread keeps it as the project does (decision 0184).
+	sourced := r.visualDraft("draft-page.json", 612, 288)
+	sourced.Visual.Element.Source = r.root + "/src/settings/SettingsForm.tsx:42"
+	sourced.Visual.Element.Selector = ""
+	thread, err = r.feedback.CreateThread(context.Background(), sourced)
+	if err != nil || thread.Visual.Element.Source != "src/settings/SettingsForm.tsx:42" || thread.Visual.Element.Selector != "" {
+		t.Errorf("an element's absolute source = %+v, %v", thread.Visual, err)
+	}
+	outside := r.visualDraft("draft-page.json", 612, 288)
+	outside.Visual.Element.Source = "/elsewhere/Button.tsx:7"
+	thread, err = r.feedback.CreateThread(context.Background(), outside)
+	if err != nil || thread.Visual.Element.Source != "/elsewhere/Button.tsx:7" {
+		t.Errorf("a source outside the project = %+v, %v", thread.Visual, err)
+	}
+
 	minimal := r.visualDraft("draft-minimal.json", 1280, 720)
 	thread, err = r.feedback.CreateThread(context.Background(), minimal)
 	if err != nil || thread.Visual.Page != nil || thread.Visual.Element != nil || thread.Visual.Rect != (contract.FeedbackRect{X: 300, Y: 200, Width: 240, Height: 60}) || thread.Visual.Attachment.Width != 1280 {
@@ -119,7 +135,7 @@ func TestFeedbackVisualThreadsFromTheDraftFixtures(t *testing.T) {
 		t.Fatal(err)
 	}
 	all := r.get(contract.FeedbackRequest{})
-	if len(all.Threads) != 5 || all.Threads[3].Visual == nil || all.Threads[3].Visual.Available || all.Threads[4].Anchor == nil || all.Threads[4].Location == nil || !all.Threads[0].Visual.Available {
+	if len(all.Threads) != 7 || all.Threads[5].Visual == nil || all.Threads[5].Visual.Available || all.Threads[6].Anchor == nil || all.Threads[6].Location == nil || !all.Threads[0].Visual.Available {
 		t.Errorf("Get = %+v", all.Threads)
 	}
 	if _, _, err := r.feedback.OpenAttachment(request); codeOf(err) != contract.CodeFeedbackUnavailable || AsError(err).Kind != contract.KindNotFound {

@@ -11,14 +11,17 @@ export interface ToggleButtonProps extends NativeProps {
   label?: string
   // icon toggles are 20px squares in fields; text toggles are 28px tall.
   size?: "icon" | "text"
+  // disabledReason keeps the toggle focusable but inert, and explains why.
+  disabledReason?: string
   ref?: Ref<HTMLButtonElement>
 }
 
 // ToggleButton is an independent on/off option: accent border, ink, and tint
 // while pressed.
 export function ToggleButton({
-  pressed, onPressedChange, children, label, size = "icon", className, type = "button", title, ref, ...props
+  pressed, onPressedChange, children, label, size = "icon", disabledReason, className, type = "button", title, ref, ...props
 }: ToggleButtonProps) {
+  const inert = Boolean(disabledReason)
   return (
     <button
       ref={ref}
@@ -27,8 +30,9 @@ export function ToggleButton({
       data-size={size}
       aria-pressed={pressed}
       aria-label={label}
-      title={title ?? label}
-      onClick={() => onPressedChange(!pressed)}
+      aria-disabled={inert || undefined}
+      title={disabledReason || (title ?? label)}
+      onClick={() => { if (!inert) onPressedChange(!pressed) }}
       {...props}
     >
       {children}

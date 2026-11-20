@@ -193,3 +193,70 @@ func TestVisualProblemsFixture(t *testing.T) {
 		t.Errorf("problems =\n%s\nwant problems.json\n%s", problems.Error(), fixture.Error)
 	}
 }
+
+// Decision 0184: a pick carries more of its element, each part bounded; a
+// selector is no longer required, and a field's value never arrives.
+func TestVisualDraftElementFacts(t *testing.T) {
+	problemsOf := func(change func(*VisualDraft)) string {
+		draft := ThreadDraft{Project: "/p", Body: "b", Author: AuthorUser, Visual: validVisual()}
+		change(draft.Visual)
+		_, err := draft.Normalize()
+		if err == nil {
+			return ""
+		}
+		return err.Error()
+	}
+	full := func(visual *VisualDraft) {
+		visual.Page.ColorScheme = ColorSchemeDark
+		visual.Element.Selector = ""
+		visual.Element.Path = " main › form.settings › button "
+		visual.Element.Classes = "btn btn-primary"
+		visual.Element.Attributes = []ElementPair{{Name: "type", Value: "submit"}, {Name: "data-testid", Value: "save"}}
+		visual.Element.Styles = []ElementPair{{Name: "background-color", Value: "rgb(50, 93, 200)"}}
+		visual.Element.Component = "SettingsForm › Button"
+		visual.Element.Source = "src/settings/SettingsForm.tsx:42"
+		visual.Element.Nearby = "Cancel"
+		visual.Element.SelectedText = "Save"
+	}
+	if got := problemsOf(full); got != "" {
+		t.Errorf("a full element = %s", got)
+	}
+	draft := ThreadDraft{Project: "/p", Body: "b", Author: AuthorUser, Visual: validVisual()}
+	full(draft.Visual)
+	normalized, err := draft.Normalize()
+	if err != nil || normalized.Visual.Element.Path != "main › form.settings › button" {
+		t.Errorf("normalized path = %+v, %v", normalized.Visual, err)
+	}
+
+	many := make([]ElementPair, MaxStyles+1)
+	for index := range many {
+		many[index] = ElementPair{Name: "color", Value: "red"}
+	}
+	for name, test := range map[string]struct {
+		change func(*VisualDraft)
+		want   string
+	}{
+		"a scheme that is none": {func(v *VisualDraft) { v.Page.ColorScheme = "sepia" }, "visual.page.colorScheme: must be light or dark"},
+		"a field's value":       {func(v *VisualDraft) { v.Element.Attributes = []ElementPair{{Name: "value", Value: "hunter2"}} }, "visual.element.attributes[0].name: is value, which is never captured"},
+		"an attribute's name":   {func(v *VisualDraft) { v.Element.Attributes = []ElementPair{{Name: "onClick", Value: "x"}} }, "visual.element.attributes[0].name: must be a lowercase name of at most 64 bytes, such as aria-label"},
+		"too many attributes": {func(v *VisualDraft) {
+			v.Element.Attributes = many[:MaxAttributes+1]
+		}, "visual.element.attributes: has 9 entries; the most is 8"},
+		"too many styles": {func(v *VisualDraft) { v.Element.Styles = many }, "visual.element.styles: has 25 entries; the most is 24"},
+		"a long style": {func(v *VisualDraft) {
+			v.Element.Styles = []ElementPair{{Name: "font-family", Value: strings.Repeat("a", MaxStyleValueLength+1)}}
+		}, "visual.element.styles[0].value: must be one line of at most 128 characters"},
+		"a path of two lines":  {func(v *VisualDraft) { v.Element.Path = "main\nbutton" }, "visual.element.path: must be one line of at most 512 bytes"},
+		"a long source":        {func(v *VisualDraft) { v.Element.Source = strings.Repeat("a", MaxSourceBytes+1) }, "visual.element.source: must be one line of at most 512 bytes"},
+		"long selected text":   {func(v *VisualDraft) { v.Element.SelectedText = strings.Repeat("é", MaxElementTextLength+1) }, "visual.element.selectedText: must be one line of at most 256 characters"},
+		"a long component":     {func(v *VisualDraft) { v.Element.Component = strings.Repeat("A", MaxComponentLength+1) }, "visual.element.component: must be one line of at most 256 characters"},
+		"long classes":         {func(v *VisualDraft) { v.Element.Classes = strings.Repeat("a", MaxClassesBytes+1) }, "visual.element.classes: must be one line of at most 256 bytes"},
+		"long text nearby":     {func(v *VisualDraft) { v.Element.Nearby = strings.Repeat("a", MaxElementTextLength+1) }, "visual.element.nearby: must be one line of at most 256 characters"},
+		"a long selector":      {func(v *VisualDraft) { v.Element.Selector = strings.Repeat("a", MaxSelectorBytes+1) }, "visual.element.selector: must be one line of at most 512 bytes"},
+		"a tag that is no tag": {func(v *VisualDraft) { v.Element.Tag = "" }, "visual.element.tag: must be a lowercase tag name of at most 32 bytes, such as button"},
+	} {
+		if got := problemsOf(test.change); !strings.Contains(got, test.want) {
+			t.Errorf("%s: problems = %q, want %q", name, got, test.want)
+		}
+	}
+}

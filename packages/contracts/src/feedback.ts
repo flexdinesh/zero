@@ -172,6 +172,9 @@ export interface FeedbackPage {
   scroll: FeedbackScroll
   clip?: FeedbackRect
   localhost?: FeedbackLocalhost
+  // colorScheme is the scheme the page showed in, absent when the capture
+  // did not say (decision 0184).
+  colorScheme?: FeedbackColorScheme
 }
 
 export function isFeedbackPage(value: unknown): value is FeedbackPage {
@@ -182,28 +185,68 @@ export function isFeedbackPage(value: unknown): value is FeedbackPage {
     && isFeedbackScroll(value.scroll)
     && (value.clip === undefined || isFeedbackRect(value.clip))
     && (value.localhost === undefined || isFeedbackLocalhost(value.localhost))
+    && (value.colorScheme === undefined || isFeedbackColorScheme(value.colorScheme))
 }
 
-// FeedbackElement is the page's own word on the element at a visual
-// target's center when it was captured: advisory, bounded, never trusted.
-// Box is its border box clipped to the viewport, in image pixels.
+// FeedbackColorScheme is the color scheme a captured page showed in.
+export type FeedbackColorScheme = "light" | "dark"
+
+export function isFeedbackColorScheme(value: unknown): value is FeedbackColorScheme {
+  return value === "light" || value === "dark"
+}
+
+// FeedbackElementPair is one attribute or computed style of an element.
+export interface FeedbackElementPair {
+  name: string
+  value: string
+}
+
+export function isFeedbackElementPair(value: unknown): value is FeedbackElementPair {
+  return isRecord(value)
+    && isString(value.name)
+    && isString(value.value)
+}
+
+// FeedbackElement is the page's own word on a visual target's element when
+// it was captured: advisory, bounded, never trusted (decisions 0176, 0184).
+// Box is its border box clipped to the viewport, in image pixels. Path is
+// its ancestors, outermost first; Component the chain of components that
+// rendered it and Source where its source is, when a framework's
+// development build said; Nearby the text around it and SelectedText the
+// text selected in it. Attributes never hold a field's value.
 export interface FeedbackElement {
-  selector: string
+  selector?: string
   tag: string
   role?: string
   name?: string
   text?: string
   box?: FeedbackRect
+  path?: string
+  classes?: string
+  attributes?: FeedbackElementPair[]
+  styles?: FeedbackElementPair[]
+  component?: string
+  source?: string
+  nearby?: string
+  selectedText?: string
 }
 
 export function isFeedbackElement(value: unknown): value is FeedbackElement {
   return isRecord(value)
-    && isString(value.selector)
+    && (value.selector === undefined || isString(value.selector))
     && isString(value.tag)
     && (value.role === undefined || isString(value.role))
     && (value.name === undefined || isString(value.name))
     && (value.text === undefined || isString(value.text))
     && (value.box === undefined || isFeedbackRect(value.box))
+    && (value.path === undefined || isString(value.path))
+    && (value.classes === undefined || isString(value.classes))
+    && (value.attributes === undefined || isArrayOf(value.attributes, isFeedbackElementPair))
+    && (value.styles === undefined || isArrayOf(value.styles, isFeedbackElementPair))
+    && (value.component === undefined || isString(value.component))
+    && (value.source === undefined || isString(value.source))
+    && (value.nearby === undefined || isString(value.nearby))
+    && (value.selectedText === undefined || isString(value.selectedText))
 }
 
 // FeedbackAttachment is an image the server holds for one feedback (at-

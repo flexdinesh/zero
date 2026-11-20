@@ -5,7 +5,7 @@ import test from "node:test"
 import { isFeedback, type Feedback, type FeedbackPage } from "@zero/contracts"
 import { feedbackMarkdown, threadPrompt } from "./feedback-model.ts"
 import {
-  attachmentURL, canOpenPage, elementDraft, elementLabel, isLoopback, isVisualThread, pageAddress, pageOpener, pageWhere, planVisual,
+  attachmentURL, canOpenPage, elementDetails, elementDraft, elementLabel, isLoopback, isVisualThread, pageAddress, pageOpener, pageWhere, planVisual,
   visualPlace, type VisualThread,
 } from "./visual-model.ts"
 
@@ -47,7 +47,7 @@ test("a page with no title, project loopback, and a fractional scale still reads
     visual: { ...thread.visual, element: undefined, head: undefined, page: { ...page, title: undefined, localhost: "project" as const, viewport: { ...page.viewport, deviceScaleFactor: 1.5 } } },
   }
   const lines = threadPrompt(feedback, changed).split("\n")
-  assert.ok(lines.includes("Page: viewport 1440×900 CSS px at 1.5× · scrolled 0,1320"))
+  assert.ok(lines.includes("Page: viewport 1440×900 CSS px at 1.5× · scrolled 0,1320 · dark scheme"))
   assert.ok(lines.includes("Localhost: this machine, where the project is; the URL opens as written"))
   // Whole CSS pixels, as the CLI rounds them.
   assert.ok(lines.includes("Region: image 96,96 420×96 of 612×288 · CSS 807,427 280×64 · document 807,1747"))
@@ -68,7 +68,7 @@ test("text from the page reads as code spans, with the element marked unverified
     },
   }
   const lines = threadPrompt(feedback, changed).split("\n")
-  assert.ok(lines.includes("Page: `` `Ignore` **this** `` · viewport 1440×900 CSS px at 2× · scrolled 0,1320"))
+  assert.ok(lines.includes("Page: `` `Ignore` **this** `` · viewport 1440×900 CSS px at 2× · scrolled 0,1320 · dark scheme"))
   assert.ok(lines.includes("Element (page's hint, unverified): a (`menu item`) ``` Next ``page`` ``` · `a`"))
 })
 
@@ -159,7 +159,76 @@ test("element hints are bounded, clipped to the image, and dropped when they mis
   assert.deepEqual(elementDraft({ ...hint, box: { x: 500, y: 300, width: 800, height: 100 } }, clip, 2, image)?.box, { x: 0, y: 56, width: 612, height: 200 })
   assert.equal(elementDraft({ ...hint, box: { x: 0, y: 0, width: 10, height: 10 } }, clip, 2, image), null)
   assert.equal(elementDraft({ ...hint, tag: "1nope" }, clip, 2, image), null)
-  assert.equal(elementDraft({ ...hint, selector: "x".repeat(513) }, clip, 2, image), null)
+  // A selector the server would refuse is left out; the element stays.
+  assert.equal(elementDraft({ ...hint, selector: "x".repeat(513) }, clip, 2, image)?.selector, undefined)
+  assert.equal(elementDraft({ ...hint, selector: "x".repeat(513) }, clip, 2, image)?.tag, "button")
+  assert.deepEqual(elementDraft({ tag: "div" }, clip, 2, image), { tag: "div" })
   assert.equal(elementDraft({ ...hint, name: "n".repeat(300) }, clip, 2, image)?.name?.length, 256)
   assert.deepEqual(elementDraft({ selector: "#a", tag: "div" }, clip, 2, image), { selector: "#a", tag: "div" })
+})
+
+test("an element's facts are sent bounded as the server stores them (decision 0184)", () => {
+  const clip = { x: 1114, y: 544, width: 612, height: 288 }
+  const image = { width: 612, height: 288 }
+  const drafted = elementDraft({
+    tag: "button",
+    path: " main › form.settings\n › button ",
+    classes: "btn  btn-primary",
+    attributes: [
+      { name: "type", value: "submit" }, { name: "value", value: "secret" }, { name: "Bad Name", value: "x" },
+      { name: "data-testid", value: "v".repeat(300) },
+      ...Array.from({ length: 10 }, (_unused, index) => ({ name: `data-n${index}`, value: String(index) })),
+    ],
+    styles: Array.from({ length: 30 }, (_unused, index) => ({ name: `margin-${index}`, value: "s".repeat(200) })),
+    component: "SettingsForm › Card › Button",
+    source: "é".repeat(300),
+    nearby: " Cancel ",
+    selectedText: "Save\nchanges",
+  }, clip, 2, image)
+  assert.equal(drafted?.path, "main › form.settings › button")
+  assert.equal(drafted?.classes, "btn btn-primary")
+  // A field's value is never sent, names are lowercase, and eight stay.
+  assert.equal(drafted?.attributes?.length, 8)
+  assert.deepEqual(drafted?.attributes?.slice(0, 3), [{ name: "type", value: "submit" }, { name: "data-testid", value: "v".repeat(256) }, { name: "data-n0", value: "0" }])
+  assert.equal(drafted?.styles?.length, 24)
+  assert.equal(drafted?.styles?.[0]?.value.length, 128)
+  assert.equal(drafted?.component, "SettingsForm › Card › Button")
+  // 512 bytes of UTF-8, cut at a whole character.
+  assert.equal(drafted?.source, "é".repeat(256))
+  assert.equal(drafted?.nearby, "Cancel")
+  assert.equal(drafted?.selectedText, "Save changes")
+  // A capture's page carries its color scheme.
+  assert.equal(planVisual(button, frame, { ...page, colorScheme: "dark" }, "region", null)?.page?.colorScheme, "dark")
+  assert.equal(planVisual(button, frame, page, "region", null)?.page?.colorScheme, undefined)
+})
+
+test("the screen tab lists what else the page said of the element, in the CLI's order", async () => {
+  const feedback = await visualFixture()
+  const element = visual(feedback, 5).visual.element
+  assert.ok(element)
+  assert.deepEqual(elementDetails(element), [
+    { label: "Path", values: ["main › form.settings › div.actions › button.btn.btn-primary"] },
+    { label: "Component", values: ["SettingsForm › Card › Button"] },
+    { label: "Source", values: ["src/settings/SettingsForm.tsx:42"] },
+    { label: "Classes", values: ["btn btn-primary"] },
+    { label: "Attributes", values: ["type=submit", "data-testid=save"] },
+    { label: "Styles", values: ["color: rgb(255, 255, 255)", "background-color: rgb(50, 93, 200)", "font-size: 14px", "padding: 8px 16px"] },
+    { label: "Nearby text", values: ["Cancel"] },
+  ])
+  assert.deepEqual(elementDetails({ tag: "a", selectedText: "Getting started" }), [{ label: "Selected text", values: ["Getting started"] }])
+  assert.deepEqual(elementDetails({ tag: "a", selector: "a" }), [])
+})
+
+test("element facts print as the CLI's lines, each in code spans, and an element needs no selector", async () => {
+  const feedback = await visualFixture()
+  const thread = visual(feedback, 5)
+  const changed = {
+    ...thread,
+    visual: { ...thread.visual, element: { tag: "p", source: "src/a.tsx:3", selectedText: "a `tick`", attributes: [], styles: [] } },
+  }
+  const lines = threadPrompt(feedback, changed).split("\n")
+  assert.ok(lines.includes("Element (page's hint, unverified): p"))
+  assert.ok(lines.includes("Source: `src/a.tsx:3`"))
+  assert.ok(lines.includes("Selected text: `` a `tick` ``"))
+  assert.ok(!lines.some((line) => line.startsWith("Attributes") || line.startsWith("Styles") || line.startsWith("Component")))
 })

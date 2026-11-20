@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { pageLabel, parseRecent, rememberURL, reviewChoices, reviewURL } from "./review-model.ts"
+import { pageKey, pageLabel, parseRecent, rememberURL, reviewChoices, reviewURL, samePage } from "./review-model.ts"
 
 test("reviewURL accepts http(s) pages and bare hosts only", () => {
   assert.equal(reviewURL(" localhost:5173/settings "), "http://localhost:5173/settings")
@@ -36,4 +36,21 @@ test("reviewChoices puts a new typed page before remembered matches", () => {
 test("pageLabel drops the scheme and keeps the query", () => {
   assert.equal(pageLabel("http://localhost:5173/settings?tab=2"), "localhost:5173/settings?tab=2")
   assert.equal(pageLabel("not a url"), "not a url")
+})
+
+test("a page is its origin and path, and its hash when the hash is a route; the query never counts", () => {
+  assert.equal(pageKey("http://localhost:5173/settings?tab=billing#plan"), "http://localhost:5173/settings")
+  assert.equal(pageKey("http://localhost:5173/#/settings?tab=2"), "http://localhost:5173/#/settings")
+  assert.equal(pageKey("http://localhost:5173/#!/inbox"), "http://localhost:5173/#!/inbox")
+  assert.equal(pageKey("file:///etc/passwd"), "")
+  assert.equal(pageKey("not a url"), "")
+  assert.equal(samePage("http://localhost:5173/settings?tab=billing&session=REDACTED#plan", "http://localhost:5173/settings"), true)
+  assert.equal(samePage("http://localhost:5173/settings", "http://localhost:5173/settings#top"), true)
+  assert.equal(samePage("http://localhost:5173/#/settings", "http://localhost:5173/#/billing"), false)
+  assert.equal(samePage("http://localhost:5173/#/settings", "http://localhost:5173/"), false)
+  assert.equal(samePage("http://localhost:5173/settings", "http://localhost:5173/settings/"), false)
+  assert.equal(samePage("http://localhost:5173/settings", "https://localhost:5173/settings"), false)
+  assert.equal(samePage("http://localhost:5173/settings", "http://localhost:3000/settings"), false)
+  // Nothing matches what is not a page.
+  assert.equal(samePage("", ""), false)
 })

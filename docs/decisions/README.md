@@ -174,13 +174,13 @@ rewriting history; update `Status` on the old record.
 | [0172](0172-find-in-file.md) | Find in file | Accepted; extends 0020, 0029, 0035, 0140 |
 | [0173](0173-document-word-wrap.md) | Document word wrap | Accepted; extends 0014, 0139 |
 | [0174](0174-scoped-select-all.md) | Scoped Select All | Accepted; extends 0033, 0172 |
-| [0175](0175-guest-browser-host-window.md) | Guest browser host window | Accepted; extends 0067, 0081, 0094, 0095 |
-| [0176](0176-visual-feedback-targets.md) | Visual feedback targets | Accepted; extends 0120, 0156, 0159, 0175; sweep extended by 0179 |
-| [0177](0177-ui-review-in-the-desktop-app.md) | UI review in the desktop app | Accepted; extends 0081, 0099, 0175, 0176; element hint superseded by 0180 |
+| [0175](0175-guest-browser-host-window.md) | Guest browser host window | Accepted; Window superseded by 0184; extends 0067, 0081, 0094, 0095 |
+| [0176](0176-visual-feedback-targets.md) | Visual feedback targets | Accepted; UI superseded by 0184; extends 0120, 0156, 0159, 0175; sweep extended by 0179 |
+| [0177](0177-ui-review-in-the-desktop-app.md) | UI review in the desktop app | Superseded by 0184 |
 | [0178](0178-agent-facing-visual-thread-output.md) | Agent-facing visual thread output | Accepted; extends 0120, 0176 |
 | [0179](0179-sweep-interrupted-uploads.md) | Sweep interrupted uploads | Accepted; extends 0176 |
-| [0180](0180-hit-map-at-capture.md) | Hit map at capture | Accepted; supersedes 0177's element hint; extends 0175, 0176 |
-| [0181](0181-project-browser-tab.md) | Project browser tab | Accepted; extends 0052, 0081, 0175, 0177 |
+| [0180](0180-hit-map-at-capture.md) | Hit map at capture | Superseded by 0184 |
+| [0181](0181-project-browser-tab.md) | Project browser tab | Superseded by 0184 |
 | [0182](0182-screen-tabs-for-visual-threads.md) | Screen tabs for visual threads | Accepted; extends 0113, 0120, 0176, 0177, 0178 |
 | [0183](0183-visual-review-loop-verified.md) | The visual review loop, verified end to end | Accepted; extends 0175, 0176, 0177, 0178, 0180, 0181, 0182 |
 | [0184](0184-browser-view-and-in-page-comments.md) | Browser view and in-page comments (experimental) | Accepted; supersedes 0177, 0180, 0181, 0175's window, 0176's UI; extends 0081, 0094, 0176, 0178, 0182 |

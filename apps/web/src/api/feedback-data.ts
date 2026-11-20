@@ -1,6 +1,6 @@
 import {
   isFeedback, isFeedbackSummary, isFeedbackThread, isFeedbackUpload,
-  type Feedback, type FeedbackAuthor, type FeedbackCompare, type FeedbackElement, type FeedbackRect, type FeedbackScroll, type FeedbackSide,
+  type Feedback, type FeedbackAuthor, type FeedbackColorScheme, type FeedbackCompare, type FeedbackElement, type FeedbackRect, type FeedbackScroll, type FeedbackSide,
   type FeedbackStatus, type FeedbackSummary, type FeedbackThread, type FeedbackUpload, type FeedbackViewport,
 } from "@zero/contracts"
 
@@ -22,6 +22,8 @@ export interface FeedbackPageDraft {
   viewport: FeedbackViewport
   scroll: FeedbackScroll
   clip?: FeedbackRect
+  // colorScheme is the scheme the page showed in (decision 0184).
+  colorScheme?: FeedbackColorScheme
 }
 
 // FeedbackVisualDraft is a visual thread's target (contract.FeedbackVisualDraft,

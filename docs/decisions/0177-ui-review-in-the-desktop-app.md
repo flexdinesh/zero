@@ -1,7 +1,6 @@
 # 0177: UI review in the desktop app
 
-- Status: Accepted; Element hint and kept captures superseded by
-  [0180](0180-hit-map-at-capture.md)
+- Status: Superseded by [0184](0184-browser-view-and-in-page-comments.md)
 - Date: 2026-11-19
 - Extends: [0175](0175-guest-browser-host-window.md) (guest windows),
   [0176](0176-visual-feedback-targets.md) (visual feedback targets),

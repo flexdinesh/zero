@@ -249,6 +249,25 @@
   white-space: nowrap;
 }
 
+/* More of what the page said of the element: each value its own run of
+   mono text, wrapped. */
+.screen-tab-facts dd.screen-tab-fact {
+  display: flex;
+  flex-wrap: wrap;
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  gap: 0 var(--space-3);
+}
+
+.screen-tab-fact > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.screen-tab-facts dd > .ui-button {
+  justify-self: start;
+}
+
 .screen-tab-hash {
   color: var(--color-text-primary);
   font-family: var(--font-mono);

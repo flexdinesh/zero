@@ -96,6 +96,11 @@ func (a *App) newRoutes() *http.ServeMux {
 
 	mux.HandleFunc("GET /{$}", a.serveShellPage)
 	mux.HandleFunc("GET /view", a.serveShellPage)
+	// The desktop app's composer (decision 0184) is the shell on a route
+	// of its own, which reads what it shows from the app's bridge.
+	mux.HandleFunc("GET /composer", func(w http.ResponseWriter, _ *http.Request) {
+		a.serveShell(w, http.StatusOK, nil)
+	})
 	mux.HandleFunc("GET /assets/{name...}", func(w http.ResponseWriter, r *http.Request) {
 		a.serveFrontendAsset(w, r.PathValue("name"))
 	})

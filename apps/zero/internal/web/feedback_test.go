@@ -97,6 +97,13 @@ func TestFeedbackEndpoints(t *testing.T) {
 	if shell.Code != http.StatusOK {
 		t.Errorf("/view with fb = %d", shell.Code)
 	}
+	// The desktop app's composer is the shell on its own route.
+	if composer := feedbackRequest(t, app, http.MethodGet, "/composer", "", nil); composer.Code != http.StatusOK || !strings.Contains(composer.Header().Get("Content-Type"), "text/html") {
+		t.Errorf("/composer = %d %s", composer.Code, composer.Header().Get("Content-Type"))
+	}
+	if other := feedbackRequest(t, app, http.MethodGet, "/composer/else", "", nil); other.Code != http.StatusNotFound {
+		t.Errorf("/composer/else = %d", other.Code)
+	}
 
 	if response := feedbackRequest(t, app, http.MethodDelete, "/api/feedback-threads?"+query(url.Values{"id": {stored.ID}, "thread": {"1"}}), "", nil); response.Code != http.StatusNoContent {
 		t.Errorf("DELETE thread = %d %s", response.Code, response.Body.String())

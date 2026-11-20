@@ -22,9 +22,10 @@ const nudgeDelay = 50 * time.Millisecond
 // shell is a connection's window with experimental features on (decision
 // 0184): a window of native UI whose view places web views, where a page
 // window can hold only its page. Zero's page fills it; the guest of the
-// Browser tab that shows goes over the rectangle the page reports. mygo
-// allows web views only in such windows, and stacks them in the order the
-// view builds them.
+// Browser tab that shows goes over the rectangle the page reports, and the
+// composer over the guest, beside the pick it comments on. mygo allows web
+// views only in such windows, and stacks them in the order the view builds
+// them.
 type shell struct {
 	window *mygo.Window
 	// opening serializes making a project's guest.
@@ -47,6 +48,29 @@ type shell struct {
 	appearances int
 	// focusing is the project whose guest takes the keyboard when it shows.
 	focusing string
+	// layout is the window's content size and the zoom of the app's page,
+	// as of the last frame the page reported: where the composer fits.
+	layout layout
+	// composer is the web view of the composer's page, nil until the first
+	// pick; composing is the pick that waits for its comment, nil for none.
+	composer  *mygo.WebView
+	composing *composition
+}
+
+// layout is what placing the composer needs of the window.
+type layout struct {
+	width, height int
+	zoom          float64
+}
+
+// composition is a pick waiting for its comment: the guest it was made in,
+// at guestZoom, what the composer's page reads, and the height the page
+// asked for, in its CSS pixels.
+type composition struct {
+	guest     *guest
+	guestZoom float64
+	capture   review.Capture
+	height    float64
 }
 
 func newShell() *shell { return &shell{guests: map[string]*guest{}} }
@@ -56,9 +80,15 @@ func newShell() *shell { return &shell{guests: map[string]*guest{}} }
 func (s *shell) view(c *ui.Context) {
 	s.mu.Lock()
 	zero, at := s.zero, s.at
-	var shown *mygo.WebView
+	var shown, composer *mygo.WebView
+	var composerAt review.Frame
 	if guest := s.guests[s.shown]; guest != nil {
 		shown = guest.view
+		// The composer shows only over the guest its pick was made in.
+		if composing := s.composing; composing != nil && composing.guest == guest && s.composer != nil && s.layout.width > 0 {
+			composer = s.composer
+			composerAt = review.PlaceComposer(composing.capture.Rect, composing.guestZoom, at, composing.height, s.layout.zoom, s.layout.width, s.layout.height)
+		}
 		if s.nudged {
 			at.Width--
 		}
@@ -70,6 +100,9 @@ func (s *shell) view(c *ui.Context) {
 	ui.WebView(c, zero).Fill().Children(func() {
 		if shown != nil {
 			ui.WebView(c, shown).Absolute().Left(at.X).Top(at.Y).Width(at.Width).Height(at.Height)
+		}
+		if composer != nil {
+			ui.WebView(c, composer).Absolute().Left(composerAt.X).Top(composerAt.Y).Width(composerAt.Width).Height(composerAt.Height)
 		}
 	})
 }
@@ -140,6 +173,9 @@ func (s *shell) remove(project string) *guest {
 	if s.focusing == project {
 		s.focusing = ""
 	}
+	if s.composing != nil && s.composing.guest == removed {
+		s.composing = nil
+	}
 	s.mu.Unlock()
 	if hidden {
 		s.window.Invalidate()
@@ -147,8 +183,9 @@ func (s *shell) remove(project string) *guest {
 	return removed
 }
 
-// place shows the project's guest at at, in place of any other.
-func (s *shell) place(project string, at review.Frame) {
+// place shows the project's guest at at, in place of any other, in a window
+// laid out as window.
+func (s *shell) place(project string, at review.Frame, window layout) {
 	s.mu.Lock()
 	shown := s.guests[project]
 	if shown == nil {
@@ -156,7 +193,7 @@ func (s *shell) place(project string, at review.Frame) {
 		return
 	}
 	appeared := s.shown != project
-	s.shown, s.at = project, at
+	s.shown, s.at, s.layout = project, at, window
 	appearance := s.appearances
 	if appeared {
 		s.nudged = true
@@ -235,9 +272,73 @@ func (s *shell) focusWhenShown(project string) {
 func (s *shell) close() {
 	s.mu.Lock()
 	guests := s.guests
-	s.guests, s.recent, s.shown = map[string]*guest{}, nil, ""
+	s.guests, s.recent, s.shown, s.composing = map[string]*guest{}, nil, "", nil
 	s.mu.Unlock()
 	for _, each := range guests {
 		each.stop()
 	}
+}
+
+// composerView is the web view of the composer's page, nil before the
+// first pick.
+func (s *shell) composerView() *mygo.WebView {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.composer
+}
+
+// compose shows the composer for a pick; a pick that waited is replaced.
+func (s *shell) compose(composing *composition) {
+	s.mu.Lock()
+	s.composing = composing
+	s.mu.Unlock()
+	s.window.Invalidate()
+}
+
+// capture answers a copy of what the waiting pick's composer reads.
+func (s *shell) capture() *review.Capture {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.composing == nil {
+		return nil
+	}
+	capture := s.composing.capture
+	return &capture
+}
+
+// composed is the pick waiting for its comment, nil for none.
+func (s *shell) composed() *composition {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.composing
+}
+
+// recompose changes the pick that waits, when it is still expected: the
+// composer moves or grows with it.
+func (s *shell) recompose(expected *composition, change func(*composition)) bool {
+	s.mu.Lock()
+	current := s.composing == expected && expected != nil
+	if current {
+		change(s.composing)
+	}
+	s.mu.Unlock()
+	if current {
+		s.window.Invalidate()
+	}
+	return current
+}
+
+// endComposing hides the composer and answers the pick that waited, nil
+// for none. With of set, only that guest's pick ends.
+func (s *shell) endComposing(of *guest) *composition {
+	s.mu.Lock()
+	ended := s.composing
+	if ended == nil || (of != nil && ended.guest != of) {
+		s.mu.Unlock()
+		return nil
+	}
+	s.composing = nil
+	s.mu.Unlock()
+	s.window.Invalidate()
+	return ended
 }

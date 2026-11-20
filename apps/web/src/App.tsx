@@ -84,6 +84,7 @@ import { ReportProblemDialog } from "./features/diagnostics/ReportProblemDialog.
 import { BrowserTab } from "./features/review/BrowserTab.tsx"
 import { BrowserView } from "./features/review/BrowserView.tsx"
 import { browserTabName, currentPage } from "./features/review/browser-model.ts"
+import { useBrowserComments } from "./features/review/use-browser-comments.ts"
 import { focusBrowserLater, useBrowserLocation, useProjectBrowser } from "./features/review/use-project-browser.ts"
 import { browserAvailable, experimentalEnabled } from "./lib/desktop-bridge.ts"
 import type { SourceChanges } from "./features/documents/SourceDocument.tsx"
@@ -98,6 +99,7 @@ import type { CompareData } from "./features/source-control/use-compare-data.ts"
 import { TabBar } from "./workspace/TabBar.tsx"
 import { NavigationButtons } from "./workspace/NavigationButtons.tsx"
 import { RecentLocations } from "./workspace/RecentLocations.tsx"
+import { projectName } from "./workspace/navigation-history.ts"
 import { entryKey, useNavigationHistory } from "./workspace/navigation-history-store.ts"
 import { useNavigationKeys } from "./workspace/use-navigation-keys.ts"
 import { useSelectAllGuard } from "./workspace/use-select-all-guard.ts"
@@ -662,6 +664,21 @@ export function App({ project }: AppProps) {
     prepareDocumentNavigation()
     void navigate({ to: "/view", search: { ...route.search }, hash: route.hash })
   }, [navigate, prepareDocumentNavigation])
+  // The Browser's comments join the checkout branch's feedback (decision
+  // 0184): the Feedback view's when it shows that branch, else read on its
+  // own.
+  const branchListed = feedbackView.selectedId === ""
+  const ownBranchSession = useFeedback({
+    project, id: "", compare: null, version: feedbackVersion, enabled: tabFeatures.browser && !branchListed, onChanged: rereadFeedback,
+  })
+  const branchFeedback = (branchListed ? feedbackView.session : ownBranchSession).feedback
+  const branchFeedbackId = branchFeedback?.id ?? ""
+  const openPageThread = useCallback((thread: number) => {
+    if (branchFeedbackId) openThread(screenRoute(project, branchFeedbackId, thread))
+  }, [branchFeedbackId, openThread, project])
+  const browserComments = useBrowserComments({
+    project, browser: projectBrowser, feedback: branchFeedback, reread: rereadFeedback, openThread: openPageThread,
+  })
   const hasReviewTabs = workspace.tabs.some((tab) => tab.kind === "review")
   // Closing the last review tab frees its workers and caches until the next one.
   useEffect(() => {
@@ -1051,7 +1068,9 @@ export function App({ project }: AppProps) {
           feedback={<FeedbackSidebarView project={project} branch={page.branch} view={feedbackView} mobile={mobileSidebar}
             visible={visibleSidebarView === "feedback"} onDismiss={sidebar.dismiss} onOpenThread={openThread} navigate={navigateToHref} />}
           browser={tabFeatures.browser ? <SidebarBody visible={visibleSidebarView === "browser"}>
-            <BrowserView browser={projectBrowser} mobile={mobileSidebar} onDismiss={sidebar.dismiss} onOpen={openBrowserPage} />
+            <BrowserView browser={projectBrowser} comments={browserComments} mobile={mobileSidebar} onDismiss={sidebar.dismiss}
+              target={{ name: projectName(project), branch: branchFeedback?.branch ?? page.branch, folder: page.projectKind === "folder" }}
+              onOpen={openBrowserPage} onOpenThread={openPageThread} />
           </SidebarBody> : null}
           walkthroughs={<SidebarBody visible={walkthroughsShown}>
             <WalkthroughsView project={project} session={walkthroughs} context={compareContext} mobile={mobileSidebar}
@@ -1124,7 +1143,7 @@ export function App({ project }: AppProps) {
               }}
               onAction={runWelcomeAction} onOpenProject={switchProject}
               onStartupSetting={() => openSettings.current("showWelcome")} /> : undefined}
-            browser={browserRoute ? <BrowserTab browser={projectBrowser} project={project} /> : undefined}
+            browser={browserRoute ? <BrowserTab browser={projectBrowser} comments={browserComments} project={project} /> : undefined}
             screen={screenRouted ? <ScreenThreadTab project={project} feedbackId={screenRouted.feedback} number={screenRouted.thread}
               session={screenSession} navigate={navigateToHref} reviewPage={tabFeatures.browser ? openBrowserPage : null} onOpenThread={openThread}
               onPin={() => workspace.pin(screenTab(screenRouted.feedback, screenRouted.thread))}
