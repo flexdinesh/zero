@@ -14,6 +14,8 @@ import { ViewHeader } from "../../components/ui/view-header.tsx"
 import type { Feedback, FeedbackThread } from "@zero/contracts"
 import { useClipboardCopy } from "../../lib/clipboard.ts"
 import { shareableOrigin } from "../../lib/shareable-origin.ts"
+import { agentWhere, machineLabel } from "../../lib/agent-place.ts"
+import { useServerPlace } from "../projects/ServerPlaceProvider.tsx"
 import { useRovingRows } from "../../lib/use-roving-rows.ts"
 import { SidebarBody } from "../../workspace/SidebarBody.tsx"
 import { commitAge, commitDate } from "../source-control/compare.ts"
@@ -41,30 +43,41 @@ interface FeedbackViewProps {
   navigate(href: string): void
 }
 
-const emptyHint = "Select lines in a diff or file and press C to comment. Then copy the prompt for your agent."
+// emptyHint is the empty view's guidance, naming where the agent runs when
+// the project is not local (decision 0187).
+function emptyHint(where: string): string {
+  return `Select lines in a diff or file and press C to comment. Then copy the prompt for your agent${where ? ` ${where}` : ""}.`
+}
 function copyIcon(status: "idle" | "copied" | "failed") {
   return status === "copied" ? <CheckIcon aria-hidden="true" /> : status === "failed" ? <XIcon aria-hidden="true" /> : <ClipboardCopyIcon aria-hidden="true" />
 }
 
 // CopyPrompt copies the prompt that sends an agent to the threads waiting
 // on it: an icon in the view header, or a labeled button in the empty view.
+// When the project is not local, both name the machine the agent runs on
+// (decision 0187).
 function CopyPrompt({ feedback, project, labeled = false }: { feedback: Feedback | null; project: string; labeled?: boolean }) {
   const { status, copy } = useClipboardCopy()
+  const place = useServerPlace()
+  const machine = machineLabel(place)
+  const where = agentWhere(place)
   const id = feedback && feedback.threads.length > 0 ? feedback.id : ""
   const onClick = () => {
-    if (feedback && id) void copy(feedbackPrompt({ origin: shareableOrigin(window.location.origin), project, id, branch: feedback.branch }))
+    if (feedback && id) void copy(feedbackPrompt({ origin: shareableOrigin(window.location.origin), project, id, branch: feedback.branch, place }))
   }
   const reason = id ? undefined : "Comment on code first"
+  const copied = where ? `Copied: paste into your agent ${where}` : "Prompt copied"
   return (
     <>
       {labeled
-        ? <Button variant="outline" data-status={status} disabled={!id} title={reason} onClick={onClick}>
-          {copyIcon(status)}{status === "copied" ? "Copied" : status === "failed" ? "Copy failed" : "Copy prompt"}
+        ? <Button variant="outline" data-status={status} disabled={!id} title={reason ?? (status === "copied" ? copied : undefined)} onClick={onClick}>
+          {copyIcon(status)}{status === "copied" ? "Copied" : status === "failed" ? "Copy failed" : machine ? `Copy prompt for ${machine}` : "Copy prompt"}
         </Button>
-        : <IconButton label="Copy Prompt" title={status === "failed" ? "Copy failed" : "Copy Prompt: send your agent to these threads"}
+        : <IconButton label={machine ? `Copy Prompt for ${machine}` : "Copy Prompt"}
+          title={status === "failed" ? "Copy failed" : status === "copied" && where ? copied : where ? `Copy Prompt: send your agent ${where} to these threads` : "Copy Prompt: send your agent to these threads"}
           disabledReason={reason} tone={status === "copied" ? "success" : status === "failed" ? "destructive" : "default"} data-status={status}
           icon={copyIcon(status)} onClick={onClick} />}
-      <span className="visually-hidden" role="status">{status === "copied" ? "Prompt copied" : status === "failed" ? "Copy failed" : ""}</span>
+      <span className="visually-hidden" role="status">{status === "copied" ? copied : status === "failed" ? "Copy failed" : ""}</span>
     </>
   )
 }
@@ -227,6 +240,7 @@ interface BodyProps {
 
 function FeedbackBody({ navigate, onOpenThread, project, threads, view, visible }: BodyProps) {
   const { load, feedback } = view.session
+  const place = useServerPlace()
   if (load.kind === "missing") {
     return (
       <div className="feedback-note">
@@ -247,7 +261,7 @@ function FeedbackBody({ navigate, onOpenThread, project, threads, view, visible 
   if (feedback.threads.length === 0) {
     return (
       <div className="feedback-note">
-        <StatusMessage>{emptyHint}</StatusMessage>
+        <StatusMessage>{emptyHint(agentWhere(place))}</StatusMessage>
         <CopyPrompt feedback={feedback} project={project} labeled />
       </div>
     )

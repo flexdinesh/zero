@@ -34,7 +34,8 @@ func (c *Client) Projects(ctx context.Context) (contract.ProjectsResponse, error
 	if err := ctx.Err(); err != nil {
 		return contract.ProjectsResponse{}, err
 	}
-	return c.app.Projects.List(), nil
+	// An in-process caller shares the project's host (decision 0187).
+	return c.app.Projects.List(app.WithTransport(ctx, app.TransportLocal)), nil
 }
 
 func (c *Client) Directories(ctx context.Context, path string) (contract.DirectoriesResponse, error) {

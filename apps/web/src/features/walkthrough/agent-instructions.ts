@@ -1,3 +1,5 @@
+import { localPlace, takesHttp, whereToRun, zeroCommand, type AgentPlace } from "../../lib/agent-place.ts"
+
 const commandNote = "Commands use the canonical `zero`; if installed as `zero-cli` or with `--name NAME`, substitute your chosen command for `zero`."
 
 // agentExample is the walkthrough the copied instructions show; its fields
@@ -25,14 +27,17 @@ export function agentExample(project: string) {
 // ends with "Walk me through: " for the user's topic. An origin that is not
 // http(s), such as the desktop app's zero://local, takes no HTTP
 // requests, so the prompt names the CLI only; a null origin (a desktop
-// window over ssh, decision 0076) is not named at all.
-export function agentInstructions(origin: string | null, project: string): string {
+// window over ssh, decision 0076) is not named at all. A project that is not
+// local starts with the machine to run on, offers no HTTP (the origin needs
+// the page's credentials), and names zero as it runs there (decision 0187).
+export function agentInstructions(origin: string | null, project: string, place: AgentPlace = localPlace): string {
   // One step per line keeps the example short enough to read.
   const { steps, ...fields } = agentExample(project)
   const example = JSON.stringify(fields, null, 2)
     .replace(/\n}$/, `,\n  "steps": [\n${steps.map((step) => `    ${JSON.stringify(step)}`).join(",\n")}\n  ]\n}`)
-  const http = origin !== null && /^https?:\/\//.test(origin)
-  const format = http ? `GET ${origin}/api/walkthrough-schema, or: zero walkthrough schema` : "zero walkthrough schema"
+  const zero = zeroCommand(place)
+  const http = takesHttp(place) && origin !== null && /^https?:\/\//.test(origin)
+  const format = http ? `GET ${origin}/api/walkthrough-schema, or: ${zero} walkthrough schema` : `${zero} walkthrough schema`
   const fallback = http
     ? `If zero isn't on PATH or lacks "walkthrough publish":
 
@@ -41,10 +46,10 @@ curl -q -sS -X POST -H 'Content-Type: application/json' --data @walkthrough.json
 `
     : ""
   const responses = http ? ` Over HTTP, 201 creates, 200 replaces, the response is {"id", "url", "created"}, and a 400 lists every problem.` : ""
-  return `Write a Zero walkthrough of the topic at the end, and publish it with zero.
+  return `${whereToRun(place)}Write a Zero walkthrough of the topic at the end, and publish it with zero.
 
 ${origin === null ? "" : `zero: ${origin}\n`}Project: ${project}
-Publish: zero walkthrough publish walkthrough.json (no server needed)
+Publish: ${zero} walkthrough publish walkthrough.json (no server needed)
 Format: ${format} (JSON Schema; authoritative if anything below is unclear)
 
 ${commandNote}
@@ -71,7 +76,7 @@ Paths are project-relative with forward slashes. Lines are 1-based and inclusive
 
 Write the JSON to walkthrough.json, then:
 
-zero walkthrough publish walkthrough.json
+${zero} walkthrough publish walkthrough.json
 
 ${fallback}\`\`\`json
 ${example}
@@ -99,13 +104,16 @@ export interface StepPromptInput {
   label: string
   // href is the step's route: path, search, and fragment.
   href: string
+  // place is where the project is served from the page's side (decision
+  // 0187); the prompt starts with the machine when it is not local.
+  place?: AgentPlace
 }
 
 // stepPrompt is what a step's Copy for Agent copies (decision 0113): the
 // walkthrough and step being read, what the step points at, and a link to
 // it, ending with "Question: " for the user's follow-up.
-export function stepPrompt({ count, href, index, label, origin, project, stepTitle, walkthroughId, walkthroughTitle }: StepPromptInput): string {
-  return `I'm reading a Zero walkthrough and have a question about one step.
+export function stepPrompt({ count, href, index, label, origin, place = localPlace, project, stepTitle, walkthroughId, walkthroughTitle }: StepPromptInput): string {
+  return `${whereToRun(place)}I'm reading a Zero walkthrough and have a question about one step.
 
 Walkthrough: ${walkthroughTitle} (id ${walkthroughId})
 Project: ${project}

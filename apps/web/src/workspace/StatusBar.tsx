@@ -3,7 +3,7 @@ import type { PageData } from "@zero/contracts"
 import type { ReactNode } from "react"
 import { projectUrl } from "../api/project-url.ts"
 import { useProcessMetrics } from "./process-metrics.ts"
-import { CheckIcon, CopyIcon, SearchIcon, SettingsIcon } from "lucide-react"
+import { BoxIcon, CheckIcon, CopyIcon, SearchIcon, ServerIcon, SettingsIcon } from "lucide-react"
 import { useClipboardCopy } from "../lib/clipboard.ts"
 import { useDisclosureLayer } from "../lib/overlay-layers.ts"
 import { BrandMark } from "../components/ui/brand-mark.tsx"
@@ -17,6 +17,8 @@ import type { DiffLineTarget } from "../features/source-control/diff-line-select
 import type { ChangePosition } from "../features/source-control/diff-hunks.ts"
 import type { LiveStatus } from "../api/events-contract.ts"
 import { liveIndicator } from "../features/live-updates/live-updates.ts"
+import { useServerPlace } from "../features/projects/ServerPlaceProvider.tsx"
+import { machineLabel, sandboxZero } from "../lib/agent-place.ts"
 
 // DiffStatus describes the active diff tab, which replaces document status.
 export interface DiffStatus {
@@ -46,6 +48,35 @@ interface StatusBarProps {
   onReport?(): void
 }
 
+// PlaceIndicator names the machine a remote or sandbox window shows, as
+// VS Code's remote indicator does, with what that means in a popover
+// (decision 0187). A local window shows nothing.
+function PlaceIndicator() {
+  const place = useServerPlace()
+  const layer = useDisclosureLayer()
+  if (place.place === "local") return null
+  const sandbox = place.place === "sandbox"
+  const name = sandbox ? "Sandbox" : machineLabel(place)
+  const heading = sandbox ? `Served from ${machineLabel(place)}` : `Served from ${name}`
+  return (
+    <details className="status-process status-place" data-place={place.place} onToggle={layer} onKeyDown={(event) => {
+      if (event.key === "Escape") event.currentTarget.open = false
+    }}>
+      <summary title={`${heading}: run agents there`}>
+        {sandbox ? <BoxIcon aria-hidden="true" /> : <ServerIcon aria-hidden="true" />}
+        <span className="status-place-name">{name}</span>
+      </summary>
+      <div className="ui-popover status-process-panel status-place-panel">
+        <strong>{heading}</strong>
+        <p>{sandbox
+          ? <>These files are inside the sandbox, not on this computer. Run agents and zero commands there; zero is <code>{sandboxZero}</code>.</>
+          : <>These files are on {name}, not on this computer. Run agents and zero commands there.</>}</p>
+        <p>Copied prompts say where to run them.</p>
+      </div>
+    </details>
+  )
+}
+
 export function StatusBar({ detail, diff, isLoading, error, lines, live, navigation, onSearch, onSettings, onHome, onReport, page }: StatusBarProps) {
   const metrics = useProcessMetrics()
   const liveState = live ? liveIndicator(live) : null
@@ -70,6 +101,7 @@ export function StatusBar({ detail, diff, isLoading, error, lines, live, navigat
           event.preventDefault()
           onHome()
         }}><BrandMark /></a>
+        <PlaceIndicator />
         <details className="status-process" onToggle={processLayer} onKeyDown={(event) => {
           if (event.key === "Escape") event.currentTarget.open = false
         }}>

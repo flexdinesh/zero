@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"io/fs"
 	"os"
@@ -97,7 +98,7 @@ func (f *fakeRoots) Remove(root string) ([]string, error) {
 
 func TestRootOperationsNeedRootControl(t *testing.T) {
 	application, root := newTestApp(t)
-	if listed := application.Projects.List(); listed.ManageRoots {
+	if listed := application.Projects.List(context.Background()); listed.ManageRoots {
 		t.Fatal("ManageRoots without RootControl")
 	}
 	for name, err := range map[string]error{
@@ -119,7 +120,7 @@ func TestRootOperationsNeedRootControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if listed := managed.Projects.List(); !listed.ManageRoots || len(listed.Roots) != 1 || listed.Roots[0].Problem != "" {
+	if listed := managed.Projects.List(context.Background()); !listed.ManageRoots || len(listed.Roots) != 1 || listed.Roots[0].Problem != "" {
 		t.Fatalf("List() = %+v; want ManageRoots and a readable root", listed)
 	}
 	if opened, err := managed.Projects.OpenRoot("/elsewhere"); err != nil || opened.Project != "/elsewhere" {
@@ -204,7 +205,7 @@ func TestUnreadableProjectFolderExplainsThePage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	listed := application.Projects.List()
+	listed := application.Projects.List(context.Background())
 	if len(listed.Roots) != 1 || listed.Roots[0].ProblemCode != contract.CodeFolderUnreadable || listed.Roots[0].Problem == "" {
 		t.Fatalf("List() roots = %+v; want the unreadable root explained", listed.Roots)
 	}

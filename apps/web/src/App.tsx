@@ -134,6 +134,7 @@ import { stepPrompt } from "./features/walkthrough/agent-instructions.ts"
 import { shareableOrigin } from "./lib/shareable-origin.ts"
 import type { SourceAnnotation } from "./features/documents/SourceDocument.tsx"
 import { FeedbackSidebarView } from "./features/feedback/FeedbackView.tsx"
+import { ServerPlaceProvider } from "./features/projects/ServerPlaceProvider.tsx"
 import { routeFeedback, routeThread, screenRoute, threadTitle, type ThreadRoute } from "./features/feedback/feedback-model.ts"
 import { useFeedback } from "./features/feedback/use-feedback.ts"
 import { useFeedbackView } from "./features/feedback/use-feedback-view.ts"
@@ -975,8 +976,9 @@ export function App({ project }: AppProps) {
       check={narrationCheck} presenting={presenting} collapsed={narration.collapsed} onCollapsedChange={narration.change}
       canMove={walkthroughs.canMove} onMove={walkthroughs.move} onFinish={finishWalkthrough} onExit={closeWalkthrough}
       onStopPresenting={() => setPresentRequested(false)} onSteps={sidebar.mobile ? () => revealSidebar("walkthroughs") : undefined}
-      prompt={() => stepPrompt({
+      prompt={(place) => stepPrompt({
         origin: shareableOrigin(window.location.origin),
+        place,
         project,
         walkthroughId: stepWalkthrough.id,
         walkthroughTitle: stepWalkthrough.title,
@@ -1032,6 +1034,7 @@ export function App({ project }: AppProps) {
   }, [windowTitle])
 
   return (
+    <ServerPlaceProvider>
     <NavigationProvider project={project} path={page.selected} textFile={page.hasFile && !page.binary && !page.at}
       languageServers={languageServers} source={showSource && documentMode === "source"} supported={page.navigationSupported}
       mode={documentMode} isLoading={isLoading} caret={caret} openLocation={openLocation} registerCommand={registerNavigation}>
@@ -1207,5 +1210,6 @@ export function App({ project }: AppProps) {
     </FindProvider>
     </SearchProvider>
     </NavigationProvider>
+    </ServerPlaceProvider>
   )
 }

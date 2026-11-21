@@ -3,6 +3,7 @@ import type { SelectionSide } from "@pierre/diffs"
 import type { Feedback, FeedbackAnchor, FeedbackCompare, FeedbackLocation, FeedbackMessage, FeedbackSide, FeedbackStatus, FeedbackThread } from "@zero/contracts"
 import { isCommitHash } from "../../lib/commit-hash.ts"
 import { lineAnchor } from "../../lib/line-selection.ts"
+import { localPlace, takesHttp, whereToRun, zeroCommand, type AgentPlace } from "../../lib/agent-place.ts"
 import { branchCompare, compareKey, compareSearch, reviewFragment, workingCompare, type Compare, type CompareSearch } from "../source-control/compare.ts"
 import { isVisualThread, visualHeading, visualLines, visualPlace } from "./visual-model.ts"
 
@@ -363,26 +364,31 @@ export interface FeedbackPromptInput {
   project: string
   id: string
   branch: string
+  // place is where the project is served from the page's side (decision
+  // 0187): the prompt names that machine and how zero runs there.
+  place: AgentPlace
 }
 
 // feedbackPrompt is what Copy Prompt copies: how an agent reads the threads
-// waiting on it and answers each with `zero feedback`. An origin that takes
-// no HTTP requests leaves the HTTP fallback out, as walkthrough instructions
-// do (decision 0049).
-export function feedbackPrompt({ branch, id, origin, project }: FeedbackPromptInput): string {
+// waiting on it and answers each with `zero feedback`. It starts with the
+// machine to run it on when the project is not local; only a local
+// server's http(s) origin adds the HTTP fallback, as walkthrough
+// instructions do (decisions 0049, 0187).
+export function feedbackPrompt({ branch, id, origin, place, project }: FeedbackPromptInput): string {
   const where = branch ? `on branch ${branch}` : "on a detached HEAD"
-  const http = origin !== null && /^https?:\/\//.test(origin)
+  const zero = zeroCommand(place)
+  const http = takesHttp(place) && origin !== null && /^https?:\/\//.test(origin)
     ? `Without the zero CLI: GET ${origin}/api/feedback?${new URLSearchParams({ project, id }).toString()}
 and reply with POST ${origin}/api/feedback-messages, JSON {"project","id","thread","body","status","author":"agent"}.
 `
     : ""
-  return `Address review feedback ${id} ${where} in ${project}.
-Read the threads waiting on you: zero feedback show ${id}
+  return `${whereToRun(place)}Address review feedback ${id} ${where} in ${project}.
+Read the threads waiting on you: ${zero} feedback show ${id}
 (--json for structure, --all for every thread).
 For each thread, make the change, then reply:
-  zero feedback reply ${id} <thread> -m "<what you changed>" --resolve
+  ${zero} feedback reply ${id} <thread> -m "<what you changed>" --resolve
 Decline with --wontfix -m "<why>", or ask a question with -m "<question>" and no status.
-To raise something new: zero feedback comment ${id} --path <path> --lines <start>-<end> -m "<text>"
+To raise something new: ${zero} feedback comment ${id} --path <path> --lines <start>-<end> -m "<text>"
 ${http}`
 }
 
@@ -454,9 +460,10 @@ export function feedbackMarkdown(feedback: Feedback, threads: readonly FeedbackT
   return `${header}\n${[reply, ...threads.map((thread) => threadMarkdown(feedback.id, thread))].join("\n\n")}\n`
 }
 
-// threadPrompt is what a thread's Copy Thread for Agent copies.
-export function threadPrompt(feedback: Pick<Feedback, "id" | "project">, thread: FeedbackThread): string {
-  return `Feedback ${feedback.id} thread ${thread.number} in ${feedback.project}. Reply with: zero feedback reply ${feedback.id} ${thread.number} -m "…" [--resolve | --wontfix]
+// threadPrompt is what a thread's Copy Thread for Agent copies: the machine
+// to run it on first when the project is not local (decision 0187).
+export function threadPrompt(feedback: Pick<Feedback, "id" | "project">, thread: FeedbackThread, place: AgentPlace = localPlace): string {
+  return `${whereToRun(place)}Feedback ${feedback.id} thread ${thread.number} in ${feedback.project}. Reply with: ${zeroCommand(place)} feedback reply ${feedback.id} ${thread.number} -m "…" [--resolve | --wontfix]
 
 ${threadMarkdown(feedback.id, thread)}
 `

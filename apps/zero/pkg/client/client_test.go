@@ -242,7 +242,22 @@ func TestDataAPIParityAcrossTransports(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
 
-	projectsOutcome := f.same(t, "Projects", func(c client.Client) outcome { return result(c.Projects(ctx)) })
+	// Place is the one transport-dependent field: the listener decides
+	// (decision 0187). TLS and stdio are remote; the rest share the host.
+	for _, transport := range f.transports {
+		want := contract.PlaceLocal
+		if transport.name == "remote" || transport.name == "exec" {
+			want = contract.PlaceRemote
+		}
+		if listed, err := transport.client.Projects(ctx); err != nil || listed.Place != want {
+			t.Errorf("Projects over %s place = %q, %v; want %q", transport.name, listed.Place, err, want)
+		}
+	}
+	projectsOutcome := f.same(t, "Projects", func(c client.Client) outcome {
+		listed, err := c.Projects(ctx)
+		listed.Place = ""
+		return result(listed, err)
+	})
 	if listed, ok := projectsOutcome.Value.(contract.ProjectsResponse); !ok || projectsOutcome.Err != nil || len(listed.Projects) == 0 || listed.Projects[0].ID != f.root {
 		t.Fatalf("Projects = %+v", projectsOutcome)
 	}

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs"
 import test from "node:test"
 
 import { agentInstructions, stepPrompt } from "./agent-instructions.ts"
+import { sandboxZero } from "../../lib/agent-place.ts"
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -131,4 +132,27 @@ test("a step's prompt names the walkthrough, the step, its target, and a link", 
   for (const origin of [input.origin, null]) {
     assert.match(stepPrompt({ ...input, origin }), /`zero-cli` or with `--name NAME`, substitute your chosen command for `zero`/)
   }
+})
+
+// A project served elsewhere: the instructions and a step's prompt say where
+// to run first; the instructions offer no curl and run zero as it is found
+// there (decision 0187).
+test("instructions name the machine the agent runs on when the project is not local", () => {
+  const remote = agentInstructions("https://devbox:7971", "/home/dev/app", { place: "remote", host: "devbox" })
+  assert.ok(remote.startsWith("Run this on devbox, the machine that serves this project:"))
+  assert.doesNotMatch(remote, /curl|\/api\//)
+  assert.match(remote, /^Publish: zero walkthrough publish walkthrough\.json/m)
+
+  const sandbox = agentInstructions(null, "/workspace", { place: "sandbox", host: "" })
+  assert.ok(sandbox.startsWith(`Run this inside the sandbox that serves this project, where zero is ${sandboxZero}.`))
+  assert.match(sandbox, new RegExp(`^Publish: ${sandboxZero} walkthrough publish walkthrough\\.json`, "m"))
+  assert.match(sandbox, new RegExp(`^${sandboxZero} walkthrough publish walkthrough\\.json$`, "m"))
+  assert.doesNotMatch(sandbox, /^zero walkthrough/m)
+
+  const input = {
+    origin: "zero://r-0123456789ab", project: "/home/dev/app", walkthroughId: "w", walkthroughTitle: "W",
+    index: 0, count: 1, stepTitle: "S", label: "a.go", href: "/view",
+  }
+  assert.ok(stepPrompt({ ...input, place: { place: "remote", host: "devbox" } }).startsWith("Run this on devbox,"))
+  assert.ok(stepPrompt(input).startsWith("I'm reading a Zero walkthrough"))
 })

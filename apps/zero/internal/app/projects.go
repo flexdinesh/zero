@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -53,14 +54,21 @@ func ResolveProject(roots []string, id string) (Workspace, error) {
 }
 
 // List discovers the projects within the served roots. A root removed while
-// serving is a warning, not a failure for every root.
-func (p *Projects) List() contract.ProjectsResponse {
+// serving is a warning, not a failure for every root. ctx's transport says
+// where the projects are from the caller's side (decision 0187).
+func (p *Projects) List(ctx context.Context) contract.ProjectsResponse {
 	roots := p.config.Roots.List()
 	discovery := projects.Discover(roots, p.config.ScanDepth)
+	host, err := os.Hostname()
+	if err != nil {
+		host = ""
+	}
 	return contract.ProjectsResponse{
 		SessionKey:  p.sessionKey(roots),
 		Presence:    p.config.Presence,
 		ManageRoots: p.config.RootControl != nil,
+		Place:       place(p.config.Server.Mode, TransportOf(ctx)),
+		Host:        host,
 		Roots:       mapSlice(projects.Roots(roots), rootContract),
 		Projects:    mapSlice(discovery.Projects, projectContract),
 		Warnings:    warningStrings(append(discovery.Skipped, discovery.Warnings...)),

@@ -122,7 +122,9 @@ agents still read them with the CLI.
 ## Answering feedback (for agents)
 
 The quickest start: choose **Copy Prompt** and paste it into your agent. It
-names the feedback, your project, and the commands below.
+names the feedback, your project, and the commands below. In a window on a
+remote host or a container, the button names that machine (**Copy prompt for
+devbox**), and the prompt starts with where to run it.
 
 Agents use the Zero CLI; no running server is needed, and open windows update
 within a second:
@@ -156,14 +158,15 @@ Feedback is stored on the machine that serves the project, so agents run
 these commands there: on the remote host for a remote project, or inside the
 container for a sandbox (`docker exec <container> /tmp/.zero/zero feedback
 attachment … -o - > shot.png`). Given a feedback id from elsewhere, the CLI
-prints this advice.
+prints this advice. Copied prompts say so up front, and in a container they
+call zero as `/tmp/.zero/zero`.
 
 Without an id, commands use the current directory's repository and checked-out
 branch; `--project DIR` names another. `-m -` reads the message from standard
 input, `--name NAME` signs an agent's messages, and any mistake exits 1 naming
 each problem.
 
-Agents can also use HTTP on a running zero: `GET /api/feedback?project=…&id=…`
+Agents on the same machine can also use HTTP on a running zero: `GET /api/feedback?project=…&id=…`
 returns the threads, and `POST /api/feedback-messages` with JSON
 `{"project", "id", "thread", "body", "status", "author": "agent"}` replies.
 

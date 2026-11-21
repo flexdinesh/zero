@@ -9,6 +9,16 @@ export function isProjectKind(value: unknown): value is ProjectKind {
   return value === "folder" || value === "repo" || value === "worktree"
 }
 
+// ServerPlace is where a server's projects are from a client's side
+// (decision 0187): on the client's own machine, on another machine, or in a
+// sandbox zero runs inside. Agents and zero commands run where the projects
+// are.
+export type ServerPlace = "local" | "remote" | "sandbox"
+
+export function isServerPlace(value: unknown): value is ServerPlace {
+  return value === "local" || value === "remote" || value === "sandbox"
+}
+
 // Root is a served root directory. Problem explains why zero cannot read
 // it, with ProblemCode (CodePrivacyBlocked or CodeFolderUnreadable); both
 // are empty for a readable root (decision 0146).
@@ -73,6 +83,12 @@ export interface ProjectsResponse {
   // host and stops serving roots (POST and DELETE /api/roots); the daemon
   // does, a CLI-served session does not (decision 0146).
   manageRoots: boolean
+  // place is where the projects are from this request's side, as the
+  // listener that took it knows (decision 0187).
+  place: ServerPlace
+  // host is the serving machine's host name, "" when unknown: the name an
+  // agent's shell there shows.
+  host: string
   roots: Root[]
   projects: Project[]
   warnings: string[]
@@ -83,6 +99,8 @@ export function isProjectsResponse(value: unknown): value is ProjectsResponse {
     && isString(value.sessionKey)
     && isBoolean(value.presence)
     && isBoolean(value.manageRoots)
+    && isServerPlace(value.place)
+    && isString(value.host)
     && isArrayOf(value.roots, isRoot)
     && isArrayOf(value.projects, isProject)
     && isArrayOf(value.warnings, isString)

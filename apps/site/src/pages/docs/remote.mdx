@@ -186,6 +186,16 @@ A connection's window notifies you as a local one does
 notification starts with the connection's label, so you can tell it from one
 about this computer. If the host goes away, they resume when it returns.
 
+## Where agents run
+
+A remote window's status bar names the host it shows, as VS Code's remote
+indicator does; click it for what that means. The files, the Zero CLI, and
+[feedback](/docs/feedback) are on the host, so agents run there, typically
+in your SSH session. Copied prompts (**Copy Prompt**, **Copy agent
+instructions**, and the per-thread and per-step copies) name the host on their
+button and start with where to run them. A container's window says
+**Sandbox**, and its prompts call zero as `/tmp/.zero/zero`.
+
 ## Walkthroughs
 
 Agents on the host publish with `zero walkthrough publish`

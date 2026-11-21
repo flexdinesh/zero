@@ -13,6 +13,8 @@ import type { Walkthrough, WalkthroughStep } from "@zero/contracts"
 import { useClipboardCopy } from "../../lib/clipboard.ts"
 import { useRovingRows } from "../../lib/use-roving-rows.ts"
 import { shareableOrigin } from "../../lib/shareable-origin.ts"
+import { agentWhere, machineLabel } from "../../lib/agent-place.ts"
+import { useServerPlace } from "../projects/ServerPlaceProvider.tsx"
 import { commitAge, commitDate, type CompareContext } from "../source-control/compare.ts"
 import { agentInstructions } from "./agent-instructions.ts"
 import type { WalkthroughSession } from "./use-walkthrough-session.ts"
@@ -79,20 +81,26 @@ export function WalkthroughsView({ context, mobile, onDismiss, onPresent, projec
 
 // CopyInstructions copies the prompt that teaches an agent to prepare and
 // publish a walkthrough to this zero (decision 0049): an icon in the view
-// header, or a labeled button in the empty list.
+// header, or a labeled button in the empty list. When the project is not
+// local, both name the machine the agent runs on (decision 0187).
 function CopyInstructions({ project, labeled = false }: { project: string; labeled?: boolean }) {
   const { status, copy } = useClipboardCopy()
-  const onClick = () => { void copy(agentInstructions(shareableOrigin(window.location.origin), project)) }
+  const place = useServerPlace()
+  const machine = machineLabel(place)
+  const where = agentWhere(place)
+  const onClick = () => { void copy(agentInstructions(shareableOrigin(window.location.origin), project, place)) }
   const icon = status === "copied" ? <CheckIcon aria-hidden="true" /> : status === "failed" ? <XIcon aria-hidden="true" /> : <CopyIcon aria-hidden="true" />
+  const copied = where ? `Copied: paste into your agent ${where}` : "Agent instructions copied"
   return (
     <>
       {labeled
-        ? <Button variant="outline" data-status={status} onClick={onClick}>
-          {icon}{status === "copied" ? "Copied" : status === "failed" ? "Copy failed" : "Copy agent instructions"}
+        ? <Button variant="outline" data-status={status} title={status === "copied" && where ? copied : undefined} onClick={onClick}>
+          {icon}{status === "copied" ? "Copied" : status === "failed" ? "Copy failed" : machine ? `Copy agent instructions for ${machine}` : "Copy agent instructions"}
         </Button>
-        : <IconButton label="Copy Agent Instructions" title={status === "failed" ? "Copy failed" : undefined}
+        : <IconButton label={machine ? `Copy Agent Instructions for ${machine}` : "Copy Agent Instructions"}
+          title={status === "failed" ? "Copy failed" : status === "copied" && where ? copied : where ? `Copy Agent Instructions for your agent ${where}` : undefined}
           tone={status === "copied" ? "success" : status === "failed" ? "destructive" : "default"} data-status={status} icon={icon} onClick={onClick} />}
-      <span className="visually-hidden" role="status">{status === "copied" ? "Agent instructions copied" : status === "failed" ? "Copy failed" : ""}</span>
+      <span className="visually-hidden" role="status">{status === "copied" ? copied : status === "failed" ? "Copy failed" : ""}</span>
     </>
   )
 }

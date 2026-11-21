@@ -8,8 +8,8 @@ import (
 	"github.com/flexdinesh/zero/pkg/contract"
 )
 
-func (a *App) serveProjects(w http.ResponseWriter) {
-	writeJSON(w, http.StatusOK, a.app.Projects.List())
+func (a *App) serveProjects(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, a.app.Projects.List(r.Context()))
 }
 
 func (a *App) serveDirectories(w http.ResponseWriter, path string) {
