@@ -161,6 +161,10 @@ func publishWalkthrough(ctx context.Context, opts publishOptions, stdin io.Reade
 	// daemon serves; without a UI here, only http servers can show them
 	// (decision 0076).
 	viewerQuery := url.Values{"project": {stored.Project}, "wt": {stored.ID}}
+	// Viewer links name the repository too (decision 0188).
+	if repo := projects.Identity(stored.Project); repo != "" {
+		viewerQuery.Set("repo", repo)
+	}
 	viewer := ""
 	announced := announceToDaemon(ctx, opts.socket, stored.Project, stored.ID, published.Created, stderr)
 	if local && announced && desktopAppInstalled(ctx, opts) {
@@ -354,6 +358,9 @@ func findViewer(ctx context.Context, registry control.Registry, project, id stri
 		switch probeWalkthrough(ctx, client, origin, project, id) {
 		case http.StatusOK:
 			query := url.Values{"project": {project}, "wt": {id}}
+			if repo := projects.Identity(project); repo != "" {
+				query.Set("repo", repo)
+			}
 			return origin + "/view?" + query.Encode(), mismatches
 		case http.StatusNotFound:
 			mismatches = append(mismatches, origin)

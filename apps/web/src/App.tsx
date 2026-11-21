@@ -988,7 +988,10 @@ export function App({ project }: AppProps) {
         label: stepLabel(narrationStep, compareContext),
         href: (() => {
           const route = stepRoute(project, stepWalkthrough.id, stepIndex, narrationStep)
-          return router.buildLocation({ to: "/view", search: { ...route.search }, hash: route.hash }).href
+          // The link names the repository too, so it opens on a computer
+          // that keeps it at another path (decision 0188).
+          const repo = page.identity ? { repo: page.identity } : {}
+          return router.buildLocation({ to: "/view", search: { ...route.search, ...repo }, hash: route.hash }).href
         })(),
       })}
       navigate={navigateToHref} />
