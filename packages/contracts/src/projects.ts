@@ -43,7 +43,10 @@ export function isRoot(value: unknown): value is Root {
 // empty for a project that cannot be opened. Members of one repository share
 // Group, the path of its main worktree; Root is the served root it, or its
 // repository, lives in. Repository names its repository: the origin remote's
-// name, else the main worktree's folder; empty for a folder.
+// name, else the main worktree's folder; empty for a folder. Identity is its
+// repository's identity, the normalized upstream, else origin, else only
+// remote ("github.com/owner/repo", decision 0188); empty for a folder or a
+// repository without a usable remote.
 export interface Project {
   id: string
   name: string
@@ -53,6 +56,7 @@ export interface Project {
   root: string
   branch: string
   repository: string
+  identity: string
   available: boolean
 }
 
@@ -66,6 +70,7 @@ export function isProject(value: unknown): value is Project {
     && isString(value.root)
     && isString(value.branch)
     && isString(value.repository)
+    && isString(value.identity)
     && isBoolean(value.available)
     && (value.available !== true || value.id !== "")
     && (value.available !== false || value.id === "")

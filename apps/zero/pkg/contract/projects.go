@@ -36,7 +36,10 @@ type Root struct {
 // empty for a project that cannot be opened. Members of one repository share
 // Group, the path of its main worktree; Root is the served root it, or its
 // repository, lives in. Repository names its repository: the origin remote's
-// name, else the main worktree's folder; empty for a folder.
+// name, else the main worktree's folder; empty for a folder. Identity is its
+// repository's identity, the normalized upstream, else origin, else only
+// remote ("github.com/owner/repo", decision 0188); empty for a folder or a
+// repository without a usable remote.
 //
 //contract:rule available == true => id != ""
 //contract:rule available == false => id == ""
@@ -49,6 +52,7 @@ type Project struct {
 	Root       string      `json:"root"`
 	Branch     string      `json:"branch"`
 	Repository string      `json:"repository"`
+	Identity   string      `json:"identity"`
 	Available  bool        `json:"available"`
 }
 

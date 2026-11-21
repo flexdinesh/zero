@@ -172,6 +172,7 @@ func projectContract(project projects.Project) contract.Project {
 		Root:       project.Root,
 		Branch:     project.Branch,
 		Repository: project.Repository,
+		Identity:   project.Identity,
 		Available:  project.Available,
 	}
 }

@@ -13,7 +13,13 @@ zero ~/code/foo           # a directory
 zero --path a --path b    # several directories
 zero ./browser            # a directory named browser
 zero --no-open .          # print the desktop URL, do not open it
+zero --repo github.com/flexdinesh/zero   # a served checkout of that repository (decision 0188)
+zero --repo git@github.com:flexdinesh/zero.git   # a remote URL works too
 ```
+
+`--repo` finds a checkout among the folders the daemon already serves; it
+replaces the path. With several, the app asks which. `zero browser --repo`,
+`--remote`, and `--tailscale` need a running daemon that serves exactly one.
 
 ## Browser
 

@@ -45,6 +45,9 @@ type options struct {
 	portSet    bool
 	noOpen     bool
 	controlDir string
+	// repo finds the project by its repository's identity instead of a path
+	// (decision 0188); normalized.
+	repo string
 	// Root command only (decision 0098).
 	remote          bool
 	tailscale       bool
@@ -121,7 +124,13 @@ func newServeCommand(use string, runCommand runner, addFlags func(*cobra.Command
 		RunE: func(command *cobra.Command, args []string) error {
 			// A positional path is shorthand for one --path.
 			opts.paths = append(args, opts.paths...)
-			if len(opts.paths) == 0 {
+			if command.Flags().Changed("repo") {
+				repo, err := normalizeRepo(opts.repo, opts.paths)
+				if err != nil {
+					return err
+				}
+				opts.repo = repo
+			} else if len(opts.paths) == 0 {
 				opts.paths = []string{"."}
 			}
 			if opts.depth < 0 {
@@ -175,9 +184,14 @@ func addBrowserFlags(command *cobra.Command, opts *options) {
 	flags.StringVar(&opts.host, "host", defaultHost, "IP address to bind")
 	flags.IntVar(&opts.port, "port", 0, "port (0 asks the OS); defaults to the first free port from 7971 to 7980")
 	flags.BoolVar(&opts.noOpen, "no-open", false, "do not open the browser automatically")
+	flags.StringVar(&opts.repo, "repo", "", "open the checkout of a repository identity or remote URL (github.com/owner/repo) that the zero daemon serves, instead of a path")
 }
 
 func run(ctx context.Context, opts options, stdin io.Reader, stdout, stderr io.Writer) error {
+	opts, err := withRepoPath(ctx, opts, daemonCheckouts)
+	if err != nil {
+		return err
+	}
 	rootSet, err := projects.NewRootSet(opts.paths)
 	if err != nil {
 		return err

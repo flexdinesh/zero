@@ -27,6 +27,7 @@ type appDeps struct {
 	browser   runner
 	terminal  func(io.Writer) bool
 	remote    func(context.Context, options, io.Writer, io.Writer) error
+	checkouts repoLookup
 }
 
 func (d appDeps) daemonRoots() daemonRootsDeps {
@@ -44,6 +45,7 @@ func defaultAppDeps() appDeps {
 		browser:   run,
 		terminal:  isTerminal,
 		remote:    runRemote,
+		checkouts: daemonCheckouts,
 	}
 }
 
@@ -93,6 +95,10 @@ func openInApp(ctx context.Context, opts options, stdin io.Reader, stdout, stder
 
 	switch chooseLaunch(opts, deps.goos, deps.getenv) {
 	case launchRemote:
+		opts, err := withRepoPath(ctx, opts, deps.checkouts)
+		if err != nil {
+			return err
+		}
 		return deps.remote(ctx, opts, stdout, stderr)
 	case launchBrowser:
 		return serveInBrowser()
@@ -101,9 +107,14 @@ func openInApp(ctx context.Context, opts options, stdin io.Reader, stdout, stder
 	case launchDesktop:
 	}
 
-	roots, err := validateRoots(opts.paths, opts.scanDepth)
-	if err != nil {
-		return err
+	// --repo opens no folder: the page finds the daemon's checkout of the
+	// identity, or asks (decision 0188).
+	var roots []string
+	if opts.repo == "" {
+		var err error
+		if roots, err = validateRoots(opts.paths, opts.scanDepth); err != nil {
+			return err
+		}
 	}
 
 	hint := opts.cliName.installHint(deps.goos)
@@ -125,6 +136,10 @@ func openInApp(ctx context.Context, opts options, stdin io.Reader, stdout, stder
 	}
 
 	target := "zero://local/?" + url.Values{"project": {project}}.Encode()
+	if opts.repo != "" {
+		project = opts.repo
+		target = "zero://local/?" + url.Values{"repo": {opts.repo}}.Encode()
+	}
 	link := hyperlink(target, deps.terminal(stdout) && deps.getenv("TERM") != "dumb")
 	if opts.noOpen {
 		_, _ = fmt.Fprintln(stdout, link)

@@ -21,16 +21,19 @@ interface ProjectListProps {
   autoFocus?: boolean
   // status is the caller's loading or error line, shown above the rows.
   status?: ReactNode
+  // identity lists only the checkouts of that repository (decision 0188),
+  // without folders opened by hand.
+  identity?: string
   onOpen(project: string): void
 }
 
 // ProjectList lists the served projects as the picker does, under a filter:
 // Welcome's Projects (decision 0052) and the choose-project page (0153).
-export function ProjectList({ response, current, last = "", enter = false, autoFocus = false, status, onOpen }: ProjectListProps) {
+export function ProjectList({ response, current, last = "", enter = false, autoFocus = false, status, identity = "", onOpen }: ProjectListProps) {
   const [query, setQuery] = useState("")
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set())
   const remembered = useMemo(() => rememberedProjects(readMemory()), [])
-  const sections = useMemo(() => projectListSections(response, remembered, current, query), [current, query, remembered, response])
+  const sections = useMemo(() => projectListSections(response, remembered, current, query, identity), [current, identity, query, remembered, response])
 
   const toggle = (group: string) => setExpanded((existing) => {
     const next = new Set(existing)
