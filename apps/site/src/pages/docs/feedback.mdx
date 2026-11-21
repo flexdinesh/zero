@@ -11,7 +11,10 @@ changes, and replies in each thread; its replies appear beside the code.
 
 All comments on one branch of a repository share one feedback id, such as
 `fb-3k2q8m`, that never changes, so the same prompt works for every round of
-review. Worktrees of a repository share its feedback.
+review. Worktrees of a repository share its feedback. A repository that
+moves, or a fresh clone of it on the same machine, finds its feedback again
+through its [identity](/docs/usage#open-by-repository) until it has feedback
+of its own.
 
 ## Commenting
 

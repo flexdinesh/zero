@@ -112,7 +112,7 @@ func New(config Config) (*App, error) {
 	return &App{
 		Projects:      &Projects{state: shared},
 		Documents:     &Documents{state: shared},
-		Events:        &Events{state: shared, notices: &walkthroughs.notices, feedback: &reviews.notices},
+		Events:        &Events{state: shared, notices: &walkthroughs.notices, feedback: &reviews.notices, feedbackRepository: reviews.repository},
 		SourceControl: &SourceControl{state: shared, blames: newBlameCache()},
 		Navigation:    &Navigation{state: shared, servers: config.LanguageServers},
 		Metrics:       &Metrics{},

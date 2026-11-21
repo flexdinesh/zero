@@ -34,12 +34,14 @@ func NewService(store *Store) *Service {
 }
 
 // Target names the feedback a new thread joins: ID's in Repository, or else
-// Branch's, created when missing. Project is the writer's directory.
+// Branch's, created when missing. Project is the writer's directory and
+// Identity its repository's identity, "" for none (decision 0188).
 type Target struct {
 	Repository string
 	Branch     string
 	ID         string
 	Project    string
+	Identity   string
 }
 
 // NewThread is a thread's code Anchor or Visual target and its first
@@ -73,6 +75,10 @@ func (s *Service) Get(repository, id string) (Feedback, error) { return s.store.
 func (s *Service) Find(repository, branch string) (Feedback, error) {
 	return s.store.Find(repository, branch)
 }
+
+// RepositoryOf returns the repository key of the most recently updated
+// feedback that records identity (decision 0188).
+func (s *Service) RepositoryOf(identity string) (string, bool) { return s.store.RepositoryOf(identity) }
 
 // Locate returns the feedback with ID in any repository, or ErrNotFound.
 func (s *Service) Locate(id string) (Feedback, error) { return s.store.Locate(id) }
@@ -116,6 +122,9 @@ func (s *Service) AddThread(target Target, thread NewThread) (Feedback, Thread, 
 		f.NextThread = added.Number + 1
 		f.Threads = append(f.Threads, added)
 		f.Project = target.Project
+		if target.Identity != "" {
+			f.Identity = target.Identity
+		}
 		f.UpdatedAt = now
 		return nil
 	})

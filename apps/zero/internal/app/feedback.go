@@ -104,7 +104,7 @@ func (f *Feedback) Get(ctx context.Context, request contract.FeedbackRequest) (c
 		}
 		compare = &checked
 	}
-	repository := FeedbackRepository(project.Root)
+	repository := f.repository(project.Root)
 	var stored feedback.Feedback
 	if request.ID != "" {
 		stored, err = f.service.Get(repository, request.ID)
@@ -145,7 +145,7 @@ func (f *Feedback) List(request contract.FeedbackListRequest) ([]contract.Feedba
 	if err != nil {
 		return nil, err
 	}
-	summaries, err := f.service.List(FeedbackRepository(project.Root))
+	summaries, err := f.service.List(f.repository(project.Root))
 	if err != nil {
 		return nil, fail(contract.KindInternal, "Couldn't list feedback: "+err.Error())
 	}
@@ -177,7 +177,7 @@ func (f *Feedback) CreateThread(ctx context.Context, draft contract.FeedbackThre
 	if err != nil {
 		return contract.FeedbackThread{}, err
 	}
-	repository := FeedbackRepository(project.Root)
+	repository := f.repository(project.Root)
 	branch := requestBranch(project.Root, model.Compare)
 	if model.ID != "" {
 		existing, err := f.service.Get(repository, model.ID)
@@ -195,7 +195,7 @@ func (f *Feedback) CreateThread(ctx context.Context, draft contract.FeedbackThre
 	if err != nil {
 		return contract.FeedbackThread{}, err
 	}
-	stored, thread, err := f.service.AddThread(feedback.Target{Repository: repository, Branch: branch, ID: model.ID, Project: project.Root}, feedback.NewThread{Anchor: &anchor, Author: model.Author, Name: model.Name, Body: model.Body})
+	stored, thread, err := f.service.AddThread(feedback.Target{Repository: repository, Branch: branch, ID: model.ID, Project: project.Root, Identity: projects.Identity(project.Root)}, feedback.NewThread{Anchor: &anchor, Author: model.Author, Name: model.Name, Body: model.Body})
 	if err != nil {
 		return contract.FeedbackThread{}, f.writeFailure(model.ID, err)
 	}
@@ -226,7 +226,7 @@ func (f *Feedback) createVisual(ctx context.Context, model feedback.ThreadDraft,
 		}
 		return contract.FeedbackThread{}, err
 	}
-	repository := FeedbackRepository(project.Root)
+	repository := f.repository(project.Root)
 	image, live, found := f.service.Staged(repository, model.Visual.Attachment)
 	var staged *feedback.Attachment
 	if found {
@@ -254,7 +254,7 @@ func (f *Feedback) createVisual(ctx context.Context, model feedback.ThreadDraft,
 			visual.Page.Localhost = feedback.LocalhostProject
 		}
 	}
-	stored, thread, err := f.service.AddThread(feedback.Target{Repository: repository, Branch: branch, ID: model.ID, Project: project.Root}, feedback.NewThread{Visual: &visual, Author: model.Author, Name: model.Name, Body: model.Body})
+	stored, thread, err := f.service.AddThread(feedback.Target{Repository: repository, Branch: branch, ID: model.ID, Project: project.Root, Identity: projects.Identity(project.Root)}, feedback.NewThread{Visual: &visual, Author: model.Author, Name: model.Name, Body: model.Body})
 	if err != nil {
 		return contract.FeedbackThread{}, f.writeFailure(model.ID, err)
 	}
@@ -274,7 +274,7 @@ func (f *Feedback) UploadAttachment(project string, data []byte) (contract.Feedb
 	if len(data) > contract.MaxFeedbackAttachmentBytes {
 		return contract.FeedbackUpload{}, &Error{Kind: contract.KindTooLarge, Code: contract.CodeInvalidFeedback, Message: AttachmentTooLargeMessage}
 	}
-	upload, err := f.service.Stage(FeedbackRepository(resolved.Root), data)
+	upload, err := f.service.Stage(f.repository(resolved.Root), data)
 	switch {
 	case errors.Is(err, feedback.ErrInvalidImage):
 		return contract.FeedbackUpload{}, &Error{Kind: contract.KindInvalid, Code: contract.CodeInvalidFeedback, Message: err.Error()}
@@ -300,7 +300,7 @@ func (f *Feedback) AttachmentPath(request contract.FeedbackAttachmentRequest) (s
 		return "", err
 	}
 	unavailable := &Error{Kind: contract.KindNotFound, Code: contract.CodeFeedbackUnavailable, Message: AttachmentUnavailableMessage}
-	stored, err := f.service.Get(FeedbackRepository(resolved.Root), request.ID)
+	stored, err := f.service.Get(f.repository(resolved.Root), request.ID)
 	if errors.Is(err, feedback.ErrNotFound) {
 		return "", unavailable
 	}
@@ -362,7 +362,7 @@ func (f *Feedback) PostMessage(ctx context.Context, draft contract.FeedbackMessa
 	if err != nil {
 		return contract.FeedbackThread{}, err
 	}
-	repository := FeedbackRepository(project.Root)
+	repository := f.repository(project.Root)
 	stored, thread, err := f.service.AddMessage(repository, model.ID, project.Root, feedback.NewMessage{Thread: model.Thread, Author: model.Author, Name: model.Name, Body: model.Body, Status: model.Status})
 	if err != nil {
 		return contract.FeedbackThread{}, f.writeFailure(model.ID, err)
@@ -422,7 +422,7 @@ func (f *Feedback) target(request contract.FeedbackDeleteRequest) (string, strin
 	if err != nil {
 		return "", "", err
 	}
-	return project.Root, FeedbackRepository(project.Root), nil
+	return project.Root, f.repository(project.Root), nil
 }
 
 // Announce tells every subscriber that project's feedback id changed
@@ -437,7 +437,7 @@ func (f *Feedback) Announce(project, id string, author contract.FeedbackAuthor) 
 	if author != contract.FeedbackAuthorUser && author != contract.FeedbackAuthorAgent {
 		return contract.FeedbackEvent{}, rejectedAt("author", `must be "user" or "agent"`)
 	}
-	repository := FeedbackRepository(resolved.Root)
+	repository := f.repository(resolved.Root)
 	stored, err := f.service.Get(repository, id)
 	if err != nil {
 		return contract.FeedbackEvent{}, f.readFailure(id, err)
@@ -510,6 +510,21 @@ func compareFailure(err error) error {
 		return fail(contract.KindInvalid, err.Error())
 	}
 	return fail(contract.KindInternal, historyFailure+err.Error())
+}
+
+// repository is the store key of a project's feedback (decision 0188): its
+// FeedbackRepository while that holds any, else the key of the most recently
+// updated feedback that records the project's repository identity, as after
+// the repository moved; else its FeedbackRepository.
+func (f *Feedback) repository(root string) string {
+	key := FeedbackRepository(root)
+	if summaries, err := f.service.List(key); err != nil || len(summaries) > 0 {
+		return key
+	}
+	if other, ok := f.service.RepositoryOf(projects.Identity(root)); ok {
+		return other
+	}
+	return key
 }
 
 // FeedbackRepository is the repository key of a project directory: its

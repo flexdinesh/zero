@@ -67,6 +67,8 @@ type Store struct {
 
 	mu        sync.Mutex
 	summaries map[string]cachedSummary
+	// repositories caches RepositoryOf's reads of every repository's files.
+	repositories map[string]cachedRepository
 }
 
 type cachedSummary struct {
@@ -75,10 +77,15 @@ type cachedSummary struct {
 	summary  Summary
 }
 
+type cachedRepository struct {
+	cachedSummary
+	repository string
+}
+
 // NewStore returns a store rooted at directory that keeps at most
 // MaxPerRepository feedbacks per repository.
 func NewStore(directory string) *Store {
-	return &Store{directory: directory, limit: MaxPerRepository, summaries: map[string]cachedSummary{}}
+	return &Store{directory: directory, limit: MaxPerRepository, summaries: map[string]cachedSummary{}, repositories: map[string]cachedRepository{}}
 }
 
 func (s *Store) repositoryDirectory(repository string) string {
@@ -192,6 +199,66 @@ func (s *Store) Locate(id string) (Feedback, error) {
 		}
 	}
 	return Feedback{}, ErrNotFound
+}
+
+// RepositoryOf returns the repository key of the most recently updated
+// feedback that records identity, in any repository (decision 0188): where a
+// repository that moved, or another checkout of it, finds its feedback. An
+// empty identity finds none.
+func (s *Store) RepositoryOf(identity string) (string, bool) {
+	if identity == "" {
+		return "", false
+	}
+	entries, err := os.ReadDir(s.directory)
+	if err != nil {
+		return "", false
+	}
+	found, latest := "", time.Time{}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		directory := filepath.Join(s.directory, entry.Name())
+		files, err := os.ReadDir(directory)
+		if err != nil {
+			continue
+		}
+		for _, file := range files {
+			id, ok := strings.CutSuffix(file.Name(), ".json")
+			if !ok || !file.Type().IsRegular() || !idPattern.MatchString(id) {
+				continue
+			}
+			repository, summary, ok := s.summaryOf(filepath.Join(directory, file.Name()), file, id)
+			if !ok || summary.Identity != identity || filepath.Base(s.repositoryDirectory(repository)) != entry.Name() {
+				continue
+			}
+			if found == "" || summary.UpdatedAt.After(latest) {
+				found, latest = repository, summary.UpdatedAt
+			}
+		}
+	}
+	return found, found != ""
+}
+
+// summaryOf reads a stored file's repository and summary, decoding it only
+// when it changed since the last read.
+func (s *Store) summaryOf(name string, entry fs.DirEntry, id string) (string, Summary, bool) {
+	info, err := entry.Info()
+	if err != nil {
+		return "", Summary{}, false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cached, ok := s.repositories[name]
+	if !ok || !cached.modified.Equal(info.ModTime()) || cached.size != info.Size() {
+		f, err := readFeedback(name)
+		if err != nil || f.ID != id {
+			return "", Summary{}, false
+		}
+		cached = cachedRepository{cachedSummary: cachedSummary{modified: info.ModTime(), size: info.Size(), summary: summarize(f)}, repository: f.Repository}
+		s.repositories[name] = cached
+	}
+	return cached.repository, cached.summary, true
 }
 
 // taken reports whether any repository holds a file for id.
