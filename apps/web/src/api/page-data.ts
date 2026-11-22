@@ -29,6 +29,7 @@ export const emptyPage: PageData = {
   hasFile: false,
   rootName: "",
   repository: "",
+  identity: "",
   projectKind: "folder",
   branch: "",
   worktrees: 0,

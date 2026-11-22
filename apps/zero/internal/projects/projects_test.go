@@ -384,8 +384,8 @@ func TestInspectDescribesCheckout(t *testing.T) {
 	writeFile(t, filepath.Join(folder, "a.md"), "")
 
 	for dir, want := range map[string]Checkout{
-		main:    {Kind: KindRepo, Branch: "main", Repository: "zero", Worktrees: 2},
-		feature: {Kind: KindWorktree, Branch: "feature", Repository: "zero", Worktrees: 2},
+		main:    {Kind: KindRepo, Branch: "main", Repository: "zero", Identity: "github.com/other/fork", Worktrees: 2},
+		feature: {Kind: KindWorktree, Branch: "feature", Repository: "zero", Identity: "github.com/other/fork", Worktrees: 2},
 		solo:    {Kind: KindRepo, Branch: "main", Repository: "solo", Worktrees: 1},
 		folder:  {Kind: KindFolder},
 	} {
@@ -409,6 +409,39 @@ func TestInspectNamesRepositoryByOriginURL(t *testing.T) {
 		if got := Inspect(dir).Repository; got != want {
 			t.Errorf("Inspect(origin %q).Repository = %q, want %q", url, got, want)
 		}
+	}
+}
+
+func TestDiscoverCarriesRepositoryIdentity(t *testing.T) {
+	root := canonicalTemp(t)
+	main := filepath.Join(root, "zero", "main")
+	makeRepo(t, main)
+	writeFile(t, filepath.Join(main, ".git", "config"), "[remote \"origin\"]\n\turl = git@github.com:me/Zero.git\n[remote \"upstream\"]\n\turl = https://github.com/flexdinesh/zero.git\n")
+	feature := linkWorktree(t, main, "feature", filepath.Join(root, "zero", "wt-feature"))
+	local := filepath.Join(root, "local")
+	makeRepo(t, local)
+	writeFile(t, filepath.Join(local, ".git", "config"), "[remote \"origin\"]\n\turl = /srv/git/local.git\n")
+	solo := filepath.Join(root, "solo")
+	makeRepo(t, solo)
+
+	want := map[string]string{main: "github.com/flexdinesh/zero", feature: "github.com/flexdinesh/zero", local: "", solo: "", root: ""}
+	discovery := Discover([]string{root}, 3)
+	for _, project := range discovery.Projects {
+		expected, ok := want[project.Path]
+		if !ok {
+			t.Errorf("unexpected project %s", project.Path)
+			continue
+		}
+		if project.Identity != expected {
+			t.Errorf("%s identity = %q, want %q", project.Path, project.Identity, expected)
+		}
+		if got := Identity(project.Path); got != expected {
+			t.Errorf("Identity(%s) = %q, want %q", project.Path, got, expected)
+		}
+		delete(want, project.Path)
+	}
+	for path := range want {
+		t.Errorf("project %s not discovered", path)
 	}
 }
 

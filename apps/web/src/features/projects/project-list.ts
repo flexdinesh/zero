@@ -18,20 +18,31 @@ export interface ProjectListEntry {
 
 // projectListSections are the picker's sections without its Browse actions:
 // a query flattens them into ranked matches; otherwise each repository with
-// several worktrees carries them for inline expansion.
-export function projectListSections(response: ProjectsResponse, remembered: readonly string[], current: string, query: string): ProjectListSection[] {
+// several worktrees carries them for inline expansion. An identity keeps
+// only that repository's checkouts (decision 0188).
+export function projectListSections(response: ProjectsResponse, remembered: readonly string[], current: string, query: string, identity = ""): ProjectListSection[] {
   const filtering = query.trim() !== ""
-  return projectSections(response, remembered, current, query).flatMap((section): ProjectListSection[] => {
+  const listed = identity ? onlyIdentity(response, identity) : response
+  // Folders opened by hand are not checkouts of the identity; remembered
+  // checkouts still pick the worktree a repository row opens.
+  const opened = identity ? remembered.filter((id) => listed.projects.some((project) => project.id === id)) : remembered
+  return projectSections(listed, opened, current, query).flatMap((section): ProjectListSection[] => {
     const rows = section.rows.flatMap((row): ProjectListEntry[] => {
-      if (row.kind !== "project") return []
+      // Unreadable roots are no checkout of the identity.
+      if (row.kind !== "project" || (identity && row.problem !== "")) return []
       const members = !filtering && row.worktrees > 1
-        ? projectSections(response, remembered, current, "", row.group).flatMap((group) => group.rows)
+        ? projectSections(listed, opened, current, "", row.group).flatMap((group) => group.rows)
           .flatMap((member) => member.kind === "project" ? [member] : [])
         : []
       return [{ row, worktrees: members }]
     })
     return rows.length ? [{ title: section.title, rows }] : []
   })
+}
+
+// onlyIdentity keeps the projects of one repository identity.
+function onlyIdentity(response: ProjectsResponse, identity: string): ProjectsResponse {
+  return { ...response, projects: response.projects.filter((project) => project.identity === identity) }
 }
 
 // holdsLast reports whether an entry stands for the last opened project: the

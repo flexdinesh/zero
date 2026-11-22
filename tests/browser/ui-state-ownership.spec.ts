@@ -78,7 +78,7 @@ test("switching projects clears transient search and ignores a late previous-pro
     if (!isProjectsResponse(payload)) throw new Error("unexpected projects response")
     await route.fulfill({ response, json: { ...payload, projects: [...payload.projects, {
       id: guides, name: "guides", path: guides, kind: "folder", group: "", root: fixtureRoot,
-      branch: "", repository: "", available: true,
+      branch: "", repository: "", identity: "", available: true,
     }] } })
   })
   let hold = false

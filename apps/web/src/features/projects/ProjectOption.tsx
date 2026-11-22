@@ -55,6 +55,7 @@ export function OptionText({ row, last = false }: { row: PickerRow; last?: boole
           ? row.location !== row.name && <OptionPath path={row.location} title={row.path} />
           : <span className="project-option-path" title={row.path}>served folder</span>}
         <span className="project-option-grow" />
+        {row.identity && <span className="project-option-meta project-option-identity" title={row.identity}>{row.identity}</span>}
         {row.disabled && <span className={row.problem ? "project-option-meta project-option-problem" : "project-option-meta"} title={row.problem || undefined}>{row.note}</span>}
         {row.worktrees > 1 && <span className="project-option-meta">{row.worktrees} worktrees</span>}
         {row.current && <span className="project-option-current"><CheckIcon aria-hidden="true" />Current</span>}

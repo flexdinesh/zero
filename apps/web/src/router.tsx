@@ -14,7 +14,7 @@ import { isAbort } from "./api/http.ts"
 import { loadPage } from "./api/page-data.ts"
 import { parseDiffLineAnchor } from "./features/source-control/diff-line-selection.ts"
 import { ChooseProject } from "./features/projects/ChooseProject.tsx"
-import { defaultProject, fetchProjects, landing, type Landing } from "./api/projects-data.ts"
+import { defaultProject, fetchProjects, landing, repoKey, repoLanding, type Landing, type RepoLanding } from "./api/projects-data.ts"
 import { compareSearch, legacyCompare, reviewFragment, routeCompare } from "./features/source-control/compare.ts"
 import { isCommitHash } from "./lib/commit-hash.ts"
 import { routeAt } from "./workspace/workspace-tabs.ts"
@@ -26,6 +26,10 @@ interface PageSearch {
   [key: string]: unknown
   path?: string
   project?: string
+  // repo=<identity> finds the project by its repository's identity
+  // ("github.com/owner/repo", decision 0188) where project= does not open;
+  // it is dropped once a project is found.
+  repo?: string
   // Without a path, review=working, review=branch (with base, and head for a
   // stack layer), commit=<hash>, or from=<hash>&to=<hash> open a review tab
   // (decisions 0035, 0040). review=branch&uncommitted=1 adds the working
@@ -67,6 +71,7 @@ function validateSearch(search: Record<string, unknown>): PageSearch {
     path: typeof search.path === "string" ? search.path : undefined,
     at: routeAt(search.path, search.at),
     project: typeof search.project === "string" && search.project !== "" ? search.project : undefined,
+    repo: typeof search.repo === "string" && repoKey(search.repo) !== "" ? repoKey(search.repo) : undefined,
     review: search.review === "working" || search.review === "branch" ? search.review : undefined,
     base: typeof search.base === "string" && search.base !== "" ? search.base : undefined,
     head: typeof search.head === "string" && search.head !== "" ? search.head : undefined,
@@ -89,6 +94,24 @@ function validateSearch(search: Record<string, unknown>): PageSearch {
 function withProject(search: PageSearch, project: string): PageSearch {
   const { project: _previous, ...rest } = search
   return { project, ...rest }
+}
+
+// withoutRepo drops repo= once it has found its project: URLs within the
+// app name projects by path (decision 0188).
+function withoutRepo(search: PageSearch): PageSearch {
+  const { repo: _repo, ...rest } = search
+  return rest
+}
+
+// findRepo resolves a link's repo= (decision 0188); when projects cannot be
+// listed, the page asks and reports why.
+async function findRepo(search: PageSearch, signal: AbortSignal): Promise<RepoLanding> {
+  try {
+    return repoLanding(await fetchProjects(signal), search.project ?? "", search.repo ?? "")
+  } catch (error: unknown) {
+    if (isAbort(error)) throw error
+    return { kind: "choose" }
+  }
 }
 
 // choosing is the index route's loader data while it asks for a project.
@@ -127,6 +150,13 @@ const indexRoute = createRoute({
   // reports why.
   // Serving no folder keeps the workspace's no-folder state.
   beforeLoad: async ({ search, abortController }) => {
+    // A repo= link opens its checkout, else asks among its checkouts, or
+    // among every project when this server has none.
+    if (search.repo) {
+      const found = await findRepo(search, abortController.signal)
+      if (found.kind === "open") throw redirect({ to: "/", search: withProject(withoutRepo(search), found.project), replace: true })
+      return { choose: true }
+    }
     if (search.project) return { choose: false }
     let chosen: Landing = { kind: "choose" }
     try {
@@ -163,6 +193,13 @@ const viewRoute = createRoute({
         hash: reviewFragment(legacy.path, lines),
         replace: true,
       })
+    }
+    // A repo= link opens its checkout, keeping its target; a choice goes
+    // through the index route's page, which keeps them too.
+    if (search.repo) {
+      const found = await findRepo(search, abortController.signal)
+      if (found.kind === "open") throw redirect({ to: "/view", search: withProject(withoutRepo(search), found.project), hash: location.hash, replace: true })
+      throw redirect({ to: "/", search, hash: location.hash, replace: true })
     }
     if (search.project) return
     let project = ""

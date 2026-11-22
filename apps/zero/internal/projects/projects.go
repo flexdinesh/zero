@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/flexdinesh/zero/internal/files"
+	"github.com/flexdinesh/zero/internal/identity"
 )
 
 // ErrUnavailable is returned when a project ID does not name a servable
@@ -51,7 +52,8 @@ type Root struct {
 // the project, or its repository, lives in; empty when none. Branch is the
 // checked-out branch, a short commit for a detached HEAD, or empty.
 // Repository names the project's repository (see Checkout); empty for a
-// folder.
+// folder. Identity is its repository's identity (decision 0188), empty for a
+// folder or a repository without a usable remote.
 type Project struct {
 	ID         string `json:"id"`
 	Name       string `json:"name"`
@@ -61,17 +63,20 @@ type Project struct {
 	Root       string `json:"root"`
 	Branch     string `json:"branch"`
 	Repository string `json:"repository"`
+	Identity   string `json:"identity"`
 	Available  bool   `json:"available"`
 }
 
 // Checkout describes the repository checked out at a project directory.
 // Repository is the origin remote's repository name, else the main worktree's
-// folder; Worktrees counts the repository's verified checkouts. A folder
-// outside any repository has KindFolder and nothing else.
+// folder; Identity is the repository's identity (decision 0188), empty
+// without a usable remote; Worktrees counts the repository's verified
+// checkouts. A folder outside any repository has KindFolder and nothing else.
 type Checkout struct {
 	Kind       Kind
 	Branch     string
 	Repository string
+	Identity   string
 	Worktrees  int
 }
 
@@ -434,7 +439,7 @@ func (d *discoverer) add(dir, group, common string) {
 	if isLinkedWorktree(dir) {
 		kind = KindWorktree
 	}
-	project := Project{Name: filepath.Base(dir), Path: dir, Kind: kind, Group: group, Root: d.rootOf(dir), Branch: Branch(dir), Repository: repositoryName(dir, common)}
+	project := Project{Name: filepath.Base(dir), Path: dir, Kind: kind, Group: group, Root: d.rootOf(dir), Branch: Branch(dir), Repository: repositoryName(dir, common), Identity: repositoryIdentity(common)}
 	if project.Root != "" {
 		project.Available = true
 	} else if common != "" {
@@ -589,6 +594,7 @@ func Inspect(dir string) Checkout {
 		members = append(members, dir)
 	}
 	checkout.Repository = repositoryName(dir, common)
+	checkout.Identity = repositoryIdentity(common)
 	checkout.Worktrees = len(members)
 	return checkout
 }
@@ -632,24 +638,57 @@ func OriginURL(dir string) string {
 // originURL reads the origin remote's first URL from a common git
 // directory's config, unquoted.
 func originURL(common string) string {
+	return remoteURLs(common)["origin"]
+}
+
+// remoteURLs reads each remote's first URL from a common git directory's
+// config, unquoted, keyed by remote name.
+func remoteURLs(common string) map[string]string {
+	remotes := map[string]string{}
 	content, err := os.ReadFile(filepath.Join(common, "config"))
 	if err != nil {
-		return ""
+		return remotes
 	}
-	origin := false
+	remote := ""
 	for _, line := range strings.Split(string(content), "\n") {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "[") {
-			origin = line == `[remote "origin"]`
+			remote = ""
+			if name, ok := strings.CutPrefix(line, `[remote "`); ok {
+				remote, _ = strings.CutSuffix(name, `"]`)
+			}
 			continue
 		}
 		key, value, ok := strings.Cut(line, "=")
-		if !origin || !ok || !strings.EqualFold(strings.TrimSpace(key), "url") {
+		if remote == "" || !ok || !strings.EqualFold(strings.TrimSpace(key), "url") {
 			continue
 		}
-		return strings.Trim(strings.TrimSpace(value), `"`)
+		if _, seen := remotes[remote]; !seen {
+			remotes[remote] = strings.Trim(strings.TrimSpace(value), `"`)
+		}
 	}
-	return ""
+	return remotes
+}
+
+// repositoryIdentity is the identity of a common git directory's repository
+// (decision 0188): its upstream remote, else origin, else its only remote,
+// normalized; empty without one.
+func repositoryIdentity(common string) string {
+	if common == "" {
+		return ""
+	}
+	id, _ := identity.Choose(remoteURLs(common))
+	return id
+}
+
+// Identity is the identity of the repository a project directory checks out,
+// empty for a folder or a repository without a usable remote.
+func Identity(dir string) string {
+	common, err := commonDir(dir)
+	if err != nil {
+		return ""
+	}
+	return repositoryIdentity(common)
 }
 
 // readGitFile reads a "gitdir: <path>" file and returns the canonical path.

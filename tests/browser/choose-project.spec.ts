@@ -8,8 +8,9 @@ const at = (...segments: string[]) => [fixtureRoot, ...segments].join("/")
 test.afterEach(async ({ page }) => { await page.unrouteAll({ behavior: "wait" }) })
 
 // The fixture root has no repositories; present some of its folders as
-// discovered projects, so a link without a project has a choice.
-async function mockProjects(page: Page) {
+// discovered projects, so a link without a project has a choice. identities
+// gives a folder's repository identity (decision 0188).
+async function mockProjects(page: Page, identities: Record<string, string> = {}) {
   await page.route("**/api/projects", async (route) => {
     const response = await route.fetch()
     const json: unknown = await response.json()
@@ -18,7 +19,7 @@ async function mockProjects(page: Page) {
     }
     const repo = (path: string) => ({
       id: path, name: path.split("/").at(-1), path, kind: "repo", group: "", root: fixtureRoot, branch: "main",
-      repository: path.split("/").at(-1), available: true,
+      repository: path.split("/").at(-1), identity: identities[path.split("/").at(-1) ?? ""] ?? "", available: true,
     })
     await route.fulfill({ response, json: { ...json, projects: [json.projects[0], repo(at("guides")), repo(at("reference"))] } })
   })
@@ -94,4 +95,43 @@ test("a link that names its project skips the choice", async ({ page }) => {
   await page.goto(`/?project=${rootParam}`)
   await expect(page).toHaveURL(endsWith(`/view?project=${rootParam}&welcome=1`))
   await expect(page.getByRole("heading", { name: "Choose a project" })).toHaveCount(0)
+})
+
+// A link that names a repository identity finds its checkout on this server,
+// whatever path another computer gave it (decision 0188).
+const site = "github.com/me/guides"
+
+test("a repo link opens its one checkout and drops repo from the URL", async ({ page }) => {
+  await mockProjects(page, { guides: site })
+  await page.goto(`/?repo=${encodeURIComponent(site)}`)
+  await expect(page).toHaveURL(endsWith(`/view?project=${projectParam("guides")}&welcome=1`))
+})
+
+test("a repo link keeps its target when another computer's path is not served here", async ({ page }) => {
+  await mockProjects(page, { guides: site })
+  await page.goto(`/view?project=${encodeURIComponent("/home/someone/guides")}&repo=${encodeURIComponent(site)}&path=getting-started.md`)
+  await expect(page).toHaveURL(endsWith(`/view?project=${projectParam("guides")}&path=getting-started.md`))
+})
+
+test("a repo link with several checkouts asks among them, and the pick keeps the target", async ({ page }) => {
+  await mockProjects(page, { guides: site, reference: site })
+  await page.goto(`/view?repo=${encodeURIComponent(site)}&path=getting-started.md`)
+  await expect(chooser(page).getByRole("heading", { name: "Choose a checkout", level: 1 })).toBeVisible()
+  await expect(chooser(page)).toContainText(`2 checkouts of ${site}.`)
+  await expect(chooser(page).getByRole("button", { name: /^(markdown|guides|reference)/ })).toHaveText([
+    new RegExp(`guides.*${site}`), new RegExp(`reference.*${site}`),
+  ])
+  await chooser(page).getByRole("button", { name: "Show all projects" }).click()
+  await expect(chooser(page).getByRole("heading", { name: "Choose a project", level: 1 })).toBeVisible()
+  await expect(chooser(page).getByRole("button", { name: /^(markdown|guides|reference)/ })).toHaveCount(3)
+  await chooser(page).getByRole("button", { name: /^guides/ }).click()
+  await expect(page).toHaveURL(endsWith(`/view?project=${projectParam("guides")}&path=getting-started.md`))
+})
+
+test("a repo link with no checkout here says so and lists every project", async ({ page }) => {
+  await mockProjects(page, { guides: site })
+  await page.goto(`/?repo=${encodeURIComponent("github.com/none/here")}`)
+  await expect(chooser(page).getByRole("heading", { name: "Choose a project", level: 1 })).toBeVisible()
+  await expect(chooser(page)).toContainText("No checkout of github.com/none/here on this server. Serving 1 folder.")
+  await expect(chooser(page).getByRole("button", { name: /^(markdown|guides|reference)/ })).toHaveCount(3)
 })

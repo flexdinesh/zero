@@ -17,7 +17,7 @@ async function mockProjects(page: Page) {
     }
     const member = (path: string, kind: string, group: string, branch: string, available = true) => ({
       id: available ? path : "", name: path.split("/").at(-1), path, kind, group, root: available ? root : "", branch,
-      repository: group ? "reference" : path.split("/").at(-1), available,
+      repository: group ? "reference" : path.split("/").at(-1), identity: "", available,
     })
     await route.fulfill({ response, json: { ...json, projects: [
       json.projects[0],

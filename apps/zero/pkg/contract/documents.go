@@ -61,7 +61,10 @@ type PageData struct {
 	RootName           string `json:"rootName"`
 	// Repository names the project's repository (origin remote, else main
 	// worktree folder), empty for a folder.
-	Repository  string      `json:"repository"`
+	Repository string `json:"repository"`
+	// Identity is the repository's identity (decision 0188), empty for a
+	// folder or a repository without a usable remote.
+	Identity    string      `json:"identity"`
 	ProjectKind ProjectKind `json:"projectKind"`
 	// Branch is the project's checked-out branch, empty for a folder.
 	Branch string `json:"branch"`

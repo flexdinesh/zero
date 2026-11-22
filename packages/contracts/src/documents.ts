@@ -83,6 +83,9 @@ export interface PageData {
   // repository names the project's repository (origin remote, else main
   // worktree folder), empty for a folder.
   repository: string
+  // identity is the repository's identity (decision 0188), empty for a
+  // folder or a repository without a usable remote.
+  identity: string
   projectKind: ProjectKind
   // branch is the project's checked-out branch, empty for a folder.
   branch: string
@@ -125,6 +128,7 @@ export function isPageData(value: unknown): value is PageData {
     && isBoolean(value.projectUnavailable)
     && isString(value.rootName)
     && isString(value.repository)
+    && isString(value.identity)
     && isProjectKind(value.projectKind)
     && isString(value.branch)
     && isNumber(value.worktrees)

@@ -31,6 +31,10 @@ export interface ProjectRow {
   // repository names a worktree's repository in worktree lists and flat
   // search results.
   repository: string
+  // identity is the repository's identity (decision 0188), shown and
+  // matched; "" for folders, repositories without one, and rows within a
+  // repository's worktree list.
+  identity: string
   current: boolean
   disabled: boolean
   note: string
@@ -180,6 +184,7 @@ function projectRow(project: Project, roots: readonly string[], current: string,
     group: project.group,
     worktrees: 0,
     repository,
+    identity: project.identity,
     current: project.available && project.id === current,
     disabled: !project.available,
     note: project.available ? "" : unavailableNote,
@@ -202,6 +207,7 @@ function groupRow(group: Group, roots: readonly string[], remembered: readonly s
     group: group.path,
     worktrees: group.members.length,
     repository: "",
+    identity: group.members[0]?.identity ?? "",
     current: group.members.some((member) => member.available && member.id === current),
     disabled: target === undefined,
     note: target ? "" : unavailableNote,
@@ -231,6 +237,7 @@ function problemRow(root: Root): ProjectRow {
     group: "",
     worktrees: 0,
     repository: "",
+    identity: "",
     current: false,
     disabled: true,
     note: problemNote(root.problemCode),
@@ -275,7 +282,7 @@ export function projectSections(response: ProjectsResponse, remembered: readonly
     const name = repositories.get(group)?.name ?? baseName(group)
     const matches = members.flatMap((member) => {
       // The list title names the repository, so rows show only branches.
-      const row = { ...projectRow(member, roots, current, name), repository: "" }
+      const row = { ...projectRow(member, roots, current, name), repository: "", identity: "" }
       const score = bestScore(query, [row.name, member.name], row.location)
       return score === null ? [] : [{ score, row }]
     })
@@ -298,6 +305,7 @@ export function projectSections(response: ProjectsResponse, remembered: readonly
       group: "",
       worktrees: 0,
       repository: "",
+      identity: "",
       current: id === current,
       disabled: false,
       note: "",
@@ -310,7 +318,8 @@ export function projectSections(response: ProjectsResponse, remembered: readonly
     const matches = response.projects.flatMap((project) => {
       const repository = project.group ? repositories.get(project.group)?.name ?? "" : ""
       const row = projectRow(project, roots, current, repository)
-      const score = bestScore(query, repository ? [row.name, project.name, repository] : [row.name], row.location)
+      const names = repository ? [row.name, project.name, repository] : [row.name]
+      const score = bestScore(query, project.identity ? [...names, project.identity] : names, row.location)
       return score === null ? [] : [{ score, row }]
     })
     const openedMatches = opened.flatMap((row) => {

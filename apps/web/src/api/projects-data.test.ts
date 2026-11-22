@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 
 import type { ProjectsResponse } from "@zero/contracts"
-import { landing, lastOpened } from "./projects-data.ts"
+import { checkoutsOf, landing, lastOpened, repoLanding } from "./projects-data.ts"
 import { emptyMemory, forgetProject, rememberProject } from "../workspace/workspace-memory.ts"
 
 const sessionKey = "/work\n/home"
@@ -14,9 +14,9 @@ const projects: ProjectsResponse = {
   host: "",
   roots: [{ path: "/work", name: "work", isRepo: false }, { path: "/home", name: "home", isRepo: false }],
   projects: [
-    { id: "/work", name: "work", path: "/work", kind: "folder", group: "", root: "/work", branch: "", repository: "", available: true },
-    { id: "/work/api", name: "api", path: "/work/api", kind: "repo", group: "", root: "/work", branch: "main", repository: "api", available: true },
-    { id: "/home", name: "home", path: "/home", kind: "folder", group: "", root: "/home", branch: "", repository: "", available: true },
+    { id: "/work", name: "work", path: "/work", kind: "folder", group: "", root: "/work", branch: "", repository: "", identity: "", available: true },
+    { id: "/work/api", name: "api", path: "/work/api", kind: "repo", group: "", root: "/work", branch: "main", repository: "api", identity: "", available: true },
+    { id: "/home", name: "home", path: "/home", kind: "folder", group: "", root: "/home", branch: "", repository: "", identity: "", available: true },
   ],
   warnings: [],
 }
@@ -58,4 +58,44 @@ test("last opened keeps a folder opened by hand within a served root", () => {
 test("a forgotten project is not last opened", () => {
   const memory = forgetProject(rememberProject(emptyMemory, sessionKey, "/work/api", [], null), "/work/api")
   assert.equal(lastOpened(projects, memory), "")
+})
+
+// Two checkouts of one repository and another repository, as two computers
+// might lay them out (decision 0188).
+const zero = "github.com/flexdinesh/zero"
+const repos: ProjectsResponse = {
+  ...projects,
+  projects: [
+    ...projects.projects,
+    { id: "/work/zero", name: "zero", path: "/work/zero", kind: "repo", group: "/work/zero", root: "/work", branch: "main", repository: "zero", identity: zero, available: true },
+    { id: "/work/zero-fix", name: "zero-fix", path: "/work/zero-fix", kind: "worktree", group: "/work/zero", root: "/work", branch: "fix", repository: "zero", identity: zero, available: true },
+    { id: "/home/site", name: "site", path: "/home/site", kind: "repo", group: "", root: "/home", branch: "main", repository: "site", identity: "github.com/me/site", available: true },
+    { id: "", name: "gone", path: "/elsewhere/site", kind: "worktree", group: "/home/site", root: "", branch: "old", repository: "site", identity: "github.com/me/site", available: false },
+  ],
+}
+
+test("checkoutsOf lists the available checkouts of an identity, forgiving case", () => {
+  assert.deepEqual(checkoutsOf(repos, zero), ["/work/zero", "/work/zero-fix"])
+  assert.deepEqual(checkoutsOf(repos, " GitHub.com/me/Site "), ["/home/site"])
+  assert.deepEqual(checkoutsOf(repos, "github.com/none/here"), [])
+  assert.deepEqual(checkoutsOf(repos, ""), [])
+})
+
+test("repo= opens its one checkout, asks among several, and reports none", () => {
+  assert.deepEqual(repoLanding(repos, "", "github.com/me/site"), { kind: "open", project: "/home/site" })
+  assert.deepEqual(repoLanding(repos, "", zero), { kind: "choose" })
+  assert.deepEqual(repoLanding(repos, "", "github.com/none/here"), { kind: "missing" })
+})
+
+test("a link's project opens when it holds the identity, none, or is unlisted within a root", () => {
+  assert.deepEqual(repoLanding(repos, "/work/zero-fix", zero), { kind: "open", project: "/work/zero-fix" })
+  assert.deepEqual(repoLanding(repos, "/work/api", zero), { kind: "open", project: "/work/api" })
+  assert.deepEqual(repoLanding(repos, "/work/docs", zero), { kind: "open", project: "/work/docs" })
+})
+
+test("a link's project that is another repository here gives way to the identity", () => {
+  assert.deepEqual(repoLanding(repos, "/home/site", zero), { kind: "choose" })
+  assert.deepEqual(repoLanding(repos, "/work/zero", "github.com/me/site"), { kind: "open", project: "/home/site" })
+  assert.deepEqual(repoLanding(repos, "/elsewhere/zero", "github.com/me/site"), { kind: "open", project: "/home/site" })
+  assert.deepEqual(repoLanding(repos, "/home/site", "github.com/none/here"), { kind: "missing" })
 })

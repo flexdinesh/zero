@@ -12,10 +12,10 @@ const response: ProjectsResponse = {
   host: "",
   roots: [{ path: "/work", name: "work", isRepo: false }],
   projects: [
-    { id: "/work", name: "work", path: "/work", kind: "folder", group: "", root: "/work", branch: "", repository: "", available: true },
-    { id: "/work/app", name: "app", path: "/work/app", kind: "repo", group: "/work/app", root: "/work", branch: "main", repository: "app", available: true },
-    { id: "/work/app-fix", name: "app-fix", path: "/work/app-fix", kind: "worktree", group: "/work/app", root: "/work", branch: "fix", repository: "app", available: true },
-    { id: "/work/notes", name: "notes", path: "/work/notes", kind: "repo", group: "/work/notes", root: "/work", branch: "main", repository: "notes", available: true },
+    { id: "/work", name: "work", path: "/work", kind: "folder", group: "", root: "/work", branch: "", repository: "", identity: "", available: true },
+    { id: "/work/app", name: "app", path: "/work/app", kind: "repo", group: "/work/app", root: "/work", branch: "main", repository: "app", identity: "", available: true },
+    { id: "/work/app-fix", name: "app-fix", path: "/work/app-fix", kind: "worktree", group: "/work/app", root: "/work", branch: "fix", repository: "app", identity: "", available: true },
+    { id: "/work/notes", name: "notes", path: "/work/notes", kind: "repo", group: "/work/notes", root: "/work", branch: "main", repository: "notes", identity: "", available: true },
   ],
   warnings: [],
 }

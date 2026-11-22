@@ -144,6 +144,7 @@ settings, tabs, roots, connections, and walkthroughs.
 | --- | --- |
 | One project | `zero .` |
 | Many repositories | `zero ~/code` or `zero --path ~/code --path ~/oss` |
+| A repository by name | `zero --repo github.com/owner/repo` (a served checkout, wherever it lives) |
 | Another machine | `zero ~/code --remote` on the host, `zero connect <string>` on your computer |
 | Tailscale | `zero ~/code --tailscale` |
 | Browser only | `zero browser .` |

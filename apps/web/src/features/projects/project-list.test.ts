@@ -12,10 +12,10 @@ const response: ProjectsResponse = {
   host: "",
   roots: [{ path: "/work", name: "work", isRepo: false }],
   projects: [
-    { id: "/work", name: "work", path: "/work", kind: "folder", group: "", root: "/work", branch: "", repository: "", available: true },
-    { id: "/work/app", name: "app", path: "/work/app", kind: "repo", group: "/work/app", root: "/work", branch: "main", repository: "app", available: true },
-    { id: "/work/app-fix", name: "app-fix", path: "/work/app-fix", kind: "worktree", group: "/work/app", root: "/work", branch: "fix", repository: "app", available: true },
-    { id: "/work/notes", name: "notes", path: "/work/notes", kind: "repo", group: "/work/notes", root: "/work", branch: "main", repository: "notes", available: true },
+    { id: "/work", name: "work", path: "/work", kind: "folder", group: "", root: "/work", branch: "", repository: "", identity: "", available: true },
+    { id: "/work/app", name: "app", path: "/work/app", kind: "repo", group: "/work/app", root: "/work", branch: "main", repository: "app", identity: "", available: true },
+    { id: "/work/app-fix", name: "app-fix", path: "/work/app-fix", kind: "worktree", group: "/work/app", root: "/work", branch: "fix", repository: "app", identity: "", available: true },
+    { id: "/work/notes", name: "notes", path: "/work/notes", kind: "repo", group: "/work/notes", root: "/work", branch: "main", repository: "notes", identity: "", available: true },
   ],
   warnings: [],
 }
@@ -58,4 +58,28 @@ test("Enter opens the last opened project, else the first row that opens", () =>
   // A filter opens its first match, whatever was last opened.
   assert.equal(enterTarget(projectListSections(response, [], "", "notes"), "/work/app-fix", "notes"), "/work/notes")
   assert.equal(enterTarget([], "/work", ""), "")
+})
+
+test("an identity lists only its repository's checkouts and shows the identity", () => {
+  const zero = "github.com/flexdinesh/zero"
+  const withIdentity: ProjectsResponse = {
+    ...response,
+    projects: response.projects.map((project) => project.group === "/work/app" ? { ...project, identity: zero } : project),
+  }
+  // A remembered folder outside the identity does not show as opened.
+  const rows = projectListSections(withIdentity, ["/work/notes/sub", "/work/app-fix"], "", "", zero).flatMap((section) => section.rows)
+  assert.deepEqual(rows.map((entry) => [entry.row.name, entry.row.identity, entry.row.id]), [["app", zero, "/work/app-fix"]])
+  assert.deepEqual(rows[0]?.worktrees.map((member) => [member.name, member.identity]), [["main", ""], ["fix", ""]])
+  // Without one, every project lists and rows carry their identity.
+  const all = projectListSections(withIdentity, [], "", "").flatMap((section) => section.rows)
+  assert.deepEqual(all.map((entry) => [entry.row.name, entry.row.identity]), [["work", ""], ["app", zero], ["notes", ""]])
+})
+
+test("the filter matches a row's identity", () => {
+  const withIdentity: ProjectsResponse = {
+    ...response,
+    projects: response.projects.map((project) => project.id === "/work/notes" ? { ...project, identity: "gitlab.com/me/journal" } : project),
+  }
+  const rows = projectListSections(withIdentity, [], "", "gitlab.com/me").flatMap((section) => section.rows)
+  assert.deepEqual(rows.map((entry) => entry.row.id), ["/work/notes"])
 })

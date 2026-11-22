@@ -94,6 +94,34 @@ With no tab open, the document area names what the current sidebar view
 offers: a file to choose, a search to run, changes to review, or a
 walkthrough to start.
 
+## Open by repository
+
+A repository also has an identity that is the same on every machine: its
+`upstream` remote, else `origin`, else its only remote, written as
+`host/owner/repo` in lowercase (`github.com/flexdinesh/zero`). The picker
+shows it on each repository and the filter matches it. A repository without
+a remote, and a folder, have none.
+
+```sh
+zero --repo github.com/flexdinesh/zero
+zero --repo git@github.com:flexdinesh/zero.git
+```
+
+`--repo` takes an identity or a remote URL instead of a path and opens that
+repository's checkout among the folders the daemon already serves. It never
+looks elsewhere: open a checkout once with `zero <path>` and `--repo` finds
+it from then on. With several checkouts (clones or worktrees), the page asks
+which; with none, it says so and lists every project. `zero browser --repo`,
+`--remote`, and `--tailscale` need a running daemon that serves exactly one
+checkout. `zero <path>` and `zero .` are unchanged.
+
+Links can name a repository with `?repo=<identity>` beside or instead of
+`?project=<path>`. The path opens when this machine serves it as that
+repository (or as a folder); otherwise the identity finds the checkout, so a
+link made on one machine opens the same file on another whose folders are
+laid out differently. Remotes are compared as written: an SSH host alias from
+`~/.ssh/config` is not resolved.
+
 ## Host and port
 
 Without `--port`, Zero uses the first free port from `7971` through `7980`.
