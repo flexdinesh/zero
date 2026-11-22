@@ -9,6 +9,18 @@ const (
 	ProjectWorktree ProjectKind = "worktree"
 )
 
+// ServerPlace is where a server's projects are from a client's side
+// (decision 0187): on the client's own machine, on another machine, or in a
+// sandbox zero runs inside. Agents and zero commands run where the projects
+// are.
+type ServerPlace string
+
+const (
+	PlaceLocal   ServerPlace = "local"
+	PlaceRemote  ServerPlace = "remote"
+	PlaceSandbox ServerPlace = "sandbox"
+)
+
 // Root is a served root directory. Problem explains why zero cannot read
 // it, with ProblemCode (CodePrivacyBlocked or CodeFolderUnreadable); both
 // are empty for a readable root (decision 0146).
@@ -51,10 +63,16 @@ type ProjectsResponse struct {
 	// ManageRoots reports that this server opens folders anywhere on its
 	// host and stops serving roots (POST and DELETE /api/roots); the daemon
 	// does, a CLI-served session does not (decision 0146).
-	ManageRoots bool      `json:"manageRoots"`
-	Roots       []Root    `json:"roots"`
-	Projects    []Project `json:"projects"`
-	Warnings    []string  `json:"warnings"`
+	ManageRoots bool `json:"manageRoots"`
+	// Place is where the projects are from this request's side, as the
+	// listener that took it knows (decision 0187).
+	Place ServerPlace `json:"place"`
+	// Host is the serving machine's host name, "" when unknown: the name an
+	// agent's shell there shows.
+	Host     string    `json:"host"`
+	Roots    []Root    `json:"roots"`
+	Projects []Project `json:"projects"`
+	Warnings []string  `json:"warnings"`
 }
 
 // Directory is a child directory of a browsed folder: within the served

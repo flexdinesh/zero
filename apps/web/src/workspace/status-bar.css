@@ -327,3 +327,61 @@
   color: var(--color-accent-hover);
   text-decoration: underline;
 }
+
+/* The remote indicator (decision 0187): the process popover's band item,
+   with the machine's name in primary text so the window says where it is. */
+.status-place summary {
+  gap: var(--space-1);
+  color: var(--color-text-primary);
+}
+
+.status-place summary svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  flex: none;
+}
+
+.status-place-name {
+  min-width: 0;
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-place-panel {
+  min-width: 18rem;
+}
+
+.status-place-panel code {
+  font-family: var(--font-mono);
+}
+
+@media (max-width: 48rem) {
+  /* The process popover hides on phones; where the files are does not. */
+  .status-process.status-place {
+    display: block;
+    min-width: 0;
+  }
+
+  /* The icon stands for the name, which stays for screen readers and in the popover. */
+  .status-place-name {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .status-place summary {
+    min-width: var(--control-touch);
+    justify-content: center;
+  }
+
+  .status-place .status-place-panel {
+    position: fixed;
+    right: auto;
+    bottom: calc(var(--status-height) + var(--space-1));
+    left: var(--space-2);
+    width: calc(100vw - var(--space-4));
+  }
+}

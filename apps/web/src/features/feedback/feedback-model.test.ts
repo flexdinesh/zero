@@ -9,6 +9,7 @@ import {
   locationLabel, markSeen, plainLine, matchesFilter, parseSeen, placeLabel, reviewCompareOf, routeFeedback, routeThread, screenRoute, statusChange,
   threadPrompt, threadRoute, threadTitle, unseenCount, utcTime, type CodeThread,
 } from "./feedback-model.ts"
+import { localPlace, sandboxZero } from "../../lib/agent-place.ts"
 
 async function repositoryFile(path: string): Promise<string> {
   return readFile(new URL(`../../../../../${path}`, import.meta.url), "utf8")
@@ -204,7 +205,7 @@ test("thread routes are positive integers, and a visual thread routes its screen
 })
 
 test("Copy Prompt names the CLI's commands and flags, and HTTP only for http origins", () => {
-  const input = { origin: "http://127.0.0.1:8080", project: "/home/user/markdown", id: "fb-3k2q8m", branch: "feature/greeting" }
+  const input = { origin: "http://127.0.0.1:8080", project: "/home/user/markdown", id: "fb-3k2q8m", branch: "feature/greeting", place: localPlace }
   assert.equal(feedbackPrompt(input), `Address review feedback fb-3k2q8m on branch feature/greeting in /home/user/markdown.
 Read the threads waiting on you: zero feedback show fb-3k2q8m
 (--json for structure, --all for every thread).
@@ -231,11 +232,34 @@ and reply with POST http://127.0.0.1:8080/api/feedback-messages, JSON {"project"
   assert.deepEqual([...flags].sort(), ["--all", "--json", "--lines", "--path", "--resolve", "--wontfix", "-m"])
 })
 
+// A remote or sandbox project's prompt says where to run first, offers no
+// HTTP (the origin needs the page's credentials), and runs zero as it is
+// found there (decision 0187).
+test("Copy Prompt names the machine the agent runs on when the project is not local", () => {
+  const input = { origin: "https://devbox:7971", project: "/home/dev/app", id: "fb-3k2q8m", branch: "main" }
+  const remote = feedbackPrompt({ ...input, place: { place: "remote", host: "devbox" } })
+  assert.equal(remote.split("\n")[0], "Run this on devbox, the machine that serves this project: the files and zero are there, not on the reviewer's computer.")
+  assert.ok(remote.includes("\nAddress review feedback fb-3k2q8m on branch main in /home/dev/app.\n"))
+  assert.ok(remote.includes("zero feedback show fb-3k2q8m"))
+  assert.ok(!remote.includes("/api/"), "a remote origin takes no HTTP from the agent")
+  assert.ok(feedbackPrompt({ ...input, place: { place: "remote", host: "" } }).startsWith("Run this on the machine that serves this project:"))
+
+  const sandbox = feedbackPrompt({ ...input, origin: null, place: { place: "sandbox", host: "3f2a9c1d7e4b" } })
+  assert.ok(sandbox.startsWith(`Run this inside the sandbox (3f2a9c1d7e4b) that serves this project, where zero is ${sandboxZero}.\nFrom its host instead, prefix each command with: docker exec <container>\n`))
+  const commands = sandbox.match(/\S*zero feedback \w+/g) ?? []
+  assert.deepEqual([...new Set(commands)], [`${sandboxZero} feedback show`, `${sandboxZero} feedback reply`, `${sandboxZero} feedback comment`])
+})
+
 test("Copy Thread for Agent leads the thread's Markdown with how to reply", async () => {
   const feedback = await fixture()
   const prompt = threadPrompt(feedback, thread(feedback, 1))
   assert.equal(prompt.split("\n")[0], 'Feedback fb-3k2q8m thread 1 in /home/user/markdown. Reply with: zero feedback reply fb-3k2q8m 1 -m "…" [--resolve | --wontfix]')
   assert.ok(prompt.includes("## Thread 1 · open · code/main.go:7\n```go\n"))
+  const remote = threadPrompt(feedback, thread(feedback, 1), { place: "remote", host: "devbox" }).split("\n")
+  assert.ok(remote[0]?.startsWith("Run this on devbox,"))
+  assert.equal(remote[1], prompt.split("\n")[0])
+  const sandbox = threadPrompt(feedback, thread(feedback, 1), { place: "sandbox", host: "" })
+  assert.ok(sandbox.includes(`Reply with: ${sandboxZero} feedback reply fb-3k2q8m 1 `))
 })
 
 test("times read in UTC to the minute", () => {

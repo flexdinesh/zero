@@ -1,6 +1,10 @@
 package app
 
-import "context"
+import (
+	"context"
+
+	"github.com/flexdinesh/zero/pkg/contract"
+)
 
 // Transport is how a request reached the server, as the listener that took
 // it knows: never the client's own claim. Feedback derives what a visual
@@ -31,4 +35,18 @@ func TransportOf(ctx context.Context) Transport {
 		return transport
 	}
 	return TransportRemote
+}
+
+// place is where a server's projects are from the side of a request on
+// transport (decision 0187): a sandbox's server (mode stdio) is always in the
+// sandbox, its loopback the sandbox's; otherwise the transport decides.
+func place(mode contract.DiagnosticsMode, transport Transport) contract.ServerPlace {
+	switch {
+	case mode == contract.DiagnosticsStdio:
+		return contract.PlaceSandbox
+	case transport == TransportLocal:
+		return contract.PlaceLocal
+	default:
+		return contract.PlaceRemote
+	}
 }

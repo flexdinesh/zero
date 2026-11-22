@@ -186,3 +186,4 @@ rewriting history; update `Status` on the old record.
 | [0184](0184-browser-view-and-in-page-comments.md) | Browser view and in-page comments (experimental) | Accepted; supersedes 0177, 0180, 0181, 0175's window, 0176's UI; extends 0081, 0094, 0176, 0178, 0182 |
 | [0185](0185-title-band-in-every-desktop-window.md) | Title band in every desktop window | Accepted; revises 0119; extends 0184 |
 | [0186](0186-panel-surfaces.md) | Panel surfaces in desktop web views | Accepted; extends 0033, 0184 |
+| [0187](0187-name-the-machine-agents-run-on.md) | Name the machine agents run on | Accepted; extends 0049, 0098, 0120, 0127, 0178 |

@@ -1,9 +1,11 @@
 import { execFileSync } from "node:child_process"
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
+import { hostname, tmpdir } from "node:os"
 import path from "node:path"
 
 import { expect, test } from "@playwright/test"
+
+import { grantClipboard, readClipboard } from "./clipboard.ts"
 
 // `zero --remote --web` over real TLS, in the built binary (decision 0098).
 // The dev proxy every other spec runs behind has no TLS or token.
@@ -164,6 +166,67 @@ test("Open folder serves a host folder and Stop serving removes it", async ({ br
     zero("daemon", "stop")
     if (unreadable) chmodSync(locked, 0o755)
     chmodSync(other, 0o755)
+    rmSync(home, { recursive: true, force: true })
+  }
+})
+
+// A remote window names the machine its files are on: the status bar's
+// remote indicator, and every copied agent prompt, which offers no HTTP the
+// agent could not authenticate to (decision 0187).
+test("a remote window names its machine in the status bar and copied prompts", async ({ browser }) => {
+  const home = mkdtempSync(path.join(tmpdir(), "sfp-"))
+  const run = path.join(home, "run")
+  const project = path.join(home, "project")
+  mkdirSync(run, { mode: 0o700 })
+  mkdirSync(project)
+  writeFileSync(path.join(project, "guide.md"), "# Remote guide\n")
+  const env = {
+    ...process.env,
+    HOME: home,
+    XDG_CONFIG_HOME: path.join(home, "config"),
+    XDG_CACHE_HOME: path.join(home, "cache"),
+    XDG_DATA_HOME: path.join(home, "data"),
+    XDG_STATE_HOME: path.join(home, "state"),
+    XDG_RUNTIME_DIR: run,
+    NO_COLOR: "1",
+  }
+  const zero = (...args: string[]) => execFileSync(binary, args, { env, encoding: "utf8" })
+  const host = hostname()
+  const context = await browser.newContext({ ignoreHTTPSErrors: true })
+  try {
+    const printed = zero(project, "--remote", "--web", "--host", "127.0.0.1", "--port", "0")
+    const link = /web:\s+(https:\S+)/.exec(printed)?.[1]
+    expect(link, printed).toBeTruthy()
+    const signIn = new URL(link ?? "")
+    const page = await context.newPage()
+    await grantClipboard(page)
+    await page.goto(signIn.href)
+    await page.goto(`${signIn.origin}/?${new URLSearchParams({ project }).toString()}`)
+    await expect(page.getByRole("treeitem", { name: "guide.md" })).toBeVisible()
+
+    const status = page.getByRole("group", { name: "File tree status" })
+    const indicator = status.locator(".status-place summary")
+    await expect(indicator).toHaveText(host)
+    await indicator.click()
+    await expect(status.locator(".status-place-panel")).toContainText(`Served from ${host}`)
+    await expect(status.locator(".status-place-panel")).toContainText("Run agents and zero commands there.")
+    await page.keyboard.press("Escape")
+
+    const views = page.getByRole("navigation", { name: "Views" })
+    await views.getByRole("button", { name: /^Feedback/ }).click()
+    await expect(page.getByText(`Then copy the prompt for your agent on ${host}.`)).toBeVisible()
+    await expect(page.getByRole("button", { name: `Copy prompt for ${host}`, exact: true })).toBeDisabled()
+
+    await views.getByRole("button", { name: "Walkthroughs", exact: true }).click()
+    await page.getByRole("button", { name: `Copy agent instructions for ${host}`, exact: true }).click()
+    await expect(page.getByRole("status").filter({ hasText: `Copied: paste into your agent on ${host}` })).toBeAttached()
+    const copied = await readClipboard(page)
+    expect(copied.split("\n")[0]).toBe(`Run this on ${host}, the machine that serves this project: the files and zero are there, not on the reviewer's computer.`)
+    expect(copied).not.toContain("curl")
+    expect(copied).not.toContain(`${signIn.origin}/api/`)
+  } finally {
+    await context.close()
+    zero("daemon", "stop")
     rmSync(home, { recursive: true, force: true })
   }
 })

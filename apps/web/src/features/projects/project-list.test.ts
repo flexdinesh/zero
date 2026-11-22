@@ -8,6 +8,8 @@ const response: ProjectsResponse = {
   sessionKey: "/work",
   presence: false,
   manageRoots: false,
+  place: "local",
+  host: "",
   roots: [{ path: "/work", name: "work", isRepo: false }],
   projects: [
     { id: "/work", name: "work", path: "/work", kind: "folder", group: "", root: "/work", branch: "", repository: "", available: true },

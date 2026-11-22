@@ -6,6 +6,8 @@ import { IconButton } from "../../components/ui/icon-button.tsx"
 import { Notice } from "../../components/ui/notice.tsx"
 import type { WalkthroughStep } from "@zero/contracts"
 import { useClipboardCopy } from "../../lib/clipboard.ts"
+import { agentWhere, type AgentPlace } from "../../lib/agent-place.ts"
+import { useServerPlace } from "../projects/ServerPlaceProvider.tsx"
 import { DocumentPreview } from "../documents/DocumentPreview.tsx"
 import { nextStepKeys, previousStepKeys } from "./Narration.tsx"
 import { StepProgress } from "./StepProgress.tsx"
@@ -31,21 +33,26 @@ export interface NarrationPanelProps {
   onStopPresenting(): void
   // onSteps opens the step list; phones show it in the drawer.
   onSteps?: () => void
-  // prompt is the text Copy for Agent copies.
-  prompt(): string
+  // prompt is the text Copy for Agent copies for an agent at place.
+  prompt(place: AgentPlace): string
   navigate(href: string): void
 }
 
 // CopyForAgent copies a follow-up prompt about this step (decision 0113).
-function CopyForAgent({ prompt }: { prompt(): string }) {
+function CopyForAgent({ prompt }: { prompt(place: AgentPlace): string }) {
   const { status, copy } = useClipboardCopy()
+  const place = useServerPlace()
+  const where = agentWhere(place)
   const icon = status === "copied" ? <CheckIcon aria-hidden="true" /> : status === "failed" ? <XIcon aria-hidden="true" /> : <MessageSquareTextIcon aria-hidden="true" />
+  const title = status === "failed" ? "Copy failed"
+    : status === "copied" && where ? `Copied: paste into your agent ${where}`
+      : `Copy Step for Agent${where ? ` ${where}` : ""}: ask a follow-up question`
   return (
     <>
-      <IconButton label="Copy Step for Agent" title={status === "failed" ? "Copy failed" : "Copy Step for Agent: ask a follow-up question"}
+      <IconButton label={where ? `Copy Step for Agent ${where}` : "Copy Step for Agent"} title={title}
         tone={status === "copied" ? "success" : status === "failed" ? "destructive" : "default"} data-status={status} icon={icon}
-        onClick={() => { void copy(prompt()) }} />
-      <span className="visually-hidden" role="status">{status === "copied" ? "Step copied for an agent" : status === "failed" ? "Copy failed" : ""}</span>
+        onClick={() => { void copy(prompt(place)) }} />
+      <span className="visually-hidden" role="status">{status === "copied" ? `Step copied for an agent${where ? ` ${where}` : ""}` : status === "failed" ? "Copy failed" : ""}</span>
     </>
   )
 }

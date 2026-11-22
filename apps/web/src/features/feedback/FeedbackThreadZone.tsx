@@ -9,6 +9,8 @@ import { StatusMessage } from "../../components/ui/notice.tsx"
 import { TextArea } from "../../components/ui/text-field.tsx"
 import type { FeedbackStatus, FeedbackThread } from "@zero/contracts"
 import { useClipboardCopy } from "../../lib/clipboard.ts"
+import { agentWhere, type AgentPlace } from "../../lib/agent-place.ts"
+import { useServerPlace } from "../projects/ServerPlaceProvider.tsx"
 import { DocumentPreview } from "../documents/DocumentPreview.tsx"
 import { commitAge, commitDate } from "../source-control/compare.ts"
 import { readDraft, replyKey, writeDraft } from "./feedback-drafts.ts"
@@ -43,15 +45,18 @@ export function FeedbackStatusIcon({ status, className }: { status: FeedbackStat
   return <Icon className={className} data-status={status} aria-hidden="true" />
 }
 
-function CopyThread({ text }: { text(): string }) {
+function CopyThread({ text }: { text(place: AgentPlace): string }) {
   const { status, copy } = useClipboardCopy()
+  const place = useServerPlace()
+  const where = agentWhere(place)
+  const label = where ? `Copy Thread for Agent ${where}` : "Copy Thread for Agent"
   const icon = status === "copied" ? <CheckIcon aria-hidden="true" /> : status === "failed" ? <XIcon aria-hidden="true" /> : <MessageSquareTextIcon aria-hidden="true" />
   return (
     <>
-      <IconButton label="Copy Thread for Agent" title={status === "failed" ? "Copy failed" : "Copy Thread for Agent"}
+      <IconButton label={label} title={status === "failed" ? "Copy failed" : status === "copied" && where ? `Copied: paste into your agent ${where}` : label}
         tone={status === "copied" ? "success" : status === "failed" ? "destructive" : "default"} data-status={status} icon={icon}
-        onClick={() => { void copy(text()) }} />
-      <span className="visually-hidden" role="status">{status === "copied" ? "Thread copied for an agent" : status === "failed" ? "Copy failed" : ""}</span>
+        onClick={() => { void copy(text(place)) }} />
+      <span className="visually-hidden" role="status">{status === "copied" ? `Thread copied for an agent${where ? ` ${where}` : ""}` : status === "failed" ? "Copy failed" : ""}</span>
     </>
   )
 }
@@ -149,7 +154,7 @@ function ThreadConversation({
         <span className="feedback-thread-number">Thread {thread.number}</span>
         <span className="feedback-thread-place" title={place}>{place}</span>
         <div className="feedback-thread-actions">
-          <CopyThread text={() => threadPrompt({ id, project }, thread)} />
+          <CopyThread text={(place) => threadPrompt({ id, project }, thread, place)} />
           <Button size="sm" variant="ghost" disabled={busy || !id} onClick={() => send(closed ? "open" : "resolved")}>
             {closed ? "Reopen" : "Resolve"}
           </Button>

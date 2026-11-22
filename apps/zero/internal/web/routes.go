@@ -109,7 +109,7 @@ func (a *App) newRoutes() *http.ServeMux {
 	}
 
 	// Projects.
-	api("/api/projects", func(w http.ResponseWriter, _ *http.Request, _ url.Values) { a.serveProjects(w) })
+	api("/api/projects", func(w http.ResponseWriter, r *http.Request, _ url.Values) { a.serveProjects(w, r) })
 	api("/api/directories", func(w http.ResponseWriter, _ *http.Request, query url.Values) {
 		a.serveDirectories(w, query.Get("path"))
 	})
