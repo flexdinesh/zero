@@ -335,6 +335,53 @@ export interface DesktopBridge {
   composerWalk: ((direction: WalkDirection) => Promise<ComposerCapture | null>) | null
   composerResize: ((height: number) => void) | null
   composerClose: ((sent: boolean) => Promise<void>) | null
+  // viewedMarks and setViewedMarks read and replace a repository identity's
+  // Viewed marks in the app's one store; findProject lists other open
+  // connections' checkouts of an identity, which openProject opens
+  // (decision 0188). Sandbox pages get none.
+  viewedMarks: ((identity: string) => Promise<ViewedFiles | null>) | null
+  setViewedMarks: ((identity: string, files: ViewedFiles) => void) | null
+  findProject: ((identity: string) => Promise<ProjectMatch[]>) | null
+  openProject: ((connection: string, project: string) => void) | null
+}
+
+// ViewedFiles is one repository's Viewed marks, file path to the blob it was
+// marked at, which the desktop app keeps for every window (decision 0188).
+export type ViewedFiles = Readonly<Record<string, string>>
+
+function isBlobHash(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{40}$/.test(value)
+}
+
+// readViewedFiles accepts the app's marks, keeping each well-formed entry,
+// or null for anything else.
+export function readViewedFiles(value: unknown): ViewedFiles | null {
+  if (!isRecord(value)) return null
+  const files: Record<string, string> = {}
+  for (const [path, blob] of Object.entries(value)) {
+    if (path !== "" && path !== "__proto__" && isBlobHash(blob)) files[path] = blob
+  }
+  return files
+}
+
+// ProjectMatch is a checkout of a repository identity that another
+// connection's server serves (decision 0188): the connection's id, its name
+// for people, and the project there.
+export interface ProjectMatch {
+  connection: string
+  label: string
+  project: string
+}
+
+// readProjectMatches accepts the app's matches, keeping each well-formed one.
+export function readProjectMatches(value: unknown): ProjectMatch[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((entry: unknown): ProjectMatch[] => {
+    if (!isRecord(entry)) return []
+    const { connection, label, project } = entry
+    if (typeof connection !== "string" || !connection || typeof project !== "string" || !project) return []
+    return [{ connection, label: typeof label === "string" && label ? label : connection, project }]
+  })
 }
 
 // DesktopAppearance is the polarity native surfaces take: the OS's, or one.
@@ -347,6 +394,7 @@ export function readDesktopBridge(value: unknown): DesktopBridge | null {
   const { closeWindow, showAppMenu, revealPath, showContextMenu, configureNotifications, setAppearance, diagnostics } = value
   const { browserOpen, browserState, browserAction, browserFrame, browserSnapshot, setExperimental } = value
   const { browserPins, composerCapture, composerWalk, composerResize, composerClose } = value
+  const { viewedMarks, setViewedMarks, findProject, openProject } = value
   return {
     version: value.version,
     experimental: readExperimentalState(value.experimental),
@@ -489,6 +537,34 @@ export function readDesktopBridge(value: unknown): DesktopBridge | null {
         } catch {
           // Refused: the app keeps the composer as it is.
         }
+      }
+      : null,
+    viewedMarks: typeof viewedMarks === "function"
+      ? async (identity) => {
+        try {
+          return readViewedFiles(await viewedMarks.call(value, identity))
+        } catch {
+          return null
+        }
+      }
+      : null,
+    setViewedMarks: typeof setViewedMarks === "function"
+      ? (identity, files) => {
+        Promise.resolve(setViewedMarks.call(value, identity, files)).catch(() => undefined)
+      }
+      : null,
+    findProject: typeof findProject === "function"
+      ? async (identity) => {
+        try {
+          return readProjectMatches(await findProject.call(value, identity))
+        } catch {
+          return []
+        }
+      }
+      : null,
+    openProject: typeof openProject === "function"
+      ? (connection, project) => {
+        Promise.resolve(openProject.call(value, connection, project)).catch(() => undefined)
       }
       : null,
   }

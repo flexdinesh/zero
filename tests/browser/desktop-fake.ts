@@ -38,10 +38,21 @@ export interface FakeComposer {
   walks: { parent: unknown; child: unknown }
 }
 
+// FakeIdentities is the app's side of repository identities (decision
+// 0188): calls records ["find", identity], ["open", connection, project],
+// and ["set", identity, marks]; matches is what findProject answers; marks
+// is the store by identity.
+export interface FakeIdentities {
+  calls: unknown[][]
+  matches: unknown[]
+  marks: Record<string, Record<string, string>>
+}
+
 declare global {
   interface Window {
     __browser?: FakeBrowser
     __composer?: FakeComposer
+    __identities?: FakeIdentities
     zeroDesktop?: unknown
   }
 }
@@ -98,4 +109,30 @@ export async function composerDesktop(page: Page, capture: unknown, experimental
       composerClose(sent: unknown) { fake.calls.push(["close", sent]); fake.capture = null; return Promise.resolve() },
     }
   }, { capture, experimental })
+}
+
+// identitiesDesktop plays the desktop app's identity methods: matches are
+// other connections' checkouts, marks its store of Viewed marks.
+export async function identitiesDesktop(page: Page, matches: unknown[], marks: Record<string, Record<string, string>> = {}) {
+  await page.addInitScript(({ found, stored }) => {
+    const identities: FakeIdentities = { calls: [], matches: found, marks: stored }
+    window.__identities = identities
+    window.zeroDesktop = {
+      version: 2,
+      viewedMarks: (identity: string) => Promise.resolve(identities.marks[identity] ?? {}),
+      setViewedMarks: (identity: string, files: Record<string, string>) => {
+        identities.calls.push(["set", identity, files])
+        identities.marks[identity] = files
+        return Promise.resolve()
+      },
+      findProject: (identity: string) => {
+        identities.calls.push(["find", identity])
+        return Promise.resolve(identities.matches)
+      },
+      openProject: (connection: string, project: string) => {
+        identities.calls.push(["open", connection, project])
+        return Promise.resolve()
+      },
+    }
+  }, { found: matches, stored: marks })
 }

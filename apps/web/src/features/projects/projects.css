@@ -369,3 +369,14 @@
   padding-top: var(--space-3);
   border-top: 1px solid var(--color-border);
 }
+
+/* Other open connections' checkouts of a repo= link's identity
+   (decision 0188). */
+.choose-project-elsewhere {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-5);
+  padding: 0;
+  list-style: none;
+}

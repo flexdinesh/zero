@@ -9,12 +9,15 @@ import (
 	"net/url"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/flexdinesh/zero/apps/desktop/internal/appearance"
 	"github.com/flexdinesh/zero/apps/desktop/internal/review"
+	"github.com/flexdinesh/zero/apps/desktop/internal/viewed"
+	"github.com/flexdinesh/zero/pkg/contract"
 	"github.com/flexdinesh/zero/pkg/logfile"
 )
 
@@ -493,4 +496,62 @@ func ParseWalk(direction any) (string, bool) {
 func ParseComposerHeight(height any) (float64, bool) {
 	number, ok := height.(float64)
 	return number, ok && !math.IsNaN(number) && number > 0 && number < 1<<20
+}
+
+// ParseIdentity validates a repository identity a page names (decision
+// 0188): lowercase "host/path", as servers write them.
+func ParseIdentity(value any) (string, bool) {
+	identity, ok := value.(string)
+	return identity, ok && viewed.IsIdentity(identity)
+}
+
+// ParseViewedMarks validates an identity's Viewed marks, file path to blob
+// (decision 0188), as path and blob pairs sorted by path. Any invalid entry,
+// or more than viewed.MaxFiles, refuses the payload.
+func ParseViewedMarks(identity, marks any) (string, [][2]string, bool) {
+	id, ok := ParseIdentity(identity)
+	files, isMap := marks.(map[string]any)
+	if !ok || !isMap || len(files) > viewed.MaxFiles {
+		return "", nil, false
+	}
+	pairs := make([][2]string, 0, len(files))
+	for path, value := range files {
+		blob, isText := value.(string)
+		if !isText || !viewed.IsPath(path) || hasControl(path) || !viewed.IsBlob(blob) {
+			return "", nil, false
+		}
+		pairs = append(pairs, [2]string{path, blob})
+	}
+	slices.SortFunc(pairs, func(a, b [2]string) int { return strings.Compare(a[0], b[0]) })
+	return id, pairs, true
+}
+
+// ProjectMatch is a checkout of an identity on another connection: its id,
+// its name for people, and the project there (decision 0188).
+type ProjectMatch struct {
+	Connection string `json:"connection"`
+	Label      string `json:"label"`
+	Project    string `json:"project"`
+}
+
+// ParseOpenProject validates a project to open in a connection's window: a
+// connection id or "local", and an absolute path.
+func ParseOpenProject(connection, project any, isConnection func(string) bool) (string, string, bool) {
+	c, okC := connection.(string)
+	p, okP := project.(string)
+	if !okC || !okP || !isConnection(c) || !isPlainAbsolute(p) {
+		return "", "", false
+	}
+	return c, p, true
+}
+
+// MatchesOf lists a connection's available checkouts of identity.
+func MatchesOf(response contract.ProjectsResponse, connection, label, identity string) []ProjectMatch {
+	var matches []ProjectMatch
+	for _, project := range response.Projects {
+		if project.Available && project.ID != "" && project.Identity == identity {
+			matches = append(matches, ProjectMatch{Connection: connection, Label: label, Project: project.ID})
+		}
+	}
+	return matches
 }
