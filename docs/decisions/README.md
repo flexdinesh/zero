@@ -187,3 +187,4 @@ rewriting history; update `Status` on the old record.
 | [0185](0185-title-band-in-every-desktop-window.md) | Title band in every desktop window | Accepted; revises 0119; extends 0184 |
 | [0186](0186-panel-surfaces.md) | Panel surfaces in desktop web views | Accepted; extends 0033, 0184 |
 | [0187](0187-name-the-machine-agents-run-on.md) | Name the machine agents run on | Accepted; extends 0049, 0098, 0120, 0127, 0178 |
+| [0188](0188-stable-project-identities.md) | Stable project identities | Accepted; extends 0012, 0053, 0081, 0098, 0120, 0153 |
