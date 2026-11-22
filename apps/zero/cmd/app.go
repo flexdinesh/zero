@@ -135,7 +135,7 @@ func openInApp(ctx context.Context, opts options, stdin io.Reader, stdout, stder
 		return fallback(err.Error(), "")
 	}
 
-	target := "zero://local/?" + url.Values{"project": {project}}.Encode()
+	target := withRepo("zero://local/?"+url.Values{"project": {project}}.Encode(), project)
 	if opts.repo != "" {
 		project = opts.repo
 		target = "zero://local/?" + url.Values{"repo": {opts.repo}}.Encode()

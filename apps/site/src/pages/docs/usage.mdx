@@ -119,7 +119,9 @@ Links can name a repository with `?repo=<identity>` beside or instead of
 `?project=<path>`. The path opens when this machine serves it as that
 repository (or as a folder); otherwise the identity finds the checkout, so a
 link made on one machine opens the same file on another whose folders are
-laid out differently. Remotes are compared as written: an SSH host alias from
+laid out differently. The links `zero` prints for a repository (browser,
+`--web`, Tailscale, desktop, and walkthrough links) and a walkthrough step's
+Copy for Agent link carry both. Remotes are compared as written: an SSH host alias from
 `~/.ssh/config` is not resolved.
 
 ## Host and port

@@ -7,6 +7,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/flexdinesh/zero/internal/projects"
 )
 
 // noUI reports whether this machine cannot show a UI to the user at its
@@ -49,6 +51,30 @@ func projectURL(base, project string) string {
 		return base
 	}
 	return base + "?" + url.Values{"project": {project}}.Encode()
+}
+
+// withRepo adds repo=<identity> to a link that names a project on this
+// machine, so it opens the same repository on a computer that keeps it at
+// another path (decision 0188); a folder, or a repository without a usable
+// remote, adds nothing.
+func withRepo(link, project string) string {
+	if project == "" {
+		return link
+	}
+	return withIdentity(link, projects.Identity(project))
+}
+
+// withIdentity adds repo=<identity> to a link; an empty identity adds
+// nothing.
+func withIdentity(link, identity string) string {
+	if identity == "" {
+		return link
+	}
+	separator := "?"
+	if strings.Contains(link, "?") {
+		separator = "&"
+	}
+	return link + separator + url.Values{"repo": {identity}}.Encode()
 }
 
 // hyperlink wraps link in an OSC 8 hyperlink when tty; the visible text is

@@ -103,7 +103,7 @@ func serveRemote(ctx context.Context, opts options, stdout, stderr io.Writer, de
 			CLIName:     opts.cliName,
 			Version:     "zero " + version.Number(),
 			Directories: served,
-			Tailnet:     tailnetURL(status, project),
+			Tailnet:     withRepo(tailnetURL(status, project), project),
 			FirstWait:   opts.remoteFirstWait,
 			Grace:       opts.remoteGrace,
 			Foreground:  opts.foreground,
@@ -136,6 +136,7 @@ func serveRemote(ctx context.Context, opts options, stdout, stderr io.Writer, de
 		if info.Web, err = invite.WebURL(); err != nil {
 			return err
 		}
+		info.Web = withRepo(info.Web, project)
 		info.Links = deps.terminal(stdout) && deps.getenv("TERM") != "dumb"
 	}
 	if !opts.noCopy && deps.terminal(stdout) && deps.getenv("TERM") != "dumb" {
