@@ -20,6 +20,7 @@ one Go binary, plus desktop packages that bundle it (decision 0068).
 - `apps/zero/internal/control/`: authenticated discovery and shutdown of local zero processes.
 - `apps/zero/internal/browser/`, `apps/zero/internal/version/`: browser launch and build version.
 - `apps/zero/internal/desktopapp/`: desktop app detection (`zero://` handler), opening URLs in it, install hints.
+- `apps/zero/internal/mcp/`: MCP adapter (decision 0189): agent tool names, schemas, and results over a `Backend` that `cmd/mcp.go` composes from the CLI's feedback and walkthrough cores; `zero mcp` serves it on stdio.
 - `apps/zero/internal/web/`: HTTP adapter (`routes.go`, kind-to-status mapping, server-sent events, raw bytes), shell/static delivery, embedded assets, and the domains not yet moved to `internal/app` (navigation, walkthroughs, metrics).
 - `packages/contracts/`: generated TypeScript types and runtime guards (`@zero/contracts`); never edited by hand.
 - `apps/web/`: React UI, Vite build, frontend tests and development tooling.

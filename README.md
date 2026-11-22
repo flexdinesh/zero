@@ -104,6 +104,9 @@ npx skills add flexdinesh/zero --skill zero-walkthrough
 npx skills add flexdinesh/zero --skill zero-feedback
 ```
 
+Or give agents the same tools over MCP: `zero mcp config` prints the setup.
+[MCP server →](https://zero.hoplabs.dev/docs/mcp/)
+
 ## Install
 
 macOS and Linux, no sudo, no runtime needed. Installs to `~/.local/bin` (or `~/bin`).

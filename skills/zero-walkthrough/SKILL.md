@@ -10,6 +10,12 @@ Commands use the canonical `zero`. If installed as `zero-cli` or with
 Only the exposed CLI name changes; the Zero app, `zero://` links, and
 Zero's configuration and data paths keep their canonical names.
 
+If your tools include Zero's MCP tools (`walkthrough_publish`,
+`walkthrough_schema`, `walkthrough_list`, `walkthrough_delete`), prefer
+them: `walkthrough_publish` takes the draft below as its arguments and
+reports problems as `zero walkthrough publish` does. Otherwise use the CLI as
+written here.
+
 A walkthrough is an ordered list of steps. Each step has a title, Markdown
 narration, and at most one target:
 

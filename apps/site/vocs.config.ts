@@ -27,6 +27,7 @@ export default defineConfig({
         { text: 'Code navigation', link: '/docs/code-navigation' },
         { text: 'Walkthroughs', link: '/docs/walkthroughs' },
         { text: 'Review feedback', link: '/docs/feedback' },
+        { text: 'MCP server', link: '/docs/mcp' },
       ],
     },
   ],

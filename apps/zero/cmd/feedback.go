@@ -135,22 +135,47 @@ func newFeedbackCommand() *cobra.Command {
 	return command
 }
 
+// feedbackHints words what a reader of feedback output does next: CLI
+// commands for the CLI, tool calls for MCP (decision 0189).
+type feedbackHints interface {
+	// replyHint follows "Reply: " in show's header.
+	replyHint(id string) string
+	// showAllHint ends show's note that no thread awaits the agent.
+	showAllHint() string
+	// attachmentHint follows "Screenshot: " on a visual thread.
+	attachmentHint(id, attachment string) string
+	// showAll is how to read every thread of feedback id.
+	showAll(id string) string
+	// elsewhere is message plus where feedback is stored and how to run
+	// command (the arguments after `zero feedback`) there.
+	elsewhere(message, command string) error
+}
+
+func (name cliName) replyHint(id string) string {
+	return fmt.Sprintf("%s feedback reply %s <thread> -m \"<what you did>\" [--resolve | --wontfix]", name, id)
+}
+
+func (cliName) showAllHint() string { return "Use --all to list every thread." }
+
+func (name cliName) attachmentHint(id, attachment string) string {
+	return fmt.Sprintf("%s feedback attachment %s %s [--crop -o region.png]", name, id, attachment)
+}
+
+func (cliName) showAll(id string) string { return "zero feedback show " + id + " --all" }
+
+func (cliName) elsewhere(message, command string) error { return elsewhere(message, command) }
+
 func showFeedback(ctx context.Context, opts feedbackOptions, args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	id := ""
 	if len(args) == 1 {
 		id = args[0]
 	}
-	session, err := openFeedback(opts, id)
+	session, stored, shown, err := readFeedback(ctx, opts, id, opts.all)
 	if err != nil {
-		return err
-	}
-	stored, err := session.app.Feedback.Get(ctx, contract.FeedbackRequest{Project: session.root, ID: id})
-	if err != nil {
-		return notHere(opts, id, "show "+id, reportFeedbackError(err, stderr), err)
-	}
-	shown := stored
-	if !opts.all {
-		shown.Threads = awaitingAgent(stored.Threads)
+		if opened, ok := sessionFailure(err); ok {
+			return opened
+		}
+		return notHere(opts, opts.cliName, id, "show "+id, reportFeedbackError(err, stderr), err)
 	}
 	if opts.json {
 		// Only the CLI names host paths: it reads the store it names.
@@ -165,6 +190,85 @@ func showFeedback(ctx context.Context, opts feedbackOptions, args []string, _ io
 	}
 	_, err = io.WriteString(stdout, feedbackMarkdown(opts.cliName, stored, shown.Threads, opts.all))
 	return err
+}
+
+// errNoSession marks a failure to open the project, which is reported as
+// is, never as feedback stored elsewhere.
+type errNoSession struct{ error }
+
+func (e errNoSession) Unwrap() error { return e.error }
+
+// readFeedback reads feedback id, or the project's branch's when id is
+// empty, and the threads to show: those awaiting the agent unless all.
+func readFeedback(ctx context.Context, opts feedbackOptions, id string, all bool) (feedbackSession, contract.Feedback, contract.Feedback, error) {
+	session, err := openFeedback(opts, id)
+	if err != nil {
+		return feedbackSession{}, contract.Feedback{}, contract.Feedback{}, errNoSession{err}
+	}
+	stored, err := session.app.Feedback.Get(ctx, contract.FeedbackRequest{Project: session.root, ID: id})
+	if err != nil {
+		return session, contract.Feedback{}, contract.Feedback{}, err
+	}
+	shown := stored
+	if !all {
+		shown.Threads = awaitingAgent(stored.Threads)
+	}
+	return session, stored, shown, nil
+}
+
+// postFeedbackReply posts the agent's message, with an optional status, to
+// thread number of feedback id and tells a running daemon.
+func postFeedbackReply(ctx context.Context, opts feedbackOptions, id string, number int, body string, status contract.FeedbackStatus, name string, stderr io.Writer) (contract.FeedbackThread, error) {
+	session, err := openFeedback(opts, id)
+	if err != nil {
+		return contract.FeedbackThread{}, errNoSession{err}
+	}
+	thread, err := session.app.Feedback.PostMessage(ctx, contract.FeedbackMessageDraft{Project: session.root, ID: id, Thread: number, Body: body, Status: status, Author: contract.FeedbackAuthorAgent, Name: name})
+	if err != nil {
+		return contract.FeedbackThread{}, err
+	}
+	announceFeedbackToDaemon(ctx, opts.socket, session.root, id, stderr)
+	return thread, nil
+}
+
+// startFeedbackThread starts the agent's thread on lines (nil for the whole
+// file) of path in feedback id, or the branch's feedback when id is empty,
+// and tells a running daemon.
+func startFeedbackThread(ctx context.Context, opts feedbackOptions, id, path string, lines []int, body, name string, stderr io.Writer) (contract.FeedbackThread, error) {
+	session, err := openFeedback(opts, id)
+	if err != nil {
+		return contract.FeedbackThread{}, errNoSession{err}
+	}
+	thread, err := session.app.Feedback.CreateThread(ctx, contract.FeedbackThreadDraft{Project: session.root, ID: id, Path: path, Side: contract.FeedbackSideNew, Lines: lines, Body: body, Author: contract.FeedbackAuthorAgent, Name: name})
+	if err != nil {
+		return contract.FeedbackThread{}, err
+	}
+	if id == "" {
+		// The thread joined the branch's feedback, created if missing.
+		if stored, err := session.app.Feedback.Get(ctx, contract.FeedbackRequest{Project: session.root}); err == nil {
+			id = stored.ID
+		}
+	}
+	if id != "" {
+		announceFeedbackToDaemon(ctx, opts.socket, session.root, id, stderr)
+	}
+	return thread, nil
+}
+
+// threadLabel is where a thread is, as `started thread N at` names it.
+func threadLabel(thread contract.FeedbackThread) string {
+	if thread.Anchor == nil {
+		return ""
+	}
+	return rangeLabel(thread.Anchor.Path, thread.Anchor.Lines)
+}
+
+// replyOutcome is " (resolved)" and the like after a reply, or "".
+func replyOutcome(status contract.FeedbackStatus) string {
+	if status == "" {
+		return ""
+	}
+	return " (" + statusVerb(status) + ")"
 }
 
 func replyFeedback(ctx context.Context, opts feedbackOptions, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
@@ -186,24 +290,27 @@ func replyFeedback(ctx context.Context, opts feedbackOptions, args []string, std
 	if err != nil {
 		return err
 	}
-	session, err := openFeedback(opts, id)
+	thread, err := postFeedbackReply(ctx, opts, id, number, body, status, opts.name, stderr)
 	if err != nil {
-		return err
+		if opened, ok := sessionFailure(err); ok {
+			return opened
+		}
+		return notHere(opts, opts.cliName, id, fmt.Sprintf("reply %s %d -m \"<what you did>\"", id, number), reportFeedbackError(err, stderr), err)
 	}
-	thread, err := session.app.Feedback.PostMessage(ctx, contract.FeedbackMessageDraft{Project: session.root, ID: id, Thread: number, Body: body, Status: status, Author: contract.FeedbackAuthorAgent, Name: opts.name})
-	if err != nil {
-		return notHere(opts, id, fmt.Sprintf("reply %s %d -m \"<what you did>\"", id, number), reportFeedbackError(err, stderr), err)
-	}
-	announceFeedbackToDaemon(ctx, opts.socket, session.root, id, stderr)
 	if opts.json {
 		return writeJSONLine(stdout, thread)
 	}
-	outcome := ""
-	if status != "" {
-		outcome = " (" + statusVerb(status) + ")"
-	}
-	_, err = fmt.Fprintf(stdout, "replied to thread %d%s\n", thread.Number, outcome)
+	_, err = fmt.Fprintf(stdout, "replied to thread %d%s\n", thread.Number, replyOutcome(status))
 	return err
+}
+
+// sessionFailure is the project's opening error inside err, reported as is.
+func sessionFailure(err error) (error, bool) {
+	var failure errNoSession
+	if errors.As(err, &failure) {
+		return failure.error, true
+	}
+	return nil, false
 }
 
 func commentFeedback(ctx context.Context, opts feedbackOptions, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
@@ -219,31 +326,17 @@ func commentFeedback(ctx context.Context, opts feedbackOptions, args []string, s
 	if err != nil {
 		return err
 	}
-	session, err := openFeedback(opts, id)
+	thread, err := startFeedbackThread(ctx, opts, id, opts.path, lines, body, opts.name, stderr)
 	if err != nil {
-		return err
-	}
-	thread, err := session.app.Feedback.CreateThread(ctx, contract.FeedbackThreadDraft{Project: session.root, ID: id, Path: opts.path, Side: contract.FeedbackSideNew, Lines: lines, Body: body, Author: contract.FeedbackAuthorAgent, Name: opts.name})
-	if err != nil {
-		return notHere(opts, id, "comment "+id+" --path <path> -m \"<text>\"", reportFeedbackError(err, stderr), err)
-	}
-	if id == "" {
-		// The thread joined the branch's feedback, created if missing.
-		if stored, err := session.app.Feedback.Get(ctx, contract.FeedbackRequest{Project: session.root}); err == nil {
-			id = stored.ID
+		if opened, ok := sessionFailure(err); ok {
+			return opened
 		}
-	}
-	if id != "" {
-		announceFeedbackToDaemon(ctx, opts.socket, session.root, id, stderr)
+		return notHere(opts, opts.cliName, id, "comment "+id+" --path <path> -m \"<text>\"", reportFeedbackError(err, stderr), err)
 	}
 	if opts.json {
 		return writeJSONLine(stdout, thread)
 	}
-	label := ""
-	if thread.Anchor != nil {
-		label = rangeLabel(thread.Anchor.Path, thread.Anchor.Lines)
-	}
-	_, err = fmt.Fprintf(stdout, "started thread %d at %s\n", thread.Number, label)
+	_, err = fmt.Fprintf(stdout, "started thread %d at %s\n", thread.Number, threadLabel(thread))
 	return err
 }
 
@@ -257,49 +350,20 @@ const defaultCropMargin = 24
 // (--crop), after checking the file against the thread's sha256.
 func attachmentFeedback(_ context.Context, opts feedbackOptions, args []string, _ io.Reader, stdout, _ io.Writer) error {
 	id, attachment := args[0], args[1]
+	if err := checkAttachmentIDs(id, attachment); err != nil {
+		return err
+	}
 	switch {
-	case !feedback.ValidID(id):
-		return fmt.Errorf("feedback ID must be fb- and six lowercase letters or digits, such as fb-3k2q8m, not %q", id)
-	case !feedback.ValidAttachmentID(attachment):
-		return fmt.Errorf("attachment must be at- and ten lowercase letters or digits, such as at-7hq2mx4kpa, not %q", attachment)
 	case opts.cropSet && opts.output == "":
 		return errors.New("--crop needs -o <file|->")
 	case opts.cropSet && opts.crop < 0:
 		return fmt.Errorf("--crop must be a margin of 0 or more px, not %d", opts.crop)
 	}
-	directory, err := feedbackDirectory(opts)
+	shot, err := readScreenshot(opts, opts.cliName, id, attachment)
 	if err != nil {
 		return err
 	}
-	service := feedback.NewService(feedback.NewStore(directory))
-	stored, err := service.Locate(id)
-	if errors.Is(err, feedback.ErrNotFound) {
-		return elsewhere(fmt.Sprintf("no feedback %s in %s", id, directory), "attachment "+id+" "+attachment+" -o - > shot.png")
-	}
-	if err != nil {
-		return err
-	}
-	var visual *feedback.Visual
-	for _, thread := range stored.Threads {
-		if thread.Visual != nil && thread.Visual.Attachment.ID == attachment {
-			visual = thread.Visual
-		}
-	}
-	if visual == nil {
-		return fmt.Errorf("feedback %s has no screenshot %s", id, attachment)
-	}
-	name, metadata, err := service.AttachmentFile(stored, attachment)
-	if err != nil {
-		return fmt.Errorf("screenshot %s of %s is not stored: zero dropped it for the storage budget, or its file is missing. The thread's region and page facts remain: zero feedback show %s --all", attachment, id, id)
-	}
-	data, err := os.ReadFile(name)
-	if err != nil {
-		return fmt.Errorf("read screenshot: %w", err)
-	}
-	sum := sha256.Sum256(data)
-	if got := hex.EncodeToString(sum[:]); got != metadata.SHA256 {
-		return fmt.Errorf("%s doesn't match its thread: its sha256 is %s, but the thread recorded %s", name, got, metadata.SHA256)
-	}
+	data, metadata, visual, name := shot.data, shot.metadata, shot.visual, shot.name
 	switch {
 	case opts.output == "" && opts.json:
 		answered := contract.FeedbackAttachment{ID: metadata.ID, MediaType: metadata.MediaType, Width: metadata.Width, Height: metadata.Height, Bytes: int(metadata.Bytes), SHA256: metadata.SHA256, Path: name}
@@ -326,11 +390,72 @@ func attachmentFeedback(_ context.Context, opts feedbackOptions, args []string, 
 	return err
 }
 
+// screenshot is a visual thread's checked image file.
+type screenshot struct {
+	data     []byte
+	metadata feedback.Attachment
+	visual   *feedback.Visual
+	name     string
+}
+
+// checkAttachmentIDs rejects malformed feedback and attachment IDs.
+func checkAttachmentIDs(id, attachment string) error {
+	switch {
+	case !feedback.ValidID(id):
+		return fmt.Errorf("feedback ID must be fb- and six lowercase letters or digits, such as fb-3k2q8m, not %q", id)
+	case !feedback.ValidAttachmentID(attachment):
+		return fmt.Errorf("attachment must be at- and ten lowercase letters or digits, such as at-7hq2mx4kpa, not %q", attachment)
+	}
+	return nil
+}
+
+// readScreenshot finds feedback id's screenshot attachment wherever it was
+// stored (Locate) and reads it, checked against the thread's sha256.
+func readScreenshot(opts feedbackOptions, hints feedbackHints, id, attachment string) (screenshot, error) {
+	if err := checkAttachmentIDs(id, attachment); err != nil {
+		return screenshot{}, err
+	}
+	directory, err := feedbackDirectory(opts)
+	if err != nil {
+		return screenshot{}, err
+	}
+	service := feedback.NewService(feedback.NewStore(directory))
+	stored, err := service.Locate(id)
+	if errors.Is(err, feedback.ErrNotFound) {
+		return screenshot{}, hints.elsewhere(fmt.Sprintf("no feedback %s in %s", id, directory), "attachment "+id+" "+attachment+" -o - > shot.png")
+	}
+	if err != nil {
+		return screenshot{}, err
+	}
+	var visual *feedback.Visual
+	for _, thread := range stored.Threads {
+		if thread.Visual != nil && thread.Visual.Attachment.ID == attachment {
+			visual = thread.Visual
+		}
+	}
+	if visual == nil {
+		return screenshot{}, fmt.Errorf("feedback %s has no screenshot %s", id, attachment)
+	}
+	name, metadata, err := service.AttachmentFile(stored, attachment)
+	if err != nil {
+		return screenshot{}, fmt.Errorf("screenshot %s of %s is not stored: zero dropped it for the storage budget, or its file is missing. The thread's region and page facts remain: %s", attachment, id, hints.showAll(id))
+	}
+	data, err := os.ReadFile(name)
+	if err != nil {
+		return screenshot{}, fmt.Errorf("read screenshot: %w", err)
+	}
+	sum := sha256.Sum256(data)
+	if got := hex.EncodeToString(sum[:]); got != metadata.SHA256 {
+		return screenshot{}, fmt.Errorf("%s doesn't match its thread: its sha256 is %s, but the thread recorded %s", name, got, metadata.SHA256)
+	}
+	return screenshot{data: data, metadata: metadata, visual: visual, name: name}, nil
+}
+
 // notHere returns shown, the error a command reports for cause, with where
 // to run the command added when feedback id is in no repository of this
 // machine's store: feedback is stored where the project is served (decision
 // 0178).
-func notHere(opts feedbackOptions, id, command string, shown, cause error) error {
+func notHere(opts feedbackOptions, hints feedbackHints, id, command string, shown, cause error) error {
 	if id == "" || app.AsError(cause).Code != contract.CodeFeedbackUnavailable {
 		return shown
 	}
@@ -341,7 +466,7 @@ func notHere(opts feedbackOptions, id, command string, shown, cause error) error
 	if _, err := feedback.NewStore(directory).Locate(id); !errors.Is(err, feedback.ErrNotFound) {
 		return shown
 	}
-	return elsewhere(shown.Error(), command)
+	return hints.elsewhere(shown.Error(), command)
 }
 
 // elsewhere is message plus where feedback is stored and how to run command
@@ -582,6 +707,12 @@ func awaitingAgent(threads []contract.FeedbackThread) []contract.FeedbackThread 
 // app's Copy as Markdown writes the same text (testdata/feedback/markdown.md
 // pins both). Each fence names the anchor's language, bare when it has none.
 func feedbackMarkdown(name cliName, stored contract.Feedback, threads []contract.FeedbackThread, all bool) string {
+	return renderFeedbackMarkdown(name, stored, threads, all)
+}
+
+// renderFeedbackMarkdown is feedbackMarkdown with hints worded for its
+// reader: CLI commands, or MCP tool calls (decision 0189).
+func renderFeedbackMarkdown(hints feedbackHints, stored contract.Feedback, threads []contract.FeedbackThread, all bool) string {
 	var out strings.Builder
 	branch := "Detached HEAD"
 	if stored.Branch != "" {
@@ -602,23 +733,23 @@ func feedbackMarkdown(name cliName, stored contract.Feedback, threads []contract
 		out.WriteString("\nNo threads yet.\n")
 		return out.String()
 	case len(threads) == 0:
-		out.WriteString("\nNo threads awaiting you. Use --all to list every thread.\n")
+		out.WriteString("\nNo threads awaiting you. " + hints.showAllHint() + "\n")
 		return out.String()
 	}
-	fmt.Fprintf(&out, "\nReply: %s feedback reply %s <thread> -m \"<what you did>\" [--resolve | --wontfix]\n", name, stored.ID)
+	fmt.Fprintf(&out, "\nReply: %s\n", hints.replyHint(stored.ID))
 	for _, thread := range threads {
 		out.WriteString("\n")
-		writeThreadMarkdown(&out, name, stored.ID, thread)
+		writeThreadMarkdown(&out, hints, stored.ID, thread)
 	}
 	return out.String()
 }
 
 // writeThreadMarkdown writes one thread: its heading, its anchored text
 // fenced or its visual target's facts, and its messages.
-func writeThreadMarkdown(out *strings.Builder, name cliName, id string, thread contract.FeedbackThread) {
+func writeThreadMarkdown(out *strings.Builder, hints feedbackHints, id string, thread contract.FeedbackThread) {
 	switch {
 	case thread.Visual != nil:
-		writeVisualMarkdown(out, name, id, thread)
+		writeVisualMarkdown(out, hints, id, thread)
 	case thread.Anchor != nil:
 		fmt.Fprintf(out, "## Thread %d · %s · %s\n", thread.Number, statusLabel(thread.Status), locationLabel(thread))
 		if len(thread.Anchor.Text) > 0 {
@@ -653,7 +784,7 @@ func writeThreadMarkdown(out *strings.Builder, name cliName, id string, thread c
 // Markdown write one text. A blank line separates the facts from the
 // messages. Text from the reviewed page (URL, title, element) is in code
 // spans and the element is marked unverified (decision 0178).
-func writeVisualMarkdown(out *strings.Builder, name cliName, id string, thread contract.FeedbackThread) {
+func writeVisualMarkdown(out *strings.Builder, hints feedbackHints, id string, thread contract.FeedbackThread) {
 	visual := thread.Visual
 	label := "screenshot"
 	if !visual.Available {
@@ -723,7 +854,7 @@ func writeVisualMarkdown(out *strings.Builder, name cliName, id string, thread c
 		fmt.Fprintf(out, "Code at: %s\n", visual.Head)
 	}
 	if visual.Available {
-		fmt.Fprintf(out, "Screenshot: %s feedback attachment %s %s [--crop -o region.png]\n", name, id, shot.ID)
+		fmt.Fprintf(out, "Screenshot: %s\n", hints.attachmentHint(id, shot.ID))
 	} else {
 		out.WriteString("Screenshot: not stored (dropped for the storage budget, or its file is missing); the region and page facts above still apply\n")
 	}

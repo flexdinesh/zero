@@ -10,6 +10,12 @@ Commands use the canonical `zero`. If installed as `zero-cli` or with
 Only the exposed CLI name changes; the Zero app, `zero://` links, and
 Zero's configuration and data paths keep their canonical names.
 
+If your tools include Zero's MCP tools (`feedback_show`, `feedback_reply`,
+`feedback_comment`, `feedback_list`, `feedback_attachment`), prefer them:
+they do what the commands below do, take the same values as arguments, and
+`feedback_attachment` returns the screenshot as an image. Otherwise use the
+CLI as written here.
+
 Feedback is a set of comment threads a user writes while reviewing code in
 Zero: on lines of a diff (either side), on a whole file in a review, or on
 lines of a file in Source. All threads of one repository and branch share one
