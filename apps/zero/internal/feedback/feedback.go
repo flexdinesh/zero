@@ -75,10 +75,13 @@ const (
 // Feedback is one repository branch's stored threads. Repository is the
 // key's repository (its common git directory, or a folder's own directory);
 // Branch is "" for a detached HEAD or a folder. Project is the directory of
-// the last write, where locations resolve when no project is named.
+// the last write, where locations resolve when no project is named. Identity
+// is the repository's identity at the last new thread (decision 0188), which
+// finds the feedback after the repository moves; "" without one.
 type Feedback struct {
 	ID         string    `json:"id"`
 	Repository string    `json:"repository"`
+	Identity   string    `json:"identity,omitempty"`
 	Branch     string    `json:"branch"`
 	Project    string    `json:"project"`
 	NextThread int       `json:"nextThread"`
@@ -159,6 +162,7 @@ type Compare struct {
 type Summary struct {
 	ID            string
 	Branch        string
+	Identity      string
 	Threads       int
 	Open          int
 	AwaitingAgent int
@@ -167,7 +171,7 @@ type Summary struct {
 }
 
 func summarize(f Feedback) Summary {
-	summary := Summary{ID: f.ID, Branch: f.Branch, Threads: len(f.Threads), UpdatedAt: f.UpdatedAt}
+	summary := Summary{ID: f.ID, Branch: f.Branch, Identity: f.Identity, Threads: len(f.Threads), UpdatedAt: f.UpdatedAt}
 	for _, thread := range f.Threads {
 		if thread.Status == StatusOpen {
 			summary.Open++

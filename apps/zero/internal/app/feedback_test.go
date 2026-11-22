@@ -27,6 +27,8 @@ type feedbackRepo struct {
 	repo     *gogit.Repository
 	worktree *gogit.Worktree
 	feedback *Feedback
+	// directory is the private feedback store.
+	directory string
 }
 
 const mainGo = "package main\n\nfunc main() {\n\tgreet()\n}\n"
@@ -50,11 +52,12 @@ func newFeedbackRepo(t *testing.T) *feedbackRepo {
 	if err != nil {
 		t.Fatal(err)
 	}
-	application, err := New(Config{Roots: roots, Depth: 5, Types: document.Builtins(), WalkthroughDirectory: t.TempDir(), FeedbackDirectory: filepath.Join(t.TempDir(), "feedback")})
+	directory := filepath.Join(t.TempDir(), "feedback")
+	application, err := New(Config{Roots: roots, Depth: 5, Types: document.Builtins(), WalkthroughDirectory: t.TempDir(), FeedbackDirectory: directory})
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := &feedbackRepo{t: t, root: root, repo: repo, worktree: worktree, feedback: application.Feedback}
+	r := &feedbackRepo{t: t, root: root, repo: repo, worktree: worktree, feedback: application.Feedback, directory: directory}
 	r.write("main.go", mainGo)
 	r.write("old.txt", "one\ntwo\nthree\n")
 	r.commit("initial")

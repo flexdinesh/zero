@@ -19,6 +19,9 @@ type Events struct {
 	// feedback announces feedback changes, which streams carry for every
 	// project of the repository (decision 0120).
 	feedback *noticeHub[FeedbackNotice]
+	// feedbackRepository is a project's feedback store key, as the
+	// announcements name it (Feedback.repository, decision 0188).
+	feedbackRepository func(root string) string
 }
 
 // Subscription is one follower of a project. The subscription is the
@@ -62,7 +65,7 @@ func (e *Events) Subscribe(request contract.EventsRequest) (*Subscription, error
 	if err != nil {
 		return nil, fail(contract.KindUnavailable, "Live updates are unavailable.")
 	}
-	result := &Subscription{watch: subscription, root: project.Root, repository: FeedbackRepository(project.Root)}
+	result := &Subscription{watch: subscription, root: project.Root, repository: e.feedbackRepository(project.Root)}
 	result.stopNotices = e.notices.listen(result.announce)
 	result.stopFeedback = e.feedback.listen(result.announceFeedback)
 	return result, nil

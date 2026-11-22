@@ -74,11 +74,12 @@ string is unchanged.
 
 ### Feedback keeps its path key and falls back to the identity
 
-Feedback stays keyed by the common git directory. Each feedback records its
-repository's identity; when a repository has no feedback under its path for
-a request (by branch, or by ID), the store finds one with the same identity
-(and branch) and reads and writes it under its existing key. Adding an
-`upstream` remote orphans nothing.
+Feedback stays keyed by the common git directory. Each new thread records
+its repository's identity in the feedback. While a repository holds no
+feedback under its own key, its key is that of the most recently updated
+feedback recording its identity (`Store.RepositoryOf`), for every read,
+write, upload, and event stream: one key per project, so they agree. Adding
+an `upstream` remote orphans nothing.
 
 ### Viewed marks follow the identity across windows
 
