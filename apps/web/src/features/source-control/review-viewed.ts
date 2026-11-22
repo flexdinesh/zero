@@ -58,6 +58,27 @@ export function withViewed(marks: ViewedMarks, project: string, path: string, bl
   return { ...Object.fromEntries(Object.entries(others).slice(-(maxProjects - 1))), [project]: nextFiles }
 }
 
+// viewedKey is where a project's marks live (decision 0188): its
+// repository's identity, so every checkout of it shares them across moves
+// and computers, else its path.
+export function viewedKey(project: string, identity: string): string {
+  return identity || project
+}
+
+// mergeFiles adds files a mark set lacks; the set's own marks win.
+export function mergeFiles(files: Readonly<Record<string, string>>, older: Readonly<Record<string, string>>): Record<string, string> {
+  const merged = { ...older, ...files }
+  return Object.fromEntries(Object.entries(merged).slice(-maxFiles))
+}
+
+// migrateViewed moves a project's path-keyed marks under its identity, as
+// marks made before identities are found again.
+export function migrateViewed(marks: ViewedMarks, project: string, identity: string): ViewedMarks {
+  if (!identity || identity === project || !Object.hasOwn(marks, project)) return marks
+  const { [project]: old = {}, [identity]: current = {}, ...others } = marks
+  return { ...others, [identity]: mergeFiles(current, old) }
+}
+
 export function readViewed(): ViewedMarks {
   try {
     const raw = window.localStorage.getItem(VIEWED_STORAGE_KEY)

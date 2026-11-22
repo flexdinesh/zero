@@ -6,6 +6,7 @@ import type { ProjectsResponse } from "@zero/contracts"
 import { Button } from "../../components/ui/button.tsx"
 import { isAbort } from "../../api/http.ts"
 import { checkoutsOf, fetchProjects, lastOpened, repoKey } from "../../api/projects-data.ts"
+import { desktopBridge, type ProjectMatch } from "../../lib/desktop-bridge.ts"
 import { useDelayedFlag } from "../../lib/use-delayed-flag.ts"
 import { TitleBar } from "../../workspace/TitleBar.tsx"
 import { useDesktopOpenFolder } from "../../workspace/use-desktop-open-folder.ts"
@@ -28,6 +29,25 @@ const title = "Choose a project · Zero"
 
 function count(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`
+}
+
+// useElsewhere asks the desktop app which other open connections serve a
+// checkout of the identity, when this server has none (decision 0188).
+function useElsewhere(identity: string) {
+  const [found, setFound] = useState<{ identity: string; matches: ProjectMatch[] }>({ identity: "", matches: [] })
+  useEffect(() => {
+    const findProject = desktopBridge()?.findProject
+    if (!identity || !findProject) return
+    let current = true
+    void findProject(identity).then((matches) => {
+      if (current) setFound({ identity, matches })
+    })
+    return () => {
+      current = false
+    }
+  }, [identity])
+  const open = useCallback((match: ProjectMatch) => desktopBridge()?.openProject?.(match.connection, match.project), [])
+  return { matches: found.identity === identity ? found.matches : [], open }
 }
 
 // ChooseProject is what a link that names no project shows while there is a
@@ -82,6 +102,7 @@ export function ChooseProject() {
   const last = response ? lastOpened(response, readMemory()) : ""
   const checkouts = response && repo ? checkoutsOf(response, repo).length : 0
   const identity = checkouts > 0 && !showAll ? repo : ""
+  const elsewhere = useElsewhere(response && repo && checkouts === 0 ? repo : "")
   const scanning = useDelayedFlag(load.kind === "loading" && response === null, 150)
   const status = load.kind === "error" ? <>
     <span>{load.message}</span>
@@ -105,6 +126,15 @@ export function ChooseProject() {
               {repo && checkouts === 0 && <>No checkout of <span className="choose-project-identity">{repo}</span> on this server.{" "}</>}
               Serving {count(response.roots.length, "folder", "folders")}.
             </p>)}
+          {elsewhere.matches.length > 0 && (
+            <ul className="choose-project-elsewhere" aria-label="Open elsewhere">
+              {elsewhere.matches.map((match) => (
+                <li key={`${match.connection}\n${match.project}`}>
+                  <Button variant="outline" title={match.project} onClick={() => elsewhere.open(match)}>Open in {match.label}</Button>
+                </li>
+              ))}
+            </ul>
+          )}
           {response
             ? <ProjectList key={identity} response={response} current="" last={last} enter autoFocus status={status} identity={identity} onOpen={open} />
             : <div className="project-list-status" role="status" aria-live="polite">{status ?? (scanning ? "Scanning for projects…" : "")}</div>}

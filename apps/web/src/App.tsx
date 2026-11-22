@@ -594,7 +594,7 @@ export function App({ project }: AppProps) {
   // Split needs room in the diff area itself, not just the window.
   const diffNarrow = useNarrowElement(main, splitMinimumWidth) || sidebar.mobile
   const diffOptions = useDiffOptions()
-  const viewed = useReviewViewed(project)
+  const viewed = useReviewViewed(project, page.identity)
   const isViewed = viewed.isViewed
   const reviewStats = reviewData?.stats?.byPath
   // railViewed marks a review file viewed in the Files rail and sheet.

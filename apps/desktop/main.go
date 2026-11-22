@@ -30,6 +30,7 @@ import (
 	"github.com/flexdinesh/zero/apps/desktop/internal/link"
 	"github.com/flexdinesh/zero/apps/desktop/internal/notifier"
 	"github.com/flexdinesh/zero/apps/desktop/internal/proxy"
+	"github.com/flexdinesh/zero/apps/desktop/internal/viewed"
 	"github.com/flexdinesh/zero/pkg/client"
 	"github.com/flexdinesh/zero/pkg/connection"
 	"github.com/flexdinesh/zero/pkg/contract"
@@ -53,6 +54,9 @@ type host struct {
 	// looks remembers each connection window's background and appearance
 	// (decision 0119).
 	looks *appearance.Store
+	// marks holds review Viewed marks by repository identity for every
+	// window (decision 0188).
+	marks *viewed.Store
 
 	// mu guards windows, notifiers, and noticeTargets. Windows and notifiers are
 	// one per connection, by its scheme host; noticeTargets is where a notice's
@@ -121,6 +125,7 @@ func main() {
 		Warn:  app.versionNotice,
 	})
 	app.looks = appearance.Open(looksPath())
+	app.marks = viewed.Open(userDataFile("viewed.json"))
 	app.experiments = experimental.Open(userDataFile("experimental.json"))
 	// The app starts in the appearance the local window had last, before
 	// any page reports one.

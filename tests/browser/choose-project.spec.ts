@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test"
 
+import { identitiesDesktop } from "./desktop-fake.ts"
 import { endsWith, fixtureRoot, projectParam, rootParam } from "./fixture-root.ts"
 
 const at = (...segments: string[]) => [fixtureRoot, ...segments].join("/")
@@ -134,4 +135,15 @@ test("a repo link with no checkout here says so and lists every project", async 
   await expect(chooser(page).getByRole("heading", { name: "Choose a project", level: 1 })).toBeVisible()
   await expect(chooser(page)).toContainText("No checkout of github.com/none/here on this server. Serving 1 folder.")
   await expect(chooser(page).getByRole("button", { name: /^(markdown|guides|reference)/ })).toHaveCount(3)
+})
+
+test("with no checkout here, the desktop app offers other open connections' checkouts", async ({ page }) => {
+  await mockProjects(page)
+  await identitiesDesktop(page, [{ connection: "r-0123456789ab", label: "devbox", project: "/home/dev/guides" }])
+  await page.goto(`/?repo=${encodeURIComponent(site)}`)
+  await expect(chooser(page)).toContainText(`No checkout of ${site} on this server.`)
+  await chooser(page).getByRole("button", { name: "Open in devbox" }).click()
+  await expect.poll(() => page.evaluate(() => window.__identities?.calls)).toEqual([
+    ["find", site], ["open", "r-0123456789ab", "/home/dev/guides"],
+  ])
 })

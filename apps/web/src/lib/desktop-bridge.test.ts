@@ -2,7 +2,8 @@ import assert from "node:assert/strict"
 import test from "node:test"
 
 import {
-  browserAvailable, desktopBridge, hostsBrowser, hostsComments, hostsComposer, readComposerCapture, readDesktopBridge, readElementFacts, type NativeMenuItem,
+  browserAvailable, desktopBridge, hostsBrowser, hostsComments, hostsComposer, readComposerCapture, readDesktopBridge, readElementFacts, readProjectMatches,
+  readViewedFiles, type NativeMenuItem,
 } from "./desktop-bridge.ts"
 
 test("a version 1 bridge is read; folders open in the page, not through it (decision 0146)", () => {
@@ -325,4 +326,45 @@ test("comments need the Browser and its pins; the composer needs experimental fe
     assert.equal(hostsComposer(readDesktopBridge({ version: 2, experimental: on, ...composer, [missing]: undefined })), false, missing)
   }
   assert.equal(hostsComposer(null), false)
+})
+
+// Repository identities across windows (decision 0188).
+test("viewed marks keep well-formed entries only", () => {
+  const blob = "c".repeat(40)
+  assert.deepEqual(readViewedFiles({ "a.go": blob, "b.go": "short", "": blob, "c.go": 7 }), { "a.go": blob })
+  assert.equal(readViewedFiles(null), null)
+  assert.equal(readViewedFiles("marks"), null)
+})
+
+test("project matches keep well-formed entries and name connections without a label", () => {
+  assert.deepEqual(readProjectMatches([
+    { connection: "r-0123456789ab", label: "devbox", project: "/home/dev/zero" },
+    { connection: "local", label: "", project: "/Users/me/zero" },
+    { connection: "", project: "/x" },
+    { connection: "r-0123456789ab" },
+    "junk",
+  ]), [
+    { connection: "r-0123456789ab", label: "devbox", project: "/home/dev/zero" },
+    { connection: "local", label: "local", project: "/Users/me/zero" },
+  ])
+  assert.deepEqual(readProjectMatches(null), [])
+})
+
+test("the identity methods are read when the app offers them", async () => {
+  const calls: unknown[][] = []
+  const bridge = readDesktopBridge({
+    version: 2,
+    viewedMarks: (identity: string) => Promise.resolve({ "a.go": "d".repeat(40), identity }),
+    setViewedMarks: (...args: unknown[]) => { calls.push(["set", ...args]) },
+    findProject: () => Promise.reject(new Error("refused")),
+    openProject: (...args: unknown[]) => { calls.push(["open", ...args]) },
+  })
+  assert.deepEqual(await bridge?.viewedMarks?.("github.com/me/zero"), { "a.go": "d".repeat(40) })
+  assert.deepEqual(await bridge?.findProject?.("github.com/me/zero"), [])
+  bridge?.setViewedMarks?.("github.com/me/zero", {})
+  bridge?.openProject?.("r-0123456789ab", "/home/dev/zero")
+  assert.deepEqual(calls, [["set", "github.com/me/zero", {}], ["open", "r-0123456789ab", "/home/dev/zero"]])
+  const plain = readDesktopBridge({ version: 2 })
+  assert.equal(plain?.viewedMarks, null)
+  assert.equal(plain?.findProject, null)
 })

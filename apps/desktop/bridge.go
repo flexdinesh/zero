@@ -71,12 +71,21 @@ func preloadScript(state experimental.State) string {
     configureNotifications(config) { return call("ConfigureNotifications", config) },
     setAppearance(source) { void call("SetAppearance", source).catch(() => undefined) },` + browser + `
   }
+  // Repository identities across windows (decision 0188); a sandbox's page
+  // gets none.
+  const identities = location.host.startsWith("s-") ? {} : {
+    viewedMarks(identity) { return call("ViewedMarks", identity) },
+    setViewedMarks(identity, marks) { return call("SetViewedMarks", identity, marks) },
+    findProject(identity) { return call("FindProject", identity) },
+    openProject(connection, project) { return call("OpenProject", connection, project) },
+  }
   window.zeroDesktop = Object.freeze(location.host === "` + proxy.Host + `" ? {
     version: 2,
     ...window_,
+    ...identities,
     revealPath(project, path) { return call("RevealPath", project, path) },
     diagnostics() { return call("Diagnostics") },
-  } : { version: 2, ...window_ })
+  } : { version: 2, ...window_, ...identities })
 })()`
 }
 

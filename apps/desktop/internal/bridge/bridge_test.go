@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/flexdinesh/zero/apps/desktop/internal/review"
+	"github.com/flexdinesh/zero/pkg/contract"
 )
 
 func TestParseAppearance(t *testing.T) {
@@ -411,5 +412,65 @@ func TestIsComposerPage(t *testing.T) {
 		if got := IsComposerPage(raw, "app", "/composer", func(host string) bool { return host == "local" }); got != want {
 			t.Errorf("IsComposerPage(%q) = %v", raw, got)
 		}
+	}
+}
+
+const viewedBlob = "0123456789abcdef0123456789abcdef01234567"
+
+func TestParseIdentity(t *testing.T) {
+	for value, want := range map[any]bool{
+		"github.com/flexdinesh/zero": true, "GitHub.com/me/zero": false, "github.com": false, "": false, 42: false, nil: false,
+	} {
+		if _, got := ParseIdentity(value); got != want {
+			t.Errorf("ParseIdentity(%v) = %v, want %v", value, got, want)
+		}
+	}
+}
+
+func TestParseViewedMarks(t *testing.T) {
+	id, files, ok := ParseViewedMarks("github.com/me/zero", map[string]any{"src/b.go": viewedBlob, "a.go": viewedBlob})
+	if !ok || id != "github.com/me/zero" || !reflect.DeepEqual(files, [][2]string{{"a.go", viewedBlob}, {"src/b.go", viewedBlob}}) {
+		t.Errorf("ParseViewedMarks = %q, %v, %v", id, files, ok)
+	}
+	if _, files, ok := ParseViewedMarks("github.com/me/zero", map[string]any{}); !ok || len(files) != 0 {
+		t.Errorf("empty marks = %v, %v", files, ok)
+	}
+	for name, marks := range map[string]any{
+		"not a map":     []any{"a.go"},
+		"absolute path": map[string]any{"/etc/passwd": viewedBlob},
+		"bad blob":      map[string]any{"a.go": "nope"},
+		"not text":      map[string]any{"a.go": 7},
+		"control":       map[string]any{"a\x07.go": viewedBlob},
+	} {
+		if _, _, ok := ParseViewedMarks("github.com/me/zero", marks); ok {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	if _, _, ok := ParseViewedMarks("Not An Identity", map[string]any{"a.go": viewedBlob}); ok {
+		t.Error("bad identity accepted")
+	}
+}
+
+func TestParseOpenProject(t *testing.T) {
+	known := func(host string) bool { return host == "local" || host == "r-0123456789ab" }
+	if c, p, ok := ParseOpenProject("r-0123456789ab", "/home/dev/zero", known); !ok || c != "r-0123456789ab" || p != "/home/dev/zero" {
+		t.Errorf("ParseOpenProject = %q, %q, %v", c, p, ok)
+	}
+	for _, args := range [][2]any{{"r-ffffffffffff", "/home/dev/zero"}, {"local", "relative"}, {"local", "/a/../b"}, {1, "/a"}} {
+		if _, _, ok := ParseOpenProject(args[0], args[1], known); ok {
+			t.Errorf("ParseOpenProject(%v) accepted", args)
+		}
+	}
+}
+
+func TestMatchesOf(t *testing.T) {
+	response := contract.ProjectsResponse{Projects: []contract.Project{
+		{ID: "/home/dev/zero", Identity: "github.com/me/zero", Available: true},
+		{ID: "", Identity: "github.com/me/zero", Available: false},
+		{ID: "/home/dev/other", Identity: "github.com/me/other", Available: true},
+	}}
+	want := []ProjectMatch{{Connection: "r-0123456789ab", Label: "devbox", Project: "/home/dev/zero"}}
+	if got := MatchesOf(response, "r-0123456789ab", "devbox", "github.com/me/zero"); !reflect.DeepEqual(got, want) {
+		t.Errorf("MatchesOf = %+v", got)
 	}
 }

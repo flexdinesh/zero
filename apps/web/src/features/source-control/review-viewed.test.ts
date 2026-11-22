@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { isViewed, parseViewed, viewedState, withViewed } from "./review-viewed.ts"
+import { isViewed, mergeFiles, migrateViewed, parseViewed, viewedKey, viewedState, withViewed } from "./review-viewed.ts"
 
 const blob = "a".repeat(40)
 const changed = "b".repeat(40)
@@ -40,4 +40,26 @@ test("marks stored before changed-since-viewed keep their format", () => {
   const stored = JSON.parse(JSON.stringify(withViewed({}, "/p", "a.md", blob, true)))
   assert.deepEqual(stored, { "/p": { "a.md": blob } })
   assert.equal(viewedState(parseViewed(stored), "/p", "a.md", changed), "changed")
+})
+
+// Marks key by the repository's identity, so every checkout shares them
+// (decision 0188).
+test("marks key by identity, else by path", () => {
+  assert.equal(viewedKey("/work/zero", "github.com/me/zero"), "github.com/me/zero")
+  assert.equal(viewedKey("/work/notes", ""), "/work/notes")
+})
+
+test("path-keyed marks move under the identity, the identity's own winning", () => {
+  const marks = { "/work/zero": { "a.go": blob, "b.go": blob }, "github.com/me/zero": { "a.go": changed }, "/work/notes": { "n.md": blob } }
+  assert.deepEqual(migrateViewed(marks, "/work/zero", "github.com/me/zero"), {
+    "/work/notes": { "n.md": blob },
+    "github.com/me/zero": { "a.go": changed, "b.go": blob },
+  })
+  // Nothing to move leaves the marks as they are.
+  assert.equal(migrateViewed(marks, "/work/notes", ""), marks)
+  assert.equal(migrateViewed(marks, "/work/other", "github.com/me/other"), marks)
+})
+
+test("mergeFiles keeps the newer set's marks", () => {
+  assert.deepEqual(mergeFiles({ "a.go": changed }, { "a.go": blob, "b.go": blob }), { "a.go": changed, "b.go": blob })
 })

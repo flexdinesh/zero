@@ -121,6 +121,14 @@ window asks which to open), and
 ([Remote hosts](/docs/remote)), with the same routes. Links carry no address and
 no secret; the app looks up a connection saved on this computer.
 
+`?repo=github.com/owner/repo` finds a repository's checkout on the window's
+server ([Open by repository](/docs/usage#open-by-repository)). When that server
+has none, the page lists **Open in …** for each checkout on this computer or
+another connection whose window is open; the app never connects to another
+server to look. Files marked Viewed in a review follow the repository between
+the local and remote windows. Container windows (`zero attach`) take part in
+neither.
+
 ## Window theme
 
 On macOS the window takes your Zero theme: the title bar is drawn in the theme's
