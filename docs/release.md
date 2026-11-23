@@ -5,7 +5,9 @@ Zero ships only as GitHub release assets, installed with the scripts in
 point at plain `main` commits. Homebrew and `go install` are not supported.
 
 `.github/workflows/build.yml` builds every asset for one commit and version.
-`release.yml` calls it: pushing a `vX.Y.Z` tag publishes that stable release.
+`release.yml` calls it: running it from the Actions tab on `main` publishes
+the next patch release (decision 0190); pushing a `vX.Y.Z` tag publishes that
+tag.
 CI publishes nothing else; development installs build any branch or commit
 from source with `scripts/install-dev.sh` (decision 0134).
 
@@ -34,9 +36,12 @@ No repository secrets are needed; publishing uses the workflow's
 1. Merge release-ready code to `main`. Ordinary checks run locally before
    push; run `mise run check:full` before releasing for correctness and extended
    stress, resource, and compatibility validation.
-2. Pick the tag: `go run ./tools/release-version` prints the next patch in
-   the `.release-version` series (or the tag already on `HEAD`).
-3. Tag a `main` commit and push the tag:
+2. In GitHub, open Actions, Release, Run workflow, and run it on `main`.
+   `check` runs `go run ./tools/release-version` on that commit: the next
+   patch in the `.release-version` series (or the series tag already on the
+   commit, which publishes nothing). `publish` creates the tag.
+3. To release a specific version instead, tag a `main` commit and push the
+   tag:
 
    ```sh
    git fetch origin
@@ -44,8 +49,9 @@ No repository secrets are needed; publishing uses the workflow's
    git push origin v0.2.0
    ```
 
-4. `check` rejects a tag that is not `vX.Y.Z` or whose commit is not on
-   `main`, and skips the build when the release already exists.
+4. `check` rejects a dispatch off `main`, a tag that is not `vX.Y.Z` or
+   whose commit is not on `main`, and skips the build when the release
+   already exists.
 5. `build` (`build.yml`):
    - `cli` builds the embedded frontend and the four Go archives stamped with
      the version, commit, and commit date, and smoke tests the linux/amd64
@@ -61,14 +67,16 @@ No repository secrets are needed; publishing uses the workflow's
      `gcr.io/distroless/static:nonroot` (`apps/zero/Dockerfile`) for amd64 and
      arm64, smoke tests the amd64 image, and uploads one OCI archive as the
      `image` artifact (not an asset).
-6. `publish` creates the GitHub Release for the tag with generated notes and
-   marks it latest.
+6. `publish` creates the GitHub Release for the tag (and a dispatch's tag at
+   its commit, only once every asset built) with generated notes and marks it
+   latest.
 7. `image` pushes that archive to `ghcr.io/flexdinesh/zero:<version>` and
    `:latest` with skopeo (decision 0125). ghcr creates the package private on
    its first push; make it public once in the package settings.
 
 Published releases are never rebuilt or replaced: `check` and `publish` both
-skip an existing release, so re-running failed jobs is safe. To redo a
+skip an existing release, so re-running failed jobs is safe. A failed
+dispatch leaves no tag, so re-running it selects the same version. To redo a
 release whose publish failed before the release existed, re-run the
 workflow; to replace a published one, publish a new patch version.
 
@@ -155,12 +163,12 @@ paths.
 ## Version series
 
 `.release-version` contains the active `major.minor` release series, which
-`go run ./tools/release-version` reads. The current `0.2` series selects `v0.2.0`
+`go run ./tools/release-version` and the dispatched release read. The current `0.2` series selects `v0.2.0`
 when the series has no releases, then `v0.2.1`, `v0.2.2`, and so on; when a
 release tag already names `HEAD`, it prints that tag.
 
 To begin a new minor or major series, change `.release-version` in the repo.
 Changing it to `0.3` makes the next release `v0.3.0`; changing it to `1.0`
 makes the next release `v1.0.0`. Later releases continue incrementing that
-series' patch number. The workflow accepts any `vX.Y.Z` tag on `main`; the
-series only suggests the next one.
+series' patch number. A dispatch always releases the series' next patch; a
+pushed tag may be any `vX.Y.Z` on `main`.

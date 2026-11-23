@@ -1,7 +1,7 @@
 name: Build
 
 # Builds every distribution asset for one commit (decision 0079); release.yml
-# (stable tags) calls it and publishes the result. Development installs build
+# (stable releases) calls it and publishes the result. Development installs build
 # from source on the user's machine instead (decision 0134). cli (Go archives, archive smoke) -> desktop-linux and desktop-macos
 # (packages bundling those binaries, smoke checks) -> assets (the expected set,
 # checksums.txt). Every job uploads an assets-* artifact; callers download them
