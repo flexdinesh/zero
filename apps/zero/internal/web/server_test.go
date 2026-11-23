@@ -30,12 +30,13 @@ func TestAppServesSharedMarkdownFixtures(t *testing.T) {
 	if got, want := landingData.RootName, "markdown"; got != want {
 		t.Fatalf("root name = %q, want %q", got, want)
 	}
-	if got, want := landingData.FileCount, 27; got != want {
+	treeResponse, tree := requestTreeData(t, app, "/api/tree?project=.")
+	if got, want := tree.FileCount, 27; got != want {
 		t.Fatalf("file count = %d, want %d", got, want)
 	}
-	assertContains(t, landing.Body.String(), "README.md", "code-blocks.md", "getting-started.md", "images.md", "api.markdown", "search.md", "notes.txt", "main.go", "Dockerfile", "zero.toml", "sample.bin", "preview.png")
+	assertContains(t, treeResponse.Body.String(), "README.md", "code-blocks.md", "getting-started.md", "images.md", "api.markdown", "search.md", "notes.txt", "main.go", "Dockerfile", "zero.toml", "sample.bin", "preview.png")
 	for _, excluded := range []string{"vendor", "ignored.md"} {
-		if strings.Contains(landing.Body.String(), excluded) {
+		if strings.Contains(treeResponse.Body.String(), excluded) {
 			t.Errorf("landing includes excluded fixture %q", excluded)
 		}
 	}
@@ -160,12 +161,13 @@ func TestAppListsAndRendersMarkdown(t *testing.T) {
 	if landing.Code != http.StatusOK {
 		t.Fatalf("landing status = %d, want %d", landing.Code, http.StatusOK)
 	}
-	assertContains(t, landing.Body.String(), "docs", "Guide.MD")
-	if strings.Contains(landing.Body.String(), ">empty<") {
-		t.Fatal("landing includes a directory with no Markdown descendants")
+	treeResponse, tree := requestTreeData(t, app, "/api/tree?project=.")
+	assertContains(t, treeResponse.Body.String(), "docs", "Guide.MD")
+	if strings.Contains(treeResponse.Body.String(), ">empty<") {
+		t.Fatal("tree includes a directory with no Markdown descendants")
 	}
-	if landingData.Empty || landingData.HasFile || len(landingData.Tree) != 1 {
-		t.Fatalf("landing data = %#v", landingData)
+	if tree.Empty || landingData.HasFile || len(tree.Tree) != 1 {
+		t.Fatalf("landing data = %#v, tree = %#v", landingData, tree)
 	}
 
 	document, documentData := requestPageData(t, app, "/api/page?project=.&path=docs%2FGuide.MD")
@@ -187,9 +189,10 @@ func TestAppListsAndRendersMarkdown(t *testing.T) {
 	if got := shell.Header().Get("Content-Security-Policy"); got == "" {
 		t.Fatal("Content-Security-Policy is empty")
 	}
-	assertContains(t, shell.Body.String(), `id="root"`, `id="app-data"`, `/assets/`)
-	if strings.Contains(shell.Body.String(), "{{APP_DATA}}") || strings.Contains(shell.Body.String(), "<script>alert") {
-		t.Fatal("shell contains unexpanded or unsafe app data")
+	assertContains(t, shell.Body.String(), `id="root"`, `/assets/`)
+	// The shell embeds no page (decision 0192).
+	if strings.Contains(shell.Body.String(), "app-data") || strings.Contains(shell.Body.String(), "<script>alert") {
+		t.Fatal("shell embeds page data")
 	}
 }
 
@@ -449,17 +452,19 @@ func TestBrowserAssetsAndCSP(t *testing.T) {
 	}
 }
 
+// TestAppRescansOnEveryRequest reads an unfollowed project fresh: only a
+// project live updates follow keeps its index (decision 0192).
 func TestAppRescansOnEveryRequest(t *testing.T) {
 	root := t.TempDir()
 	writeMarkdown(t, filepath.Join(root, "first.md"), "# First\n")
 	app := newTestApp(t, root)
 
-	first := request(t, app, "/api/page?project=.")
+	first := request(t, app, "/api/tree?project=.")
 	if strings.Contains(first.Body.String(), "second.md") {
 		t.Fatal("second.md appeared before it existed")
 	}
 	writeMarkdown(t, filepath.Join(root, "second.md"), "# Second\n")
-	second := request(t, app, "/api/page?project=.")
+	second := request(t, app, "/api/tree?project=.")
 	assertContains(t, second.Body.String(), "first.md", "second.md")
 }
 
@@ -602,30 +607,30 @@ func TestAppHandlesEmptyMissingAndUnsafeSelections(t *testing.T) {
 	root := t.TempDir()
 	app := newTestApp(t, root)
 
-	_, empty := requestPageData(t, app, "/api/page?project=.")
+	_, empty := requestTreeData(t, app, "/api/tree?project=.")
 	if !empty.Empty {
 		t.Fatal("empty root was not reported empty")
 	}
 
-	missing := request(t, app, "/view?project=.&path=missing.md")
+	missing := request(t, app, "/api/page?project=.&path=missing.md")
 	if missing.Code != http.StatusNotFound {
 		t.Fatalf("missing status = %d, want %d", missing.Code, http.StatusNotFound)
 	}
 	assertContains(t, missing.Body.String(), "unavailable")
 
-	unsafe := request(t, app, "/view?project=.&path=..%2Foutside.md")
+	unsafe := request(t, app, "/api/page?project=.&path=..%2Foutside.md")
 	if unsafe.Code != http.StatusBadRequest {
 		t.Fatalf("unsafe status = %d, want %d", unsafe.Code, http.StatusBadRequest)
 	}
 
-	noSelection := request(t, app, "/view?project=.")
+	noSelection := request(t, app, "/api/page?project=.&path=")
 	if noSelection.Code != http.StatusBadRequest {
 		t.Fatalf("empty selection status = %d, want %d", noSelection.Code, http.StatusBadRequest)
 	}
 
-	// Review tabs name a compare, not a file (decision 0035); Welcome names
-	// neither (decision 0052), nor does the Browser tab (decision 0181).
-	for _, target := range []string{"/view?project=.&review=working", "/view?project=.&commit=" + strings.Repeat("a", 40), "/view?project=.&welcome=1", "/view?project=.&browser=1"} {
+	// The shell never reads a page (decision 0192): review tabs, Welcome,
+	// and the Browser tab load like any other route.
+	for _, target := range []string{"/view?project=.&path=missing.md", "/view?project=.", "/view?project=.&review=working", "/view?project=.&commit=" + strings.Repeat("a", 40), "/view?project=.&welcome=1", "/view?project=.&browser=1"} {
 		review := request(t, app, target)
 		if review.Code != http.StatusOK {
 			t.Fatalf("%s status = %d, want %d", target, review.Code, http.StatusOK)
@@ -767,6 +772,16 @@ func requestPageData(t *testing.T, handler http.Handler, target string) (*httpte
 	return response, data
 }
 
+func requestTreeData(t *testing.T, handler http.Handler, target string) (*httptest.ResponseRecorder, contract.TreeData) {
+	t.Helper()
+	response := request(t, handler, target)
+	var data contract.TreeData
+	if err := json.Unmarshal(response.Body.Bytes(), &data); err != nil {
+		t.Fatal(err)
+	}
+	return response, data
+}
+
 func writeMarkdown(t *testing.T, name, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(name), 0o755); err != nil {
@@ -799,6 +814,7 @@ func TestEveryAPIFixtureDecodesStrictly(t *testing.T) {
 		value   func() any
 	}{
 		{"page-*.json", func() any { return &contract.PageData{} }},
+		{"tree.json", func() any { return &contract.TreeData{} }},
 		{"changes*.json", func() any { return &contract.ChangesResponse{} }},
 		{"diff-*.json", func() any { return &contract.DiffResponse{} }},
 		{"commits*.json", func() any { return &contract.CommitsResponse{} }},

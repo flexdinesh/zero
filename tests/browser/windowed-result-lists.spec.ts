@@ -27,6 +27,8 @@ async function openSearch(page: Page, live: { root: string; origin: string }) {
     writeFileSync(path.join(live.root, searchPath(file)), `${lines.join("\n")}\n`)
   }
   await page.goto(`${live.origin}/?project=${encodeURIComponent(live.root)}`)
+  // Keys reach the workspace once its page loads (decision 0192).
+  await expect(page.getByRole("navigation", { name: "Views" })).toBeVisible()
   await page.keyboard.press("ControlOrMeta+Shift+f")
   const search = page.getByRole("region", { name: "Search", exact: true })
   const input = search.getByRole("textbox", { name: "Search", exact: true })
@@ -226,6 +228,8 @@ function scmPane(page: Page, name: "Commits" | "Uncommitted" | "Branches") {
 
 async function desktopSourceControl(page: Page, url: string) {
   await page.goto(url)
+  // Keys reach the workspace once its page loads (decision 0192).
+  await expect(page.getByRole("navigation", { name: "Views" })).toBeVisible()
   await page.keyboard.press("ControlOrMeta+Shift+g")
   await expect(sourceControl(page)).toBeVisible()
 }

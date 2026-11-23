@@ -6,11 +6,11 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import { FilenameFilter, useFilenameFilter, type FilenameFilterState } from "./FilenameFilter.tsx"
 import { countFiles, filterTreeByFilename } from "./filename-filter.ts"
 
-import type { PageData, TreeNode } from "@zero/contracts"
+import type { PageData, TreeData, TreeNode } from "@zero/contracts"
 
-import { openDirectoryPaths } from "../../api/page-data.ts"
 import { projectShortcutLabel } from "../../workspace/shortcut-labels.ts"
 import { Button } from "../../components/ui/button.tsx"
+import { SkeletonRows } from "../../components/ui/skeleton-rows.tsx"
 import { treeCSS } from "../../lib/tree-css.ts"
 import { treeIcons } from "../../lib/tree-icons.ts"
 import { writeClipboard } from "../../lib/clipboard.ts"
@@ -32,10 +32,22 @@ function treePaths(nodes: readonly TreeNode[]): string[] {
     : [node.path])
 }
 
+// ancestorDirectories are the tree paths of the folders holding path.
+function ancestorDirectories(path: string): string[] {
+  const segments = path.split("/")
+  return segments.slice(1).map((_, index) => `${segments.slice(0, index + 1).join("/")}/`)
+}
+
+const noNodes: readonly TreeNode[] = []
+const noWarnings: readonly string[] = []
+
 interface FileTreeProps {
   // gitStatus decorates changed files; entries outside the tree are ignored.
   gitStatus: readonly GitStatusEntry[]
-  hasData: boolean
+  // tree is the project's tree, or null while it loads (decision 0192).
+  tree: TreeData | null
+  // treeFailure explains a tree that could not be read.
+  treeFailure: string
   mobile: boolean
   visible: boolean
   onNavigate(path: string): void
@@ -62,11 +74,11 @@ interface ExplorerState {
 
 export function FileTree({ onReveal, registerOpen, mobile, ...props }: FileTreeProps) {
   const filter = useFilenameFilter()
-  const page = useRef(props.page)
+  const nodes = useRef(props.tree?.tree ?? noNodes)
   const state = useRef<ExplorerState>({ model: null, expanded: null })
   const scale = uiScale(useSettings().settings)
   const [rows, setRows] = useState(() => ({ mobile, scale }))
-  useLayoutEffect(() => { page.current = props.page }, [props.page])
+  useLayoutEffect(() => { nodes.current = props.tree?.tree ?? noNodes }, [props.tree])
   useEffect(() => {
     registerOpen(onReveal)
     return () => registerOpen(null)
@@ -77,7 +89,7 @@ export function FileTree({ onReveal, registerOpen, mobile, ...props }: FileTreeP
     const model = state.current.model
     if (!model) return
     const expanded = new Set(state.current.expanded)
-    for (const path of treePaths(page.current.tree)) {
+    for (const path of treePaths(nodes.current)) {
       const item = model.getItem(path)
       if (item && "isExpanded" in item) {
         if (item.isExpanded()) expanded.add(path)
@@ -95,25 +107,30 @@ export function FileTree({ onReveal, registerOpen, mobile, ...props }: FileTreeP
 
   const itemHeight = treeRowHeight(rows.mobile, rows.scale)
   return <SidebarBody visible={props.visible}>
-    <Explorer {...props} key={`${rows.mobile ? "mobile" : "desktop"}-${itemHeight}`} mobile={rows.mobile}
+    <Explorer {...props} key={`${rows.mobile ? "mobile" : "desktop"}-${itemHeight}-${props.tree ? "tree" : "loading"}`} mobile={rows.mobile}
       itemHeight={itemHeight} filter={filter} state={state} />
   </SidebarBody>
 }
 
-function Explorer({ gitStatus, hasData, onFindFile, onNavigate, onOpenProjects, onOpenWorktrees, onDismiss, onShowHistory, page, mobile, visible, itemHeight, state, filter }: Omit<FileTreeProps, "onReveal" | "registerOpen"> & {
+function Explorer({ gitStatus, tree, treeFailure, onFindFile, onNavigate, onOpenProjects, onOpenWorktrees, onDismiss, onShowHistory, page, mobile, visible, itemHeight, state, filter }: Omit<FileTreeProps, "onReveal" | "registerOpen"> & {
   itemHeight: number
   filter: FilenameFilterState
   state: RefObject<ExplorerState>
 }) {
-  const visibleTree = useMemo(() => filterTreeByFilename(page.tree, filter.matcher), [page.tree, filter.matcher])
-  const totalCount = useMemo(() => countFiles(page.tree), [page.tree])
+  const hasData = tree !== null
+  const treeNodes = tree?.tree ?? noNodes
+  const warnings = tree?.warnings ?? noWarnings
+  const visibleTree = useMemo(() => filterTreeByFilename(treeNodes, filter.matcher), [treeNodes, filter.matcher])
+  const totalCount = useMemo(() => countFiles(treeNodes), [treeNodes])
   const visibleCount = useMemo(() => countFiles(visibleTree), [visibleTree])
   const paths = useMemo(() => treePaths(visibleTree), [visibleTree])
-  const directoryPaths = useMemo(() => treePaths(page.tree).filter((path) => path.endsWith("/")), [page.tree])
+  const directoryPaths = useMemo(() => treePaths(treeNodes).filter((path) => path.endsWith("/")), [treeNodes])
   const directories = useMemo(() => new Set(directoryPaths), [directoryPaths])
+  // The tree marks no selection (decision 0192): the selected file's folders
+  // open first.
   const [initialExpanded] = useState(() => state.current.expanded
     ?? restoreExpanded(projectMemory(readMemory(), page.project), directories)
-    ?? openDirectoryPaths(page.tree).map((path) => `${path}/`))
+    ?? ancestorDirectories(page.at ? "" : page.selected).filter((path) => directories.has(path)))
   const expandedPaths = useRef(new Set(initialExpanded))
   const rememberedExpanded = useRef<readonly string[] | null>(null)
   const [hasExpanded, setHasExpanded] = useState(expandedPaths.current.size > 0)
@@ -176,6 +193,8 @@ function Explorer({ gitStatus, hasData, onFindFile, onNavigate, onOpenProjects, 
     },
   })
   const syncExpandedPaths = useCallback(() => {
+    // A loading tree has no folders: it must not clear the kept expansion.
+    if (!hasData) return
     for (const path of directoryPaths) {
       const item = model.getItem(path)
       if (item && "isExpanded" in item) {
@@ -186,13 +205,13 @@ function Explorer({ gitStatus, hasData, onFindFile, onNavigate, onOpenProjects, 
     const expanded = [...expandedPaths.current].filter((path) => directories.has(path))
     const previous = rememberedExpanded.current
     state.current.expanded = expanded
-    if (hasData && !page.error && page.project && (previous === null
+    if (hasData && !tree.error && page.project && (previous === null
       || expanded.length !== previous.length || expanded.some((path, index) => path !== previous[index]))) {
       updateMemory((memory) => rememberExpanded(memory, page.project, expanded))
       rememberedExpanded.current = expanded
     }
     setHasExpanded(directoryPaths.some((path) => expandedPaths.current.has(path)))
-  }, [directories, directoryPaths, hasData, model, page.error, page.project, state])
+  }, [directories, directoryPaths, hasData, model, page.project, state, tree?.error])
 
   useLayoutEffect(() => { current.current = { onNavigate, onDismiss, onShowHistory, page } }, [onDismiss, onNavigate, onShowHistory, page])
 
@@ -332,10 +351,10 @@ function Explorer({ gitStatus, hasData, onFindFile, onNavigate, onOpenProjects, 
         <FilenameFilter filter={filter} inputRef={filterInput}
           totalCount={totalCount} visibleCount={visibleCount} onFocusTree={focusFirstRow} onHide={hideFilter} />
       </div>
-      {!hasData ? <p className="muted">Loading files…</p>
-        : page.projectUnavailable ? <p className="muted">{page.project ? "Project unavailable." : "No folder is open."}</p>
-        : page.error ? <p className="muted">{page.errorCode === "privacyBlocked" || page.errorCode === "folderUnreadable" ? "Can't read this folder." : "Files unavailable."}</p>
-        : page.empty ? <p className="muted">No files found.</p>
+      {page.projectUnavailable ? <p className="muted">{page.project ? "Project unavailable." : "No folder is open."}</p>
+        : !hasData ? treeFailure ? <p className="muted">Files unavailable.</p> : <SkeletonRows label="Loading files" />
+        : tree.error ? <p className="muted">{tree.errorCode === "privacyBlocked" || tree.errorCode === "folderUnreadable" ? "Can't read this folder." : "Files unavailable."}</p>
+        : tree.empty ? <p className="muted">No files found.</p>
         : paths.length === 0 ? <p className="muted explorer-empty">
           No files match <code>{filter.applied}</code>
           <Button variant="outline" className="explorer-empty-action" onClick={filter.clear}>Clear filter</Button>
@@ -353,10 +372,10 @@ function Explorer({ gitStatus, hasData, onFindFile, onNavigate, onOpenProjects, 
             if (focused && !model.getItem(focused)?.isDirectory() && model.getSelectedPaths().includes(focused)) onDismiss()
           }} />
         </>}
-      {page.warnings.length > 0 && (
+      {warnings.length > 0 && (
         <details className="warnings">
           <summary>Some paths could not be read</summary>
-          <ul>{page.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
+          <ul>{warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
         </details>
       )}
     </aside>

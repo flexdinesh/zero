@@ -27,9 +27,6 @@ func TestPageReadsDocumentAtCommit(t *testing.T) {
 	if data.PreviewDisabled || data.Content != "" || data.NavigationSupported {
 		t.Errorf("snapshot capabilities = preview disabled %v, content %q, navigation %v", data.PreviewDisabled, data.Content, data.NavigationSupported)
 	}
-	if selectedNode(data.Tree) != "" {
-		t.Errorf("snapshot selected tree node %q", selectedNode(data.Tree))
-	}
 	if _, working := requestPageData(t, app, "/api/page?project=.&path=doc.md"); working.Source != "# Uncommitted\n" || working.At != "" {
 		t.Errorf("working doc.md = %q at %q", working.Source, working.At)
 	}
@@ -98,8 +95,9 @@ func TestShellPageOpensCommitDocuments(t *testing.T) {
 	if response := request(t, app, "/view?project=.&path=doc.md&at="+initial.String()); response.Code != http.StatusOK {
 		t.Errorf("snapshot view = %d", response.Code)
 	}
-	if response := request(t, app, "/view?project=.&path=added.go&at="+initial.String()); response.Code != http.StatusNotFound {
-		t.Errorf("missing snapshot view = %d", response.Code)
+	// The shell embeds no page (decision 0192); the page reports the miss.
+	if response := request(t, app, "/api/page?project=.&path=added.go&at="+initial.String()); response.Code != http.StatusNotFound {
+		t.Errorf("missing snapshot page = %d", response.Code)
 	}
 }
 
@@ -151,19 +149,6 @@ func TestFormatReadsDocumentAtCommit(t *testing.T) {
 			t.Errorf("%s = %d %+v, want %d", test.query, status, failure, test.status)
 		}
 	}
-}
-
-// selectedNode returns the path of the tree's selected node, if any.
-func selectedNode(nodes []contract.TreeNode) string {
-	for _, node := range nodes {
-		if node.Selected {
-			return node.Path
-		}
-		if path := selectedNode(node.Children); path != "" {
-			return path
-		}
-	}
-	return ""
 }
 
 // TestImageAtCommitIsSandboxedAndSized serves an image at a commit with the

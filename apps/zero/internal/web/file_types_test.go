@@ -34,7 +34,7 @@ func TestEveryFileOpensInTreePagesAndSearch(t *testing.T) {
 		writeMarkdown(t, filepath.Join(root, name), "token: search-"+strings.ReplaceAll(name, "/", "-")+"\n")
 	}
 	app := newTestApp(t, root)
-	_, index := requestPageData(t, app, "/api/page?project=.")
+	_, index := requestTreeData(t, app, "/api/tree?project=.")
 	if index.FileCount != len(names) {
 		t.Fatalf("file count = %d, want %d", index.FileCount, len(names))
 	}
@@ -104,8 +104,9 @@ func TestAnyFileOpensWithAFamily(t *testing.T) {
 	if page.DocumentType.Label != "Plain text" || page.DocumentType.Language != "text" || page.Source != "<b>plain</b>\n" || page.HighlightDisabled {
 		t.Fatalf("fallback page = %+v", page)
 	}
+	_, tree := requestTreeData(t, app, "/api/tree?project=.")
 	types := map[string]string{}
-	for _, node := range page.Tree {
+	for _, node := range tree.Tree {
 		types[node.Name] = node.FileType
 	}
 	if !reflect.DeepEqual(types, map[string]string{"Dockerfile": "dockerfile", "LICENSE": "text", "broken.json": "json"}) {
@@ -414,8 +415,8 @@ func TestSourceOnlyHandlerUsesSameAPIContracts(t *testing.T) {
 	if response.Code != http.StatusOK || page.DocumentType == nil || page.DocumentType.ID != "zig" || page.DocumentType.DefaultMode != "source" || page.DocumentType.PreviewKind != "" || page.DocumentType.Formattable || page.DocumentType.Language != "zig" || page.Content != "" || page.Source != "const std = @import(\"std\");\n" || page.HighlightDisabled || strings.Contains(response.Body.String(), "sourceLines") {
 		t.Fatalf("source-only page = %+v", page)
 	}
-	if page.Tree[0].FileType != "zig" || page.Tree[1].FileType != "text" {
-		t.Fatalf("tree families = %+v", page.Tree)
+	if _, tree := requestTreeData(t, app, "/api/tree?project=."); tree.Tree[0].FileType != "zig" || tree.Tree[1].FileType != "text" {
+		t.Fatalf("tree families = %+v", tree.Tree)
 	}
 	if response := request(t, app, "/api/format?project=.&path=main.zig"); response.Code != http.StatusBadRequest {
 		t.Fatalf("source-only format = %d", response.Code)

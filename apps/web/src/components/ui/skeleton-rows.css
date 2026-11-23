@@ -1,0 +1,56 @@
+.ui-skeleton-rows {
+  display: flex;
+  flex-direction: column;
+  padding-block: var(--space-1);
+  opacity: 0;
+  animation: ui-skeleton-in var(--duration-base) ease-out var(--delay-progress) forwards;
+}
+
+.ui-skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--row-list);
+  padding-inline: var(--row-indent-flush) var(--row-inset-end);
+}
+
+.ui-skeleton-row[data-depth="1"] {
+  padding-inline-start: calc(var(--row-indent-flush) + var(--row-indent-nested));
+}
+
+.ui-skeleton-row[data-depth="2"] {
+  padding-inline-start: calc(var(--row-indent-flush) + 2 * var(--row-indent-nested));
+}
+
+.ui-skeleton-icon,
+.ui-skeleton-bar {
+  flex: none;
+  height: var(--space-2);
+  background: var(--color-hover);
+}
+
+.ui-skeleton-icon {
+  width: var(--space-3);
+}
+
+.ui-skeleton-row[data-width="short"] .ui-skeleton-bar {
+  width: 32%;
+}
+
+.ui-skeleton-row[data-width="medium"] .ui-skeleton-bar {
+  width: 48%;
+}
+
+.ui-skeleton-row[data-width="long"] .ui-skeleton-bar {
+  width: 64%;
+}
+
+@keyframes ui-skeleton-in {
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-skeleton-rows {
+    animation-duration: var(--duration-instant);
+  }
+}

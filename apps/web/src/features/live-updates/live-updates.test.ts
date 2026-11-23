@@ -8,26 +8,26 @@ const change = (fields: Partial<LiveChange>): LiveChange => ({ paths: [], tree: 
 
 test("a write to the open document rereads its page, changes, and search", () => {
   assert.deepEqual(liveTargets(change({ paths: ["docs/guide.md"] }), "docs/guide.md"),
-    { page: true, changes: true, history: false, search: true })
+    { page: true, tree: false, changes: true, history: false, search: true })
 })
 
 test("a write to another file leaves the page alone", () => {
   assert.deepEqual(liveTargets(change({ paths: ["README.md"] }), "docs/guide.md"),
-    { page: false, changes: true, history: false, search: true })
+    { page: false, tree: false, changes: true, history: false, search: true })
 })
 
-test("created or removed entries reread the tree without a document open", () => {
-  assert.deepEqual(liveTargets(change({ paths: ["docs/new.md"], tree: true }), ""),
-    { page: true, changes: true, history: false, search: true })
+test("created or removed entries reread the tree, not the page", () => {
+  assert.deepEqual(liveTargets(change({ paths: ["docs/new.md"], tree: true }), "docs/guide.md"),
+    { page: false, tree: true, changes: true, history: false, search: true })
 })
 
 test("git state rereads changes and history only", () => {
   assert.deepEqual(liveTargets(change({ git: true }), "docs/guide.md"),
-    { page: false, changes: true, history: true, search: false })
+    { page: false, tree: false, changes: true, history: true, search: false })
 })
 
 test("overflow and returning reread everything", () => {
-  const all = { page: true, changes: true, history: true, search: true }
+  const all = { page: true, tree: true, changes: true, history: true, search: true }
   assert.deepEqual(liveTargets(change({ overflow: true }), ""), all)
   assert.deepEqual(liveTargets(everything, ""), all)
 })

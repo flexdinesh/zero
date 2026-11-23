@@ -36,7 +36,7 @@ function LifecycleFixture() {
       <Button variant="outline" onClick={() => openSearch.current?.()}>Open search</Button>
       <output aria-label="Navigation">{navigation}</output>
       {visible && <DocumentPreview html={html} navigate={() => {}} />}
-      {visible && <StatusBar isLoading={false} error="" page={emptyPage} onSearch={() => openSearch.current?.()} onSettings={() => {}} />}
+      {visible && <StatusBar isLoading={false} error="" page={emptyPage} fileCount={null} onSearch={() => openSearch.current?.()} onSettings={() => {}} />}
       <SearchSidebarView mobile={false} onDismiss={() => {}} onLeave={() => {}} visible />
     </SearchProvider>
   )

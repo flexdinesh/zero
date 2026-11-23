@@ -57,15 +57,19 @@ func TestPageIsScopedToProject(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body %s", response.Code, response.Body.String())
 	}
-	if data.Project != filepath.Join(root, "api") || data.ProjectUnavailable || data.RootName != "api" || data.Branch != "main" || data.FileCount != 3 ||
+	if data.Project != filepath.Join(root, "api") || data.ProjectUnavailable || data.RootName != "api" || data.Branch != "main" ||
 		data.Repository != "api" || data.ProjectKind != contract.ProjectRepo || data.Worktrees != 1 {
-		t.Fatalf("page = project %q root %q repository %q kind %q branch %q worktrees %d files %d",
-			data.Project, data.RootName, data.Repository, data.ProjectKind, data.Branch, data.Worktrees, data.FileCount)
+		t.Fatalf("page = project %q root %q repository %q kind %q branch %q worktrees %d",
+			data.Project, data.RootName, data.Repository, data.ProjectKind, data.Branch, data.Worktrees)
 	}
 	if !reflect.DeepEqual(data.Roots, []string{root}) {
 		t.Fatalf("roots = %v", data.Roots)
 	}
-	if strings.Contains(response.Body.String(), "secret.md") || strings.Contains(response.Body.String(), "notes.md") {
+	treeResponse, tree := requestTreeData(t, app, "/api/tree?project="+api)
+	if treeResponse.Code != http.StatusOK || tree.Project != filepath.Join(root, "api") || tree.FileCount != 3 {
+		t.Fatalf("tree = %d %+v", treeResponse.Code, tree)
+	}
+	if strings.Contains(treeResponse.Body.String(), "secret.md") || strings.Contains(treeResponse.Body.String(), "notes.md") {
 		t.Fatal("api project lists files outside it")
 	}
 
@@ -84,6 +88,8 @@ func TestPageIsScopedToProject(t *testing.T) {
 		"/api/page?project=" + projectQuery(root, "api", ".git"):  http.StatusNotFound,
 		"/api/search-documents?project=" + url.QueryEscape("/"):   http.StatusBadRequest,
 		"/api/page?project=" + projectQuery(root, "api", "docs"):  http.StatusNotFound,
+		"/api/tree?project=" + projectQuery(root, "missing"):      http.StatusNotFound,
+		"/api/tree?project=" + projectQuery(root, "api", "docs"):  http.StatusNotFound,
 		"/api/page?project=" + web + "&path=..%2Fapi%2FREADME.md": http.StatusBadRequest,
 	} {
 		if response := request(t, app, target); response.Code != want {
@@ -112,13 +118,13 @@ func TestProjectLinksStayInProject(t *testing.T) {
 
 func TestSwitchingProjectsReadsCurrentFiles(t *testing.T) {
 	app, root := newProjectsApp(t)
-	web := "/api/page?project=" + projectQuery(root, "web")
-	_, before := requestPageData(t, app, web)
+	web := "/api/tree?project=" + projectQuery(root, "web")
+	_, before := requestTreeData(t, app, web)
 	writeMarkdown(t, filepath.Join(root, "web", "later.md"), "# Later\n")
 	if err := os.Remove(filepath.Join(root, "web", "secret.md")); err != nil {
 		t.Fatal(err)
 	}
-	_, after := requestPageData(t, app, web)
+	_, after := requestTreeData(t, app, web)
 	if before.FileCount != 2 || after.FileCount != 2 {
 		t.Fatalf("file counts = %d, %d", before.FileCount, after.FileCount)
 	}
@@ -261,14 +267,15 @@ func TestDirectoriesEndpoint(t *testing.T) {
 	}
 }
 
-func TestShellEmbedsPageOnlyWithProject(t *testing.T) {
+func TestShellEmbedsNoPage(t *testing.T) {
 	app, root := newProjectsApp(t)
-	if body := request(t, app, "/").Body.String(); !strings.Contains(body, `<template id="app-data">null</template>`) {
-		t.Fatalf("shell without project embeds page data")
-	}
-	body := request(t, app, "/view?project="+projectQuery(root, "api")+"&path=README.md").Body.String()
-	if !strings.Contains(body, `"project":"`+filepath.Join(root, "api")+`"`) || !strings.Contains(body, `"selected":"README.md"`) {
-		t.Fatalf("shell with project lacks page data")
+	// The shell answers at once for any route: a project's scan never
+	// delays the first paint (decision 0192).
+	for _, target := range []string{"/", "/view?project=" + projectQuery(root, "api") + "&path=README.md", "/view?project=" + projectQuery(root, "missing") + "&path=README.md"} {
+		response := request(t, app, target)
+		if response.Code != http.StatusOK || strings.Contains(response.Body.String(), root) || strings.Contains(response.Body.String(), "app-data") {
+			t.Errorf("%s = %d, want the bare shell", target, response.Code)
+		}
 	}
 }
 

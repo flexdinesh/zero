@@ -13,6 +13,8 @@ test("search retains its active match and focus behavior through navigation and 
   writeFileSync(path.join(live.root, "a.md"), "# First\n\nownership-marker first\n\nownership-marker second\n")
   writeFileSync(path.join(live.root, "z.md"), "# Last\n\nownership-marker last\n")
   await page.goto(`${live.origin}/?project=${encodeURIComponent(live.root)}`)
+  // Keys reach the workspace once its page loads (decision 0192).
+  await expect(page.getByRole("navigation", { name: "Views" })).toBeVisible()
   await page.keyboard.press("ControlOrMeta+Shift+f")
   const input = page.getByRole("textbox", { name: "Search", exact: true })
   const results = page.getByRole("tree", { name: "Search results" })
@@ -54,6 +56,8 @@ test("revealing Search from the activity bar refreshes edits made while it was h
   const file = path.join(live.root, "search-refresh.md")
   writeFileSync(file, "# Search fixture\n\nsidebar-refresh before\n")
   await page.goto(`${live.origin}/?project=${encodeURIComponent(live.root)}`)
+  // Keys reach the workspace once its page loads (decision 0192).
+  await expect(page.getByRole("navigation", { name: "Views" })).toBeVisible()
   await page.keyboard.press("ControlOrMeta+Shift+f")
   const input = page.getByRole("textbox", { name: "Search", exact: true })
   await input.fill("sidebar-refresh")
@@ -100,6 +104,8 @@ test("switching projects clears transient search and ignores a late previous-pro
   })
   try {
     await page.goto(`${apiOrigin}/?project=${rootParam}`)
+    // Keys reach the workspace once its page loads (decision 0192).
+    await expect(page.getByRole("navigation", { name: "Views" })).toBeVisible()
     await page.keyboard.press("ControlOrMeta+Shift+f")
     const input = page.getByRole("textbox", { name: "Search", exact: true })
     const results = page.getByRole("tree", { name: "Search results" })
@@ -154,6 +160,8 @@ test("an empty workspace follows the current search summary after view changes",
 test("file-history command focus and filter draft survive view changes while layout persists", async ({ page }) => {
   test.skip(!existsSync(path.join(gitFixtureRoot, ".git")), "git is not installed")
   await page.goto(`${gitApiOrigin}/view?project=${encodeURIComponent(gitFixtureRoot)}&path=clean.md`)
+  // Keys reach the workspace once its page loads (decision 0192).
+  await expect(page.getByRole("navigation", { name: "Views" })).toBeVisible()
   await page.keyboard.press("ControlOrMeta+Shift+g")
   const scm = page.getByRole("region", { name: "Source Control", exact: true })
   const commits = scm.getByRole("region", { name: "Commits", exact: true })

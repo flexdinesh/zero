@@ -134,6 +134,9 @@ type Hub struct {
 	// owners are the projects watching each directory.
 	owners        map[string]map[*project]struct{}
 	subscriptions map[*Subscription]struct{}
+	// generations numbers tree generations hub-wide, so a restarted project
+	// never repeats one (decision 0192).
+	generations uint64
 }
 
 // NewHub returns a hub that watches nothing until a subscription.
@@ -258,6 +261,21 @@ func (h *Hub) Subscribe(target Target, level Level) (*Subscription, error) {
 	}
 	p.subscribe(subscription)
 	return subscription, nil
+}
+
+// Generation reports root's tree generation while the hub follows its tree
+// at open level, watching or polling; ok is false otherwise. It moves with
+// every change the hub delivers for the tree and every mode change, so an
+// unchanged generation means no tree change was reported in between
+// (decision 0192). Changes still in the debounce window are not yet counted.
+func (h *Hub) Generation(root string) (generation uint64, ok bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	p, found := h.projects[root]
+	if !found || p.stopped || p.level != LevelOpen || p.status.Mode == ModeOff {
+		return 0, false
+	}
+	return p.generation, true
 }
 
 // watchedOff is the status of a watched subscription past MaxWatched.

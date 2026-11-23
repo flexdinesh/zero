@@ -160,14 +160,11 @@ export default defineConfig((env) => {
         try {
           await context.addInitScript((project) => sessionStorage.setItem(`zero-preview:${project}`, "1"), live.root)
           const page = await context.newPage()
-          // Keep the real server's initial data/API and CSP. Only this separate
-          // profiling context receives the profiling-enabled production assets.
+          // Keep the real server's API and CSP. Only this separate profiling
+          // context receives the profiling-enabled production assets.
           await page.route(`${origin}/view?**`, async (route) => {
             const response = await route.fetch()
-            const html = await response.text()
-            const data = /<template id="app-data">([\s\S]*?)<\/template>/.exec(html)?.[1]
-            if (data === undefined) throw new Error("Server shell has no initial data")
-            await route.fulfill({ response, body: shell.replace("{{APP_DATA}}", data) })
+            await route.fulfill({ response, body: shell })
           })
           await page.route(`${origin}/assets/**`, async (route) => {
             const name = new URL(route.request().url()).pathname.slice("/assets/".length)

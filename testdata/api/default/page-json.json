@@ -6,125 +6,18 @@
   "project": "/home/user/markdown",
   "projectUnavailable": false,
   "rootName": "markdown",
-  "repository": "", "identity": "",
+  "repository": "",
+  "identity": "",
   "projectKind": "folder",
   "branch": "",
   "worktrees": 0,
-  "tree": [
-    {
-      "name": "assets",
-      "path": "assets",
-      "isDir": true,
-      "open": false,
-      "selected": false,
-      "children": [
-        {
-          "name": "preview.png",
-          "path": "assets/preview.png",
-          "isDir": false,
-          "open": false,
-          "selected": false,
-          "children": [],
-          "fileType": "image"
-        },
-        {
-          "name": "sample.bin",
-          "path": "assets/sample.bin",
-          "isDir": false,
-          "open": false,
-          "selected": false,
-          "children": [],
-          "fileType": "text"
-        }
-      ],
-      "fileType": ""
-    },
-    {
-      "name": "config",
-      "path": "config",
-      "isDir": true,
-      "open": true,
-      "selected": false,
-      "children": [
-        {
-          "name": "broken.json",
-          "path": "config/broken.json",
-          "isDir": false,
-          "open": false,
-          "selected": false,
-          "children": [],
-          "fileType": "json"
-        },
-        {
-          "name": "settings.json",
-          "path": "config/settings.json",
-          "isDir": false,
-          "open": false,
-          "selected": true,
-          "children": [],
-          "fileType": "json"
-        }
-      ],
-      "fileType": ""
-    },
-    {
-      "name": "guides",
-      "path": "guides",
-      "isDir": true,
-      "open": false,
-      "selected": false,
-      "children": [
-        {
-          "name": "getting-started.md",
-          "path": "guides/getting-started.md",
-          "isDir": false,
-          "open": false,
-          "selected": false,
-          "children": [],
-          "fileType": "markdown"
-        }
-      ],
-      "fileType": ""
-    },
-    {
-      "name": "logs",
-      "path": "logs",
-      "isDir": true,
-      "open": false,
-      "selected": false,
-      "children": [
-        {
-          "name": "enormous.log",
-          "path": "logs/enormous.log",
-          "isDir": false,
-          "open": false,
-          "selected": false,
-          "children": [],
-          "fileType": "text"
-        },
-        {
-          "name": "huge.log",
-          "path": "logs/huge.log",
-          "isDir": false,
-          "open": false,
-          "selected": false,
-          "children": [],
-          "fileType": "text"
-        }
-      ],
-      "fileType": ""
-    }
-  ],
   "selected": "config/settings.json",
   "at": "",
   "content": "",
   "source": "{\"name\":\"zero-json-fixture\",\"large\":900719925474099312345,\"enabled\":true,\"nested\":{\"message\":\"config-search-marker\"}}\n",
   "fileSize": 120,
-  "fileCount": 7,
   "hasFile": true,
-  "empty": false,
   "error": "",
-  "warnings": [],
   "documentType": {
     "id": "json",
     "label": "JSON",

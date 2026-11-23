@@ -12,14 +12,13 @@ interface PendingDocument {
   preview: boolean
 }
 
-// Keep the project's tree and identity while the destination's file metadata
-// and content are unknown. Old content must never appear under its new tab.
+// Keep the project's identity while the destination's file metadata and
+// content are unknown; the tree is read apart (decision 0192). Old content must never appear under its new tab.
 export function pendingDocumentPage(page: PageData, document: PendingDocument): PageData {
   return {
     ...emptyPage,
     roots: page.roots, sessionKey: page.sessionKey, project: page.project, rootName: page.rootName,
     repository: page.repository, projectKind: page.projectKind, branch: page.branch, worktrees: page.worktrees,
-    tree: page.tree, fileCount: page.fileCount, warnings: page.warnings,
     selected: document.path, at: document.at,
   }
 }

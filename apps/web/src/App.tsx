@@ -118,6 +118,7 @@ import { SearchProvider, type SearchCommands } from "./features/search/SearchPro
 import type { LiveChange } from "./api/events-contract.ts"
 import { liveTargets } from "./features/live-updates/live-updates.ts"
 import { useLiveUpdates } from "./features/live-updates/use-live-updates.ts"
+import { useProjectTree } from "./workspace/use-project-tree.ts"
 import { usePresence } from "./features/live-updates/use-presence.ts"
 import { useNotificationSync } from "./features/notifications/use-notification-sync.ts"
 import { useSidebar } from "./workspace/use-sidebar.ts"
@@ -271,6 +272,10 @@ export function App({ project }: AppProps) {
   useEffect(() => {
     if (result?.kind === "page") setLastPage(result.page)
   }, [result])
+  // The tree loads apart from documents, so the workspace shows before a
+  // large folder's scan (decision 0192).
+  const projectTree = useProjectTree(project)
+  const treeFileList = useMemo(() => projectTree.tree ? filePaths(projectTree.tree.tree) : null, [projectTree.tree])
 
   const registerSearch = useCallback((commands: SearchCommands | null) => {
     searchCommands.current = commands
@@ -420,11 +425,13 @@ export function App({ project }: AppProps) {
   useProjectMemory({
     project,
     page: routedPage,
+    files: treeFileList,
     active: routedTab,
     tabs: workspace.tabs,
     welcome: settings.showWelcome === "on",
     features: tabFeatures,
     restore: workspace.restore,
+    drop: workspace.drop,
     openRemembered,
   })
   const showSourceAfterFormatFailure = useCallback((key: string) => setDocumentMode(key, "source"), [setDocumentMode])
@@ -610,7 +617,7 @@ export function App({ project }: AppProps) {
   const [reviewStatus, setReviewStatus] = useState<ReviewStatus | null>(null)
   const [expandRequest, setExpandRequest] = useState<CollapseRequest | null>(null)
   const [anyFileExpanded, setAnyFileExpanded] = useState(true)
-  const treeFiles = useMemo(() => new Set(filePaths(page.tree)), [page.tree])
+  const treeFiles = useMemo(() => new Set(treeFileList), [treeFileList])
 
   // openReview opens a compare's review tab; focusDocument moves focus to it.
   // lines selects lines in path, as a change marker does (decision 0115).
@@ -816,7 +823,6 @@ export function App({ project }: AppProps) {
   }, [navigate, prepareDocumentNavigation, project])
   // Quick Open finds every file in the tree; a line goes to the document on
   // screen when it has text (decision 0145).
-  const quickOpenFiles = useMemo(() => filePaths(page.tree), [page.tree])
   const lineTarget = searchPath && !reviewCompare && page.hasFile && !page.binary && !page.tooLarge
     && page.documentType?.previewKind !== "image" ? page.selected : ""
   const lineTargetAt = page.at
@@ -836,9 +842,11 @@ export function App({ project }: AppProps) {
   // gitVersion counts git state changes (HEAD may have moved); Source's
   // change markers reread with it.
   const [gitVersion, setGitVersion] = useState(0)
+  const { refresh: refreshTree, start: startTree } = projectTree
   const applyLiveChange = useCallback((change: LiveChange) => {
     const targets = liveTargets(change, liveDocument)
     if (targets.page) reread()
+    if (targets.tree) refreshTree()
     if (targets.changes) {
       refreshChanges()
       rereadFeedback()
@@ -849,8 +857,14 @@ export function App({ project }: AppProps) {
       setGitVersion((version) => version + 1)
     }
     if (targets.search) searchCommands.current?.markStale(searchShown)
-  }, [liveDocument, refreshChanges, refreshCommits, refreshStack, reread, rereadFeedback, searchShown])
+  }, [liveDocument, refreshChanges, refreshCommits, refreshStack, refreshTree, reread, rereadFeedback, searchShown])
   const liveStatus = useLiveUpdates(project, applyLiveChange, rereadFeedback)
+  // The tree waits for the stream's first status, so live updates follow the
+  // project when its scan is read and keep its index (decision 0192).
+  const streamReported = liveStatus !== null
+  useEffect(() => {
+    if (streamReported) startTree()
+  }, [startTree, streamReported])
   usePresence()
   const notificationStatus = useNotificationSync(project, settings)
   const languageServers = settings.languageServers === "on"
@@ -1055,7 +1069,8 @@ export function App({ project }: AppProps) {
           pendingChanges={changes.result?.files.length ?? 0}
           explorer={<FileTree
             gitStatus={gitStatus}
-            hasData={hasData}
+            tree={projectTree.tree}
+            treeFailure={projectTree.failure}
             mobile={mobileSidebar}
             visible={visibleSidebarView === "explorer"}
             onDismiss={sidebar.dismiss}
@@ -1190,6 +1205,7 @@ export function App({ project }: AppProps) {
         </section>
       </div>
       <StatusBar isLoading={isLoading || formatSlow} error={loadError || (page.project ? page.error : "")} page={page} live={liveStatus}
+        fileCount={projectTree.tree?.fileCount ?? null}
         diff={reviewCompare ? reviewStatusBar(reviewStatus, currentFile, reviewData) : undefined}
         detail={showImage && image.status === "ready" && image.width > 0
           ? `${image.width} × ${image.height} · ${image.percent}%`
@@ -1203,7 +1219,7 @@ export function App({ project }: AppProps) {
       <ProjectPicker project={project} registerOpen={registerProjects} onOpen={switchProject} />
       <SettingsDialog registerOpen={registerSettings} notificationStatus={notificationStatus} />
       <CommandPalette registerOpen={registerCommands} onRun={runCommand} onExitToFiles={showFilesFrom} wordWrap={wordWrap} />
-      <QuickOpen files={quickOpenFiles} log={historyLog} project={project} current={liveDocument} lineTarget={lineTarget}
+      <QuickOpen files={treeFileList} log={historyLog} project={project} current={liveDocument} lineTarget={lineTarget}
         registerOpen={registerQuickOpen} beforeShow={sidebar.dismiss} onOpen={openQuickOpenFile} onGoToLine={goToLine}
         onCommands={showCommandsFrom} />
       <ColorThemePicker registerOpen={registerColorTheme} />

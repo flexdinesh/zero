@@ -345,8 +345,8 @@ func TestWalkthroughShellPageAndSchema(t *testing.T) {
 	if response := request(t, app, "/view?project=.&wt=tour"); response.Code != http.StatusOK {
 		t.Errorf("walkthrough shell page = %d", response.Code)
 	}
-	if response := request(t, app, "/view?project=.&wt="); response.Code != http.StatusBadRequest {
-		t.Errorf("empty wt shell page = %d, want a file required", response.Code)
+	if response := request(t, app, "/api/page?project=.&path="); response.Code != http.StatusBadRequest {
+		t.Errorf("empty selection page = %d, want a file required", response.Code)
 	}
 	response := request(t, app, "/api/walkthrough-schema")
 	if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "application/schema+json" || !bytes.Equal(response.Body.Bytes(), walkthrough.Schema) {

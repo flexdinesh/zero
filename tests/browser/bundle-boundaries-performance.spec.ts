@@ -185,10 +185,9 @@ function serveProfilingBuild(directory: string) {
     })
     await page.route(`${origin}/**`, async (route) => {
       if (!route.request().isNavigationRequest()) return route.fallback()
+      // The shell embeds no data (decision 0192): keep the server's headers.
       const response = await route.fetch()
-      const data = (await response.text()).match(/<template id="app-data">([\s\S]*?)<\/template>/u)?.[1]
-      if (data === undefined) throw new Error("Server shell has no initial data")
-      await route.fulfill({ response, body: shell.replace("{{APP_DATA}}", () => data) })
+      await route.fulfill({ response, body: shell })
     })
   }
 }
@@ -205,7 +204,7 @@ test("bundle boundaries production and React profiling @extended", async ({ brow
     browser: browser.version(), node: process.version, platform: process.platform, cpu: cpus()[0]?.model,
     fixture: "live copy of tests/browser/git-fixture.ts, one Go server for the run",
     extendedFixture: process.env.ZERO_BROWSER_EXTENDED === "1", sourceFile, viewport, repetitions,
-    protocol: "Five fresh Chromium contexts per build and scenario. Cold navigation starts at the document time origin. First-open samples start at trusted pointerdown from an already settled Source or Welcome; review also prepares the Uncommitted list. Readiness marks the frame after the named content becomes visible. The trace includes two animation frames and a 250 ms tail. Network covers actual same-origin /assets/ responses, including worker requests visible to Playwright. Profiling uses the same embedded data and API endpoints with a separately built profiling React root.",
+    protocol: "Five fresh Chromium contexts per build and scenario. Cold navigation starts at the document time origin. First-open samples start at trusted pointerdown from an already settled Source or Welcome; review also prepares the Uncommitted list. Readiness marks the frame after the named content becomes visible. The trace includes two animation frames and a 250 ms tail. Network covers actual same-origin /assets/ responses, including worker requests visible to Playwright. Profiling uses the same API endpoints with a separately built profiling React root.",
     reports,
   }, null, 2))
   try {

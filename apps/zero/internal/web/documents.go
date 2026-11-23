@@ -73,6 +73,13 @@ func (a *App) serveRaw(w http.ResponseWriter, projectID, name string) {
 	_, _ = io.Copy(w, raw.File)
 }
 
+// serveTree writes a project's tree at its outcome's status; a failed tree
+// still carries its project and error (decision 0192).
+func (a *App) serveTree(w http.ResponseWriter, projectID string) {
+	data, err := a.app.Documents.Tree(contract.TreeRequest{Project: projectID})
+	writeJSON(w, statusOf(err), data)
+}
+
 // servePageData writes a page at its outcome's status; a failed page still
 // carries its project and error.
 func (a *App) servePageData(w http.ResponseWriter, projectID, selected, at string, required bool) {

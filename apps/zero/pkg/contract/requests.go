@@ -1,6 +1,11 @@
 package contract
 
-// PageRequest selects a project's tree and, optionally, one document. Path
+// TreeRequest reads a project's file tree (decision 0192).
+type TreeRequest struct {
+	Project string
+}
+
+// PageRequest selects a project and, optionally, one document. Path
 // names the document; Required reports that one must be selected (HTTP: the
 // path parameter was sent, even empty). At, a full commit hash, reads the
 // document from that commit instead of the working tree.

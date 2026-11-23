@@ -17,6 +17,11 @@ function readWidth(): number {
   }
 }
 
+// savedSidebarWidth is the width the sidebar opens at in this window.
+export function savedSidebarWidth(): number {
+  return clampWidth(readWidth(), Math.max(minimumWidth, Math.floor(window.innerWidth / 2)))
+}
+
 function writeWidth(width: number) {
   try {
     window.localStorage.setItem(storageKey, String(width))

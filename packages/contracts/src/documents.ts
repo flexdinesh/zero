@@ -67,9 +67,35 @@ export function isTreeNode(value: unknown): value is TreeNode {
     && isArrayOf(value.children, isTreeNode)
 }
 
-// PageData is GET /api/page and the shell's embedded page: a project's tree
-// and, when one is selected, a document. A failed page still carries its
-// project and the failure in Error.
+// TreeData is GET /api/tree: a project's file tree, read apart from its
+// documents so a page shows before a large folder's scan (decision 0192). A
+// failed tree still carries its project and the failure in Error.
+export interface TreeData {
+  project: string
+  tree: TreeNode[]
+  fileCount: number
+  empty: boolean
+  error: string
+  // errorCode classifies Error when it has a code, e.g. CodePrivacyBlocked
+  // for a project folder zero cannot read (decision 0146).
+  errorCode?: string
+  warnings: string[]
+}
+
+export function isTreeData(value: unknown): value is TreeData {
+  return isRecord(value)
+    && isString(value.project)
+    && isArrayOf(value.tree, isTreeNode)
+    && isNumber(value.fileCount)
+    && isBoolean(value.empty)
+    && isString(value.error)
+    && (value.errorCode === undefined || isString(value.errorCode))
+    && isArrayOf(value.warnings, isString)
+}
+
+// PageData is GET /api/page: a project and, when one is selected, a
+// document. Its tree is TreeData (decision 0192). A failed page still
+// carries its project and the failure in Error.
 export interface PageData {
   // roots are the served roots.
   roots: string[]
@@ -91,7 +117,6 @@ export interface PageData {
   branch: string
   // worktrees counts the repository's checkouts; above 1 it has worktrees.
   worktrees: number
-  tree: TreeNode[]
   selected: string
   // at is the full commit hash the selected document was read from, or
   // empty for the working tree. Snapshots have Source and Format only.
@@ -99,14 +124,11 @@ export interface PageData {
   content: string
   source: string
   fileSize: number
-  fileCount: number
   hasFile: boolean
-  empty: boolean
   error: string
   // errorCode classifies Error when it has a code, e.g. CodePrivacyBlocked
   // for a project folder zero cannot read (decision 0146).
   errorCode?: string
-  warnings: string[]
   // documentType is the selected document's type; null without one.
   documentType: FileType | null
   navigationSupported: boolean
@@ -132,18 +154,14 @@ export function isPageData(value: unknown): value is PageData {
     && isProjectKind(value.projectKind)
     && isString(value.branch)
     && isNumber(value.worktrees)
-    && isArrayOf(value.tree, isTreeNode)
     && isString(value.selected)
     && isString(value.at)
     && isString(value.content)
     && isString(value.source)
     && isNumber(value.fileSize)
-    && isNumber(value.fileCount)
     && isBoolean(value.hasFile)
-    && isBoolean(value.empty)
     && isString(value.error)
     && (value.errorCode === undefined || isString(value.errorCode))
-    && isArrayOf(value.warnings, isString)
     && (value.documentType === null || isFileType(value.documentType))
     && isBoolean(value.navigationSupported)
     && isBoolean(value.binary)

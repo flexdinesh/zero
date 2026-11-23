@@ -357,10 +357,35 @@ func (d *Documents) Format(request contract.FormatRequest) (contract.FormatResul
 	return contract.FormatResult{Formatted: string(formatted)}, nil
 }
 
-// Page reads a project's tree and, when request.Path is set, that document:
-// from the working tree, or with At (a full commit hash) from that commit.
-// It always returns a page; a failure also returns the *Error whose message
-// the page carries.
+// Tree reads a project's file tree (GET /api/tree). It always returns a
+// tree; a failure also returns the *Error whose message the tree carries.
+// Nodes carry no selection: the tree is read once per project, apart from
+// its documents (decision 0192).
+func (d *Documents) Tree(request contract.TreeRequest) (contract.TreeData, error) {
+	project, err := ResolveProject(d.config.Roots.List(), request.Project)
+	if err != nil {
+		failure := AsError(err)
+		return contract.TreeData{Project: request.Project, Tree: []contract.TreeNode{}, Error: failure.Message, ErrorCode: failure.Code, Warnings: []string{}}, failure
+	}
+	index, err := d.scan(project.Root)
+	if err != nil {
+		failure := scanError(project.Root, err)
+		return contract.TreeData{Project: project.ID, Tree: []contract.TreeNode{}, Error: failure.Message, ErrorCode: failure.Code, Warnings: []string{}}, failure
+	}
+	return contract.TreeData{
+		Project:   project.ID,
+		Tree:      d.makeTree(index.Tree.Children, ""),
+		FileCount: len(index.Files),
+		Empty:     len(index.Files) == 0,
+		Warnings:  warningStrings(index.Warnings),
+	}, nil
+}
+
+// Page reads a project and, when request.Path is set, that document: from
+// the working tree, or with At (a full commit hash) from that commit. It
+// reads no tree (Tree does, decision 0192), so a page without a working-tree
+// document never scans the project. It always returns a page; a failure also
+// returns the *Error whose message the page carries.
 func (d *Documents) Page(request contract.PageRequest) (contract.PageData, error) {
 	roots := d.config.Roots.List()
 	selected, at := request.Path, request.At
@@ -374,52 +399,28 @@ func (d *Documents) Page(request contract.PageRequest) (contract.PageData, error
 			ProjectUnavailable: true,
 			ProjectKind:        contract.ProjectFolder,
 			Selected:           selected,
-			Tree:               []contract.TreeNode{},
 			Error:              failure.Message,
-			Warnings:           []string{},
 		}, failure
 	}
 	checkout := projects.Inspect(project.Root)
-	index, err := d.scan(project.Root)
-	if err != nil {
-		failure := scanError(project.Root, err)
-		return contract.PageData{
-			Roots:       roots,
-			SessionKey:  d.sessionKey(roots),
-			Project:     project.ID,
-			RootName:    filepath.Base(project.Root),
-			Repository:  checkout.Repository,
-			Identity:    checkout.Identity,
-			ProjectKind: contract.ProjectKind(checkout.Kind),
-			Branch:      checkout.Branch,
-			Worktrees:   checkout.Worktrees,
-			Tree:        []contract.TreeNode{},
-			Error:       failure.Message,
-			ErrorCode:   failure.Code,
-			Warnings:    []string{},
-		}, failure
-	}
 	data := contract.PageData{
 		Roots:       roots,
 		SessionKey:  d.sessionKey(roots),
 		Project:     project.ID,
-		RootName:    filepath.Base(index.RootPath()),
+		RootName:    filepath.Base(project.Root),
 		Repository:  checkout.Repository,
 		Identity:    checkout.Identity,
 		ProjectKind: contract.ProjectKind(checkout.Kind),
 		Branch:      checkout.Branch,
 		Worktrees:   checkout.Worktrees,
 		Selected:    selected,
-		FileCount:   len(index.Files),
-		Empty:       len(index.Files) == 0,
-		Warnings:    warningStrings(index.Warnings),
 	}
-	// A commit document selects no working-tree file.
-	treeSelected := selected
-	if at != "" {
-		treeSelected = ""
+	// A folder zero cannot read explains itself without a scan (0146).
+	if err := CheckFolder(project.Root); err != nil {
+		failure := AsError(err)
+		data.Error, data.ErrorCode = failure.Message, failure.Code
+		return data, failure
 	}
-	data.Tree = d.makeTree(index.Tree.Children, treeSelected)
 	if (request.Required || at != "") && selected == "" {
 		data.Error = "No file was selected."
 		return data, fail(contract.KindInvalid, data.Error)
@@ -442,6 +443,13 @@ func (d *Documents) Page(request contract.PageRequest) (contract.PageData, error
 			return data, failure
 		}
 	} else {
+		// Only an indexed path opens; a followed project's index is kept.
+		index, err := d.scan(project.Root)
+		if err != nil {
+			failure := scanError(project.Root, err)
+			data.Error, data.ErrorCode = failure.Message, failure.Code
+			return data, failure
+		}
 		resolved, err := index.Resolve(selected)
 		if err != nil {
 			kind := contract.KindNotFound

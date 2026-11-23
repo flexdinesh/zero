@@ -25,7 +25,10 @@ type Client interface {
 	OpenRoot(ctx context.Context, path string) (contract.OpenedRoot, error)
 	// RemoveRoot stops serving a root (decision 0146).
 	RemoveRoot(ctx context.Context, root string) (contract.RemovedRoot, error)
-	// Page reads a project's tree and, optionally, a document. A failed page
+	// Tree reads a project's file tree (decision 0192). A failed tree returns
+	// both the tree, which carries its project and error, and an *Error.
+	Tree(ctx context.Context, request contract.TreeRequest) (contract.TreeData, error)
+	// Page reads a project and, optionally, a document. A failed page
 	// returns both the page, which carries its project and error, and an
 	// *Error.
 	Page(ctx context.Context, request contract.PageRequest) (contract.PageData, error)

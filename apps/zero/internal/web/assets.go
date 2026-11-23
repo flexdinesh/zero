@@ -2,13 +2,9 @@ package web
 
 import (
 	"embed"
-	"encoding/json"
 	"io/fs"
 	"net/http"
 	"path"
-	"strings"
-
-	"github.com/flexdinesh/zero/pkg/contract"
 )
 
 //go:embed dist vendor/PX0-LICENSE.txt
@@ -55,14 +51,9 @@ func (a *App) serveFrontendAsset(w http.ResponseWriter, name string) {
 	_, _ = w.Write(content)
 }
 
-func (a *App) serveShell(w http.ResponseWriter, status int, data *contract.PageData) {
-	encoded, err := json.Marshal(data)
-	if err != nil {
-		http.Error(w, "could not render page", http.StatusInternalServerError)
-		return
-	}
-	content := strings.Replace(a.shell, "{{APP_DATA}}", string(encoded), 1)
+// serveShell writes the app shell; pages read their data from the API.
+func (a *App) serveShell(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(status)
-	_, _ = w.Write([]byte(content))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(a.shell))
 }

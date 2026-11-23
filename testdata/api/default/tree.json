@@ -1,0 +1,223 @@
+{
+  "project": "/home/user/markdown",
+  "tree": [
+    {
+      "fileType": "",
+      "name": "assets",
+      "path": "assets",
+      "isDir": true,
+      "open": false,
+      "selected": false,
+      "children": [
+        {
+          "fileType": "image",
+          "name": "preview.png",
+          "path": "assets/preview.png",
+          "isDir": false,
+          "open": false,
+          "selected": false,
+          "children": []
+        },
+        {
+          "fileType": "text",
+          "name": "sample.bin",
+          "path": "assets/sample.bin",
+          "isDir": false,
+          "open": false,
+          "selected": false,
+          "children": []
+        }
+      ]
+    },
+    {
+      "fileType": "",
+      "name": "code",
+      "path": "code",
+      "isDir": true,
+      "open": false,
+      "selected": false,
+      "children": [
+        {
+          "fileType": "javascript",
+          "name": "app.js",
+          "path": "code/app.js",
+          "isDir": false,
+          "open": false,
+          "selected": false,
+          "children": []
+        },
+        {
+          "fileType": "css",
+          "name": "styles.css",
+          "path": "code/styles.css",
+          "isDir": false,
+          "open": false,
+          "selected": false,
+          "children": []
+        }
+      ]
+    },
+    {
+      "fileType": "",
+      "name": "config",
+      "path": "config",
+      "isDir": true,
+      "open": false,
+      "selected": false,
+      "children": [
+        {
+          "fileType": "json",
+          "name": "broken.json",
+          "path": "config/broken.json",
+          "isDir": false,
+          "open": false,
+          "selected": false,
+          "children": []
+        },
+        {
+          "fileType": "json",
+          "name": "settings.json",
+          "path": "config/settings.json",
+          "isDir": false,
+          "open": false,
+          "selected": false,
+          "children": []
+        }
+      ]
+    },
+    {
+      "fileType": "",
+      "name": "guides",
+      "path": "guides",
+      "isDir": true,
+      "open": false,
+      "selected": false,
+      "children": [
+        {
+          "fileType": "markdown",
+          "name": "code-blocks.md",
+          "path": "guides/code-blocks.md",
+          "isDir": false,
+          "open": false,
+          "selected": false,
+          "children": []
+        },
+        {
+          "fileType": "markdown",
+          "name": "diagrams.md",
+          "path": "guides/diagrams.md",
+          "isDir": false,
+          "open": false,
+          "selected": false,
+          "children": []
+        },
+        {
+          "fileType": "markdown",
+          "name": "getting-started.md",
+          "path": "guides/getting-started.md",
+          "isDir": false,
+          "open": false,
+          "selected": false,
+          "children": []
+        },
+        {
+          "fileType": "mermaid",
+          "name": "request-flow.mmd",
+          "path": "guides/request-flow.mmd",
+          "isDir": false,
+          "open": false,
+          "selected": false,
+          "children": []
+        }
+      ]
+    },
+    {
+      "fileType": "",
+      "name": "logs",
+      "path": "logs",
+      "isDir": true,
+      "open": false,
+      "selected": false,
+      "children": [
+        {
+          "fileType": "text",
+          "name": "enormous.log",
+          "path": "logs/enormous.log",
+          "isDir": false,
+          "open": false,
+          "selected": false,
+          "children": []
+        },
+        {
+          "fileType": "text",
+          "name": "huge.log",
+          "path": "logs/huge.log",
+          "isDir": false,
+          "open": false,
+          "selected": false,
+          "children": []
+        }
+      ]
+    },
+    {
+      "fileType": "",
+      "name": "navigation",
+      "path": "navigation",
+      "isDir": true,
+      "open": false,
+      "selected": false,
+      "children": [
+        {
+          "fileType": "",
+          "name": "web",
+          "path": "navigation/web",
+          "isDir": true,
+          "open": false,
+          "selected": false,
+          "children": [
+            {
+              "fileType": "tsx",
+              "name": "app.tsx",
+              "path": "navigation/web/app.tsx",
+              "isDir": false,
+              "open": false,
+              "selected": false,
+              "children": []
+            },
+            {
+              "fileType": "typescript",
+              "name": "label.ts",
+              "path": "navigation/web/label.ts",
+              "isDir": false,
+              "open": false,
+              "selected": false,
+              "children": []
+            }
+          ]
+        },
+        {
+          "fileType": "go",
+          "name": "format.go",
+          "path": "navigation/format.go",
+          "isDir": false,
+          "open": false,
+          "selected": false,
+          "children": []
+        },
+        {
+          "fileType": "go",
+          "name": "greet.go",
+          "path": "navigation/greet.go",
+          "isDir": false,
+          "open": false,
+          "selected": false,
+          "children": []
+        }
+      ]
+    }
+  ],
+  "fileCount": 16,
+  "empty": false,
+  "error": "",
+  "warnings": []
+}

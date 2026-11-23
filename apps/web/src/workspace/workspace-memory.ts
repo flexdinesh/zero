@@ -130,16 +130,24 @@ export interface RestoredTabs {
 // Diff and commit tabs restore regardless: a deleted file has a diff but no
 // tree entry. Browser and screen tabs restore only where the window offers
 // them (decision 0184).
-export function restoreTabs(memory: ProjectMemory | undefined, files: ReadonlySet<string>, features: TabFeatures): RestoredTabs {
+// files is the project's tree, or null before it loads: documents are then
+// kept unchecked until missingTabs drops the removed ones (decision 0192).
+export function restoreTabs(memory: ProjectMemory | undefined, files: ReadonlySet<string> | null, features: TabFeatures): RestoredTabs {
   const tabs: WorkspaceTab[] = []
   for (const entry of memory?.tabs ?? []) {
     const tab = parseStoredTab(entry)
     // Snapshots read git, not the tree; they restore whatever the tree holds.
-    if (tab && offeredTab(tab, features) && (tab.kind !== "document" || tab.at || files.has(tab.path)) && !includesTab(tabs, tab)) tabs.push(tab)
+    if (tab && offeredTab(tab, features) && (tab.kind !== "document" || tab.at || files === null || files.has(tab.path)) && !includesTab(tabs, tab)) tabs.push(tab)
   }
   const remembered = parseStoredTab(memory?.active)
   const active = tabs.find((tab) => sameTab(tab, remembered)) ?? null
   return { tabs, active }
+}
+
+// missingTabs are the working-tree documents among tabs that the tree no
+// longer holds, but active, which stays to say its file is gone.
+export function missingTabs(tabs: readonly WorkspaceTab[], files: ReadonlySet<string>, active: WorkspaceTab | null): WorkspaceTab[] {
+  return tabs.filter((tab) => tab.kind === "document" && !tab.at && !files.has(tab.path) && !sameTab(tab, active))
 }
 
 // startupTab is the tab a project opens on when its route names none: the

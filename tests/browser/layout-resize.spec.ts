@@ -43,6 +43,8 @@ async function frames(page: Page) {
 async function openLayout(page: Page, origin = gitApiOrigin, root = gitFixtureRoot) {
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.goto(`${origin}/view?project=${encodeURIComponent(root)}&review=branch&uncommitted=1#f=src/app.ts`)
+  // Keys reach the workspace once its page loads (decision 0192).
+  await expect(page.getByRole("navigation", { name: "Views" })).toBeVisible()
   await page.keyboard.press("ControlOrMeta+Shift+g")
   await expect(sourceControl(page).getByRole("listbox", { name: "Uncommitted changes" })).toBeVisible()
   await expect(sourceControl(page).getByRole("listbox", { name: "Commits", exact: true }).getByRole("option").first()).toBeVisible()
@@ -436,6 +438,8 @@ test("hiding Source Control commits the latest pane preview", async ({ page }) =
 
 test("Activity hiding the kept review commits its final rail width before pointer release", async ({ page }) => {
   await openLayout(page)
+  // Keys reach the workspace once its page loads (decision 0192).
+  await expect(page.getByRole("navigation", { name: "Views" })).toBeVisible()
   await page.keyboard.press("ControlOrMeta+p")
   const field = page.getByRole("dialog", { name: "Go to file" }).getByRole("combobox", { name: "Go to file" })
   await field.fill("src/app.ts")

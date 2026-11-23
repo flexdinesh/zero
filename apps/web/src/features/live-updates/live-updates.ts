@@ -2,8 +2,10 @@ import type { LiveChange, LiveStatus } from "../../api/events-contract.ts"
 
 // LiveTargets are what one change rereads (decision 0050).
 export interface LiveTargets {
-  // page rereads the routed page: the tree and the open document.
+  // page rereads the routed page's open document.
   page: boolean
+  // tree rereads the project's file tree.
+  tree: boolean
   // changes rereads the working-tree change list.
   changes: boolean
   // history rereads commits and the branch stack.
@@ -19,7 +21,9 @@ export function liveTargets(change: LiveChange, document: string): LiveTargets {
   const all = change.overflow
   const files = change.paths.length > 0
   return {
-    page: all || change.tree || (document !== "" && change.paths.includes(document)),
+    // The page carries no tree (decision 0192): it rereads for its document.
+    page: all || (document !== "" && change.paths.includes(document)),
+    tree: all || change.tree,
     changes: all || change.git || files,
     history: all || change.git,
     search: all || change.tree || files,

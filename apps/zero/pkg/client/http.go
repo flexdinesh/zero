@@ -92,6 +92,23 @@ func (c *HTTP) RemoveRoot(ctx context.Context, root string) (contract.RemovedRoo
 	return removed, answer(response, &removed)
 }
 
+func (c *HTTP) Tree(ctx context.Context, request contract.TreeRequest) (contract.TreeData, error) {
+	response, err := c.do(ctx, http.MethodGet, "/api/tree", url.Values{"project": {request.Project}}, nil)
+	if err != nil {
+		return contract.TreeData{}, err
+	}
+	defer func() { _ = response.Body.Close() }()
+	// A tree answers at any status and carries its own error.
+	var tree contract.TreeData
+	if err := decode(response.Body, &tree); err != nil {
+		return contract.TreeData{}, fmt.Errorf("zero: tree answer (%s): %w", response.Status, err)
+	}
+	if response.StatusCode != http.StatusOK {
+		return tree, &Error{Kind: contract.KindForStatus(response.StatusCode), Code: tree.ErrorCode, Message: tree.Error}
+	}
+	return tree, nil
+}
+
 func (c *HTTP) Page(ctx context.Context, request contract.PageRequest) (contract.PageData, error) {
 	query := url.Values{"project": {request.Project}}
 	if request.Required || request.Path != "" {

@@ -47,6 +47,9 @@ async function startBrowsing(page: Page) {
 test("a repository opens into its worktrees, which open and are remembered", async ({ page }) => {
   await mockProjects(page)
   await page.goto(`/?project=${rootParam}`)
+  // The Explorer, which holds the trigger, remounts once its tree arrives
+  // (decision 0192).
+  await expect(page.getByRole("treeitem", { name: "guides" })).toBeVisible()
   await trigger(page).click()
   await expect(picker(page).getByRole("option", { name: /^reference/ })).toBeVisible()
   await pickerInput(page).press("ArrowDown")
@@ -75,6 +78,9 @@ test("a repository opens into its worktrees, which open and are remembered", asy
 test("browsing opens folders, which stay listed until forgotten", async ({ page }) => {
   await mockProjects(page)
   await page.goto(`/?project=${rootParam}`)
+  // The Explorer, which holds the trigger, remounts once its tree arrives
+  // (decision 0192).
+  await expect(page.getByRole("treeitem", { name: "guides" })).toBeVisible()
   await trigger(page).click()
   await startBrowsing(page)
   await expect(picker(page).getByRole("listbox", { name: "Folders" })).toBeVisible()
@@ -117,6 +123,9 @@ test("browsing does not enter repositories but opens them whole", async ({ page 
     await route.fulfill({ response, json: { ...json, directories } })
   })
   await page.goto(`/?project=${rootParam}`)
+  // The Explorer, which holds the trigger, remounts once its tree arrives
+  // (decision 0192).
+  await expect(page.getByRole("treeitem", { name: "guides" })).toBeVisible()
   await trigger(page).click()
   await startBrowsing(page)
   await pickerInput(page).pressSequentially("gui")

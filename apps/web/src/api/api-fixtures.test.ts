@@ -5,8 +5,8 @@ import test from "node:test"
 import {
   isBlameResponse, isBranchFilesResponse, isDiagnostics, isChangesResponse, isCommitFilesResponse, isCommitsResponse, isCompareStatsResponse, isDiffResponse,
   isDirectoriesResponse, isErrorResponse, isFeedback, isFeedbackSummary, isFormatResult, isNavigationResult, isNavigationStatus, isPageData, isProcessMetrics,
-  isProjectsResponse, isRangeFilesResponse, isRefsResponse, isSearchDocumentsResponse, isStackResponse, isWalkthrough,
-  isWalkthroughSummary, type DiffResponse, type PageData,
+  isProjectsResponse, isRangeFilesResponse, isRefsResponse, isSearchDocumentsResponse, isStackResponse, isTreeData, isWalkthrough,
+  isWalkthroughSummary, type DiffResponse, type PageData, type TreeData,
 } from "@zero/contracts"
 import { feedbackUnavailableCode } from "./feedback-data.ts"
 import { unknownBaseCode, unknownHeadCode } from "./source-control-messages.ts"
@@ -72,18 +72,13 @@ async function page(name: string): Promise<PageData> {
   return value
 }
 
-test("page fixtures count the files their trees list", async () => {
-  const files = (nodes: PageData["tree"]): number =>
+test("the tree fixture counts the files it lists", async () => {
+  const files = (nodes: TreeData["tree"]): number =>
     nodes.reduce((count, node) => count + (node.isDir ? files(node.children) : 1), 0)
-  for (const name of [
-    "page-index.json", "page-document.json", "page-missing.json", "page-json.json",
-    "page-json-broken.json", "page-image.json", "page-binary.json", "page-large.json", "page-too-large.json", "page-go.json",
-    "page-commit.json", "page-diagrams.json", "page-mermaid.json", "page-code-blocks.json", "page-js.json", "page-css.json",
-  ]) {
-    const value = await fixture(name)
-    assert.ok(isPageData(value), name)
-    assert.equal(value.fileCount, files(value.tree), name)
-  }
+  const value = await fixture("tree.json")
+  assert.ok(isTreeData(value))
+  assert.equal(value.fileCount, files(value.tree))
+  assert.equal(value.empty, value.fileCount === 0)
 })
 
 test("page fixtures follow document-shape invariants", async () => {

@@ -777,3 +777,61 @@ func TestDowngradeFromPollingWatchesGitState(t *testing.T) {
 	switchBranch(t, root, "other")
 	wantGitOnly(t, nextChange(t, watched))
 }
+
+func TestGenerationMovesWithTreeChangesWhileFollowedOpen(t *testing.T) {
+	root := tempRoot(t)
+	write(t, filepath.Join(root, "a.md"), "one")
+	hub := newTestHub(t)
+	if _, ok := hub.Generation(root); ok {
+		t.Fatal("Generation reported an unfollowed project")
+	}
+	s := subscribe(t, hub, dirsTarget(t, root))
+	nextStatus(t, s)
+	first, ok := hub.Generation(root)
+	if !ok {
+		t.Fatal("Generation did not report an open project")
+	}
+	if again, _ := hub.Generation(root); again != first {
+		t.Fatalf("Generation moved without a change: %d, then %d", first, again)
+	}
+
+	write(t, filepath.Join(root, "a.md"), "two")
+	nextChange(t, s)
+	written, ok := hub.Generation(root)
+	if !ok || written == first {
+		t.Fatalf("Generation = %d, %t after a write; want a new one than %d", written, ok, first)
+	}
+	write(t, filepath.Join(root, "b.md"), "new")
+	nextChange(t, s)
+	if created, _ := hub.Generation(root); created == written {
+		t.Fatalf("Generation = %d after a create, want it to move", created)
+	}
+}
+
+func TestGenerationIsNotReportedForWatchedOrStoppedProjects(t *testing.T) {
+	root := tempRoot(t)
+	hub := newTestHub(t)
+	target, _ := gitTarget(t, root)
+	watched := subscribeAt(t, hub, target, LevelWatched)
+	nextStatus(t, watched)
+	if _, ok := hub.Generation(root); ok {
+		t.Fatal("Generation reported a project followed at watched level only")
+	}
+	watched.Close()
+
+	other := tempRoot(t)
+	s, err := hub.Subscribe(dirsTarget(t, other), LevelOpen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nextStatus(t, s)
+	before, _ := hub.Generation(other)
+	s.Close()
+	eventually(t, func() bool { _, ok := hub.Generation(other); return !ok }, "Generation still reported after grace")
+	// A restart never repeats a generation.
+	again := subscribe(t, hub, dirsTarget(t, other))
+	nextStatus(t, again)
+	if after, ok := hub.Generation(other); !ok || after == before {
+		t.Fatalf("Generation = %d, %t after restart, want one other than %d", after, ok, before)
+	}
+}
