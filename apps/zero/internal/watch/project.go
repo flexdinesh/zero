@@ -43,6 +43,8 @@ type project struct {
 	// it walks the tree as well as git state.
 	stopPoll chan struct{}
 	pollTree bool
+	// generation is the tree generation Hub.Generation reports.
+	generation uint64
 }
 
 // newProject registers a project for target that follows nothing yet.
@@ -65,6 +67,7 @@ func (h *Hub) newProject(target Target) *project {
 func (p *project) open() {
 	started := p.level != 0
 	p.level = LevelOpen
+	p.advance()
 	dirs, entries, err := p.target.Directories()
 	if err != nil {
 		p.status = Status{Mode: ModeOff, Reason: fmt.Sprintf("Couldn't list the project's directories: %v.", err)}
@@ -199,6 +202,7 @@ func (p *project) releaseTree() {
 
 // pollAll polls the tree and git state at open level.
 func (p *project) pollAll(dirs []string, reason string) {
+	p.advance()
 	p.release()
 	p.startPolling(dirs, true, reason)
 	p.status = Status{Mode: ModePolling, Reason: reason}
@@ -527,6 +531,9 @@ func (p *project) listedDirs() []string {
 // deliver sends change to open subscribers and, when git state changed,
 // Change{Git: true} to watched subscribers.
 func (p *project) deliver(change Change) {
+	if len(change.Paths) > 0 || change.Tree || change.Overflow {
+		p.advance()
+	}
 	for subscription := range p.subscribers {
 		switch {
 		case subscription.level == LevelOpen:
@@ -535,6 +542,12 @@ func (p *project) deliver(change Change) {
 			subscription.addChange(Change{Git: true}, p.hub.options.MaxPaths)
 		}
 	}
+}
+
+// advance starts a new tree generation: what a scan read may have changed.
+func (p *project) advance() {
+	p.hub.generations++
+	p.generation = p.hub.generations
 }
 
 // batch accumulates changes; past the path cap it only reports overflow.

@@ -50,6 +50,14 @@ func (c *Client) RemoveRoot(ctx context.Context, root string) (contract.RemovedR
 	return call(ctx, func() (contract.RemovedRoot, error) { return c.app.Projects.RemoveRoot(root) })
 }
 
+func (c *Client) Tree(ctx context.Context, request contract.TreeRequest) (contract.TreeData, error) {
+	if err := ctx.Err(); err != nil {
+		return contract.TreeData{}, err
+	}
+	tree, err := c.app.Documents.Tree(request)
+	return tree, clientError(err)
+}
+
 func (c *Client) Page(ctx context.Context, request contract.PageRequest) (contract.PageData, error) {
 	if err := ctx.Err(); err != nil {
 		return contract.PageData{}, err

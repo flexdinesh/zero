@@ -222,6 +222,8 @@ export function mockFixtureName(method: string, rawURL: string): MockFixture | u
       return { name: "projects.json", status: 200 }
     case "/directories":
       return { name: "directories.json", status: 200 }
+    case "/tree":
+      return { name: "tree.json", status: 200 }
     case "/page": {
       const path = url.searchParams.get("path")
       if (path === null) return { name: "page-index.json", status: 200 }

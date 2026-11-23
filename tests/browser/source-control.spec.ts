@@ -98,6 +98,8 @@ async function openReview(page: Page, search: string) {
 
 async function openSourceControl(page: Page, which = project) {
   await page.goto(`${gitApiOrigin}/?project=${which}`)
+  // Keys reach the workspace once its page loads (decision 0192).
+  await expect(page.getByRole("navigation", { name: "Views" })).toBeVisible()
   await page.keyboard.press("ControlOrMeta+Shift+g")
 }
 
@@ -1765,6 +1767,8 @@ test("the commit filter heads the pane, matches messages and hashes, and Escape 
 
 test("Show File History in the Explorer menu filters commits to the file and opens reviews at it", async ({ page }) => {
   await page.goto(`${gitApiOrigin}/?project=${project}`)
+  // Keys reach the workspace once its page loads (decision 0192).
+  await expect(page.getByRole("navigation", { name: "Views" })).toBeVisible()
   await page.keyboard.press("ControlOrMeta+Shift+e")
   await page.getByRole("treeitem", { name: "clean.md", exact: true }).click({ button: "right" })
   const menu = page.getByRole("menu", { name: "Actions for clean.md" })

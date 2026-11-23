@@ -274,6 +274,8 @@ test("failures take the stage and say what to try, a refused page stays, and clo
 
 test("Open Location takes the address field, from the app's menu and from the keyboard", async ({ page }) => {
   await openPage(page)
+  // Keys reach the workspace once its page loads (decision 0192).
+  await expect(page.getByRole("navigation", { name: "Views" })).toBeVisible()
   await page.keyboard.press("ControlOrMeta+Shift+g")
   const changes = page.getByRole("region", { name: "Source Control" }).getByRole("listbox", { name: "Uncommitted changes" })
   await changes.getByRole("option", { name: /^README\.md, / }).click()

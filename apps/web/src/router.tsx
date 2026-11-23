@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react"
+import { lazy, Suspense, type ReactElement, type ReactNode } from "react"
 import {
   createRootRoute,
   createRoute,
@@ -21,6 +21,7 @@ import { routeAt } from "./workspace/workspace-tabs.ts"
 import { routeStep, routeWalkthrough } from "./features/walkthrough/walkthrough-steps.ts"
 import { routeFeedback, routeThread } from "./features/feedback/feedback-model.ts"
 import { navigationHistoryFor } from "./workspace/navigation-history-store.ts"
+import { WorkspaceSkeleton } from "./workspace/WorkspaceSkeleton.tsx"
 
 interface PageSearch {
   [key: string]: unknown
@@ -141,6 +142,15 @@ const rootRoute = createRootRoute({
   component: RoutedApp,
 })
 
+// FirstLoad draws the workspace's frame until the first route has loaded:
+// the router publishes no match before its loaders finish, and a deep link's
+// document can wait on a large folder's scan (decision 0192). Later
+// navigations keep the workspace, which shows its own progress.
+function FirstLoad({ children }: { children: ReactNode }): ReactElement {
+  const loading: boolean = useRouterState({ select: (state) => state.matches.length === 0 })
+  return <>{loading && <WorkspaceSkeleton />}{children}</>
+}
+
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
@@ -236,6 +246,7 @@ const composerRoute = createRoute({
 const routeTree = rootRoute.addChildren([indexRoute, viewRoute, composerRoute])
 
 export const router = createRouter({
+  InnerWrap: FirstLoad,
   defaultPreload: "intent",
   defaultPreloadStaleTime: 2_000,
   routeTree,

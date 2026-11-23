@@ -69,6 +69,17 @@ export function useDocumentWorkspace(active: WorkspaceTab | null, asPreview: boo
     })
   }, [])
 
+  // drop removes tabs that were never shown, as restored tabs whose files are
+  // gone (decision 0192).
+  const drop = useCallback((dropping: readonly WorkspaceTab[]) => {
+    setWorkspace((current) => {
+      const tabs = current.tabs.filter((tab) => !includesTab(dropping, tab))
+      if (tabs.length === current.tabs.length) return current
+      const preview = current.preview && includesTab(dropping, current.preview) ? null : current.preview
+      return { ...current, tabs, preview }
+    })
+  }, [])
+
   // replaceTab puts next where tab stands, as when a review changes scope
   // (decision 0051); next already open elsewhere just drops tab.
   const replaceTab = useCallback((tab: WorkspaceTab, next: WorkspaceTab) => {
@@ -103,5 +114,5 @@ export function useDocumentWorkspace(active: WorkspaceTab | null, asPreview: boo
     return { tabs: closed, replacement: replacement ?? null }
   }
 
-  return { tabs: workspace.tabs, preview: workspace.preview, modes: workspace.modes, wordWrap: workspace.wordWrap, setDocumentMode, toggleWordWrap, closeTabs, replaceTab, restore, pin }
+  return { tabs: workspace.tabs, preview: workspace.preview, modes: workspace.modes, wordWrap: workspace.wordWrap, setDocumentMode, toggleWordWrap, closeTabs, replaceTab, restore, drop, pin }
 }

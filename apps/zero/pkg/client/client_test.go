@@ -303,6 +303,26 @@ func TestDataAPIParityAcrossTransports(t *testing.T) {
 		}
 	}
 
+	trees := []struct {
+		name    string
+		request contract.TreeRequest
+		kind    contract.ErrorKind
+	}{
+		{"tree", contract.TreeRequest{Project: f.root}, ""},
+		{"no project", contract.TreeRequest{}, contract.KindInvalid},
+		{"missing project", contract.TreeRequest{Project: filepath.Join(f.root, "gone")}, contract.KindNotFound},
+	}
+	for _, tree := range trees {
+		got := f.same(t, "Tree "+tree.name, func(c client.Client) outcome { return result(c.Tree(ctx, tree.request)) })
+		if kindOf(got.Err) != tree.kind {
+			t.Errorf("Tree %s error = %v, want kind %q", tree.name, got.Err, tree.kind)
+		}
+		data, ok := got.Value.(contract.TreeData)
+		if !ok || (got.Err != nil && data.Error != got.Err.Error()) || (got.Err == nil && data.FileCount == 0) {
+			t.Errorf("Tree %s = %+v, want the files, or the error in the tree", tree.name, got)
+		}
+	}
+
 	formats := []struct {
 		path string
 		kind contract.ErrorKind

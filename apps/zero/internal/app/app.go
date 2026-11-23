@@ -75,6 +75,8 @@ type App struct {
 // state is the configuration every service shares.
 type state struct {
 	config Config
+	// scans keeps followed projects' indexes (decision 0192).
+	scans *scanCache
 }
 
 // New composes the services over config.
@@ -106,6 +108,13 @@ func New(config Config) (*App, error) {
 		config.FeedbackDirectory = directory
 	}
 	shared := &state{config: config}
+	generation := func(string) (uint64, bool) { return 0, false }
+	if config.Watches != nil {
+		generation = config.Watches.Generation
+	}
+	shared.scans = newScanCache(scanCacheLimit, generation, func(root string) (*files.Index, error) {
+		return files.Scan(root, config.Depth, func(string) bool { return true })
+	})
 	targets := walkthroughTargets{roots: config.Roots, depth: config.Depth, types: config.Types, openFile: config.OpenFile}
 	walkthroughs := &Walkthroughs{state: shared, service: walkthrough.NewService(walkthrough.NewStore(config.WalkthroughDirectory), targets)}
 	reviews := &Feedback{state: shared, service: feedback.NewService(feedback.NewStore(config.FeedbackDirectory))}
@@ -138,8 +147,10 @@ func (s *state) sessionKey(roots []string) string {
 	return strings.Join(roots, "\n")
 }
 
+// scan reads root's index, reusing a followed project's (decision 0192).
+// Callers treat the index as read-only: it may be shared.
 func (s *state) scan(root string) (*files.Index, error) {
-	return files.Scan(root, s.config.Depth, func(string) bool { return true })
+	return s.scans.get(root)
 }
 
 func warningStrings(warnings []files.Warning) []string {

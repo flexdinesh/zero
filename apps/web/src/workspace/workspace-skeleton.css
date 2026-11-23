@@ -1,0 +1,42 @@
+/* The first load's frame (decision 0192) takes the workspace's grid: the
+   activity bar and sidebar share one pane, as in the sidebar drawer. It
+   fades in only after --delay-progress, so a quick load never flashes it. */
+.workspace-skeleton,
+.workspace-skeleton-status {
+  opacity: 0;
+  animation: workspace-skeleton-in var(--duration-base) ease-out var(--delay-progress) forwards;
+}
+
+.workspace-skeleton-pane {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Rows start where the Explorer's will, below its header. */
+.workspace-skeleton-header {
+  flex: none;
+  height: var(--chrome-height);
+}
+
+.workspace-skeleton .sidebar-resizer {
+  cursor: default;
+}
+
+@keyframes workspace-skeleton-in {
+  to { opacity: 1; }
+}
+
+@media (max-width: 48rem) {
+  .workspace-skeleton-pane {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-skeleton,
+  .workspace-skeleton-status {
+    animation-duration: var(--duration-instant);
+  }
+}

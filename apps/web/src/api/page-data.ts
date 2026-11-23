@@ -1,4 +1,4 @@
-import { isPageData, type PageData, type TreeNode } from "@zero/contracts"
+import { isPageData, isTreeData, type PageData, type TreeData, type TreeNode } from "@zero/contracts"
 
 import type { PageLoadResult } from "./page-contract.ts"
 
@@ -22,9 +22,7 @@ export const emptyPage: PageData = {
   highlightDisabled: false,
   previewError: "",
   content: "",
-  empty: false,
   error: "",
-  fileCount: 0,
   fileSize: 0,
   hasFile: false,
   rootName: "",
@@ -36,22 +34,7 @@ export const emptyPage: PageData = {
   selected: "",
   at: "",
   source: "",
-  tree: [],
-  warnings: [],
 }
-
-function readInitialPageData(): PageData | null {
-  const source = document.querySelector<HTMLTemplateElement>("#app-data")?.content.textContent.trim()
-  if (!source?.startsWith("{")) return null
-  try {
-    const data: unknown = JSON.parse(source)
-    return isPageData(data) ? data : null
-  } catch {
-    return null
-  }
-}
-
-let initialPageData = readInitialPageData()
 
 interface LoadPageOptions {
   pathname: string
@@ -63,12 +46,6 @@ interface LoadPageOptions {
 }
 
 export async function loadPage({ pathname, project, selected, at = "", signal }: LoadPageOptions): Promise<PageLoadResult> {
-  const embedded = initialPageData
-  initialPageData = null
-  if (embedded && embedded.project === project && embedded.selected === selected && embedded.at === at && (pathname === "/" || pathname === "/view")) {
-    return { kind: "page", page: embedded }
-  }
-
   let endpoint = projectUrl("/api/page", project, pathname === "/view" ? selected : undefined)
   if (pathname === "/view" && at) endpoint += `&at=${at}`
 
@@ -79,6 +56,26 @@ export async function loadPage({ pathname, project, selected, at = "", signal }:
     if (error instanceof RequestError) return { kind: "failure", message: error.message }
     throw error
   }
+}
+
+// TreeLoadResult is a project's tree, read apart from its documents so the
+// workspace shows before a large folder's scan (decision 0192).
+export type TreeLoadResult = { kind: "tree"; tree: TreeData } | { kind: "failure"; message: string }
+
+export async function loadTree(project: string, signal: AbortSignal): Promise<TreeLoadResult> {
+  try {
+    // Trees carry their own error, so any status with a tree is a tree.
+    return { kind: "tree", tree: await fetchJSON(projectUrl("/api/tree", project), { signal, anyStatus: true }, isTreeData, treeError) }
+  } catch (error: unknown) {
+    if (error instanceof RequestError) return { kind: "failure", message: error.message }
+    throw error
+  }
+}
+
+function treeError(failure: RequestFailure): string {
+  return failure.kind === "unreachable" || failure.kind === "malformed"
+    ? "Could not load files."
+    : "The server returned an invalid tree response."
 }
 
 function pageError(failure: RequestFailure): string {

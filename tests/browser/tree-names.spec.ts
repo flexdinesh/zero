@@ -36,6 +36,8 @@ async function seed(page: Page, live: { root: string; origin: string }) {
   write(live.root, "src/data.ts")
   write(live.root, `${chain}/index.mdoc`)
   await page.goto(`${live.origin}/?project=${encodeURIComponent(live.root)}`)
+  // Keys reach the workspace once its page loads (decision 0192).
+  await expect(page.getByRole("navigation", { name: "Views" })).toBeVisible()
 }
 
 test("Explorer names truncate once at the end", async ({ page, live }) => {

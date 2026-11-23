@@ -191,3 +191,4 @@ rewriting history; update `Status` on the old record.
 | [0189](0189-stdio-mcp-server.md) | `zero mcp`, a stdio MCP server for agents | Accepted; supersedes 0120's and 0176's "no MCP"; extends 0047, 0065, 0080, 0087, 0118, 0127, 0187 |
 | [0190](0190-dispatched-patch-releases.md) | Dispatched patch releases | Accepted; revises 0079 |
 | [0191](0191-open-nothing-implicitly.md) | Open nothing implicitly: no default path, `/` always asks | Accepted; supersedes 0153's only-project landing and the default `.`; extends 0068, 0098, 0146 |
+| [0192](0192-fast-first-paint.md) | Paint first, read the tree apart, keep followed scans | Accepted; extends 0050, 0080, 0191 |

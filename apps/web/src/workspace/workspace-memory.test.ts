@@ -5,6 +5,7 @@ import {
   emptyMemory,
   forgetProject,
   lastProject,
+  missingTabs,
   parseMemory,
   projectMemory,
   rememberExpanded,
@@ -187,4 +188,15 @@ test("Browser and screen tabs restore only where the window offers them (decisio
   assert.deepEqual(restoreTabs(memory, files, { browser: false, screens: false }), { tabs: [documentTab("a.md")], active: null })
   // Experimental features without the browser methods keep screen tabs only.
   assert.deepEqual(restoreTabs(memory, files, { browser: false, screens: true }).tabs, [documentTab("a.md"), screenTab("fb-3k2q8m", 5)])
+})
+
+test("documents restored before the tree are kept, then the removed ones go", () => {
+  const memory = { tabs: ["README.md", "gone.md", { path: "gone.md", at: "a".repeat(40) }], active: "gone.md" }
+  const restored = restoreTabs(memory, null, { browser: true, screens: true })
+  assert.deepEqual(restored.tabs, [documentTab("README.md"), documentTab("gone.md"), documentTab("gone.md", "a".repeat(40))])
+  assert.deepEqual(restored.active, documentTab("gone.md"))
+  const files = new Set(["README.md"])
+  // The active tab stays to say its file is gone; snapshots read git.
+  assert.deepEqual(missingTabs(restored.tabs, files, documentTab("gone.md")), [])
+  assert.deepEqual(missingTabs(restored.tabs, files, documentTab("README.md")), [documentTab("gone.md")])
 })

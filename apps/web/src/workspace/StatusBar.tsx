@@ -40,6 +40,8 @@ interface StatusBarProps {
   // navigation shows who answers code navigation for the open file.
   navigation?: ReactNode
   page: PageData
+  // fileCount counts the project's files; null while its tree loads.
+  fileCount: number | null
   error: string
   onSearch(): void
   onSettings(): void
@@ -77,7 +79,7 @@ function PlaceIndicator() {
   )
 }
 
-export function StatusBar({ detail, diff, isLoading, error, lines, live, navigation, onSearch, onSettings, onHome, onReport, page }: StatusBarProps) {
+export function StatusBar({ detail, diff, fileCount, isLoading, error, lines, live, navigation, onSearch, onSettings, onHome, onReport, page }: StatusBarProps) {
   const metrics = useProcessMetrics()
   const liveState = live ? liveIndicator(live) : null
   const pathCopy = useClipboardCopy()
@@ -123,7 +125,7 @@ export function StatusBar({ detail, diff, isLoading, error, lines, live, navigat
           </span>
         )}
         <span className="status-grow" />
-        <span className="status-file-count">{page.fileCount.toLocaleString()} files</span>
+        {fileCount !== null && <span className="status-file-count">{fileCount.toLocaleString()} files</span>}
       </div>
       <div className="status-document" role="group" aria-label="Document status">
         <span className="status-path" title={diff?.path || page.selected || page.rootName}>

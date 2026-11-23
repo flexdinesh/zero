@@ -17,6 +17,7 @@
 @import "./components/ui/badge.css" layer(ui);
 @import "./components/ui/notice.css" layer(ui);
 @import "./components/ui/progress-bar.css" layer(ui);
+@import "./components/ui/skeleton-rows.css" layer(ui);
 @import "./components/ui/copy-button.css" layer(ui);
 @import "./components/ui/change-mark.css" layer(ui);
 @import "./components/ui/view-header.css" layer(ui);
@@ -49,6 +50,7 @@
 @import "./features/navigation/navigation-dialog.css" layer(features);
 @import "./workspace/sidebar.css" layer(features);
 @import "./workspace/activity-bar.css" layer(features);
+@import "./workspace/workspace-skeleton.css" layer(features);
 @import "./features/search/search.css" layer(features);
 @import "./features/find/find.css" layer(features);
 @import "./features/source-control/source-control.css" layer(features);

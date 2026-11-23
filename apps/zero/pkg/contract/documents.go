@@ -44,9 +44,24 @@ type TreeNode struct {
 	Children []TreeNode `json:"children"`
 }
 
-// PageData is GET /api/page and the shell's embedded page: a project's tree
-// and, when one is selected, a document. A failed page still carries its
-// project and the failure in Error.
+// TreeData is GET /api/tree: a project's file tree, read apart from its
+// documents so a page shows before a large folder's scan (decision 0192). A
+// failed tree still carries its project and the failure in Error.
+type TreeData struct {
+	Project   string     `json:"project"`
+	Tree      []TreeNode `json:"tree"`
+	FileCount int        `json:"fileCount"`
+	Empty     bool       `json:"empty"`
+	Error     string     `json:"error"`
+	// ErrorCode classifies Error when it has a code, e.g. CodePrivacyBlocked
+	// for a project folder zero cannot read (decision 0146).
+	ErrorCode string   `json:"errorCode,omitempty"`
+	Warnings  []string `json:"warnings"`
+}
+
+// PageData is GET /api/page: a project and, when one is selected, a
+// document. Its tree is TreeData (decision 0192). A failed page still
+// carries its project and the failure in Error.
 //
 //contract:rule hasFile == true => documentType != null
 type PageData struct {
@@ -69,23 +84,19 @@ type PageData struct {
 	// Branch is the project's checked-out branch, empty for a folder.
 	Branch string `json:"branch"`
 	// Worktrees counts the repository's checkouts; above 1 it has worktrees.
-	Worktrees int        `json:"worktrees"`
-	Tree      []TreeNode `json:"tree"`
-	Selected  string     `json:"selected"`
+	Worktrees int    `json:"worktrees"`
+	Selected  string `json:"selected"`
 	// At is the full commit hash the selected document was read from, or
 	// empty for the working tree. Snapshots have Source and Format only.
-	At        string `json:"at"`
-	Content   string `json:"content"`
-	Source    string `json:"source"`
-	FileSize  int64  `json:"fileSize"`
-	FileCount int    `json:"fileCount"`
-	HasFile   bool   `json:"hasFile"`
-	Empty     bool   `json:"empty"`
-	Error     string `json:"error"`
+	At       string `json:"at"`
+	Content  string `json:"content"`
+	Source   string `json:"source"`
+	FileSize int64  `json:"fileSize"`
+	HasFile  bool   `json:"hasFile"`
+	Error    string `json:"error"`
 	// ErrorCode classifies Error when it has a code, e.g. CodePrivacyBlocked
 	// for a project folder zero cannot read (decision 0146).
-	ErrorCode string   `json:"errorCode,omitempty"`
-	Warnings  []string `json:"warnings"`
+	ErrorCode string `json:"errorCode,omitempty"`
 	// DocumentType is the selected document's type; null without one.
 	DocumentType        *FileType `json:"documentType"`
 	NavigationSupported bool      `json:"navigationSupported"`

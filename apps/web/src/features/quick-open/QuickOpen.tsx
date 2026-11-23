@@ -24,7 +24,8 @@ export interface QuickOpenOptions {
 }
 
 interface QuickOpenProps {
-  files: readonly string[]
+  // files is every file in the project's tree, or null while it loads.
+  files: readonly string[] | null
   log: HistoryLog
   project: string
   // current is the working-tree file on screen; recents leave it out.
@@ -57,7 +58,7 @@ const fileWord = (count: number) => `${count.toLocaleString()} ${count === 1 ? "
 // line, and `>` for commands. Arrows move, Enter opens, Escape closes.
 export function QuickOpen({ files, log, project, current, lineTarget, registerOpen, beforeShow, onOpen, onGoToLine, onCommands }: QuickOpenProps) {
   const { dialog, body, show, close } = useNativePicker(beforeShow)
-  const index = useMemo(() => indexFiles(files), [files])
+  const index = useMemo(() => indexFiles(files ?? []), [files])
   const fileSet = useMemo(() => new Set(files), [files])
 
   useEffect(() => {
@@ -86,7 +87,7 @@ export function QuickOpen({ files, log, project, current, lineTarget, registerOp
       onCancel={(event) => { event.preventDefault(); close(true) }}
       onClick={(event) => { if (event.target === dialog.current) close(true) }}
     >
-      {body && <QuickOpenBody {...body} index={index} fileSet={fileSet} fileCount={files.length} log={log} project={project}
+      {body && <QuickOpenBody {...body} index={index} fileSet={fileSet} fileCount={files?.length ?? null} log={log} project={project}
         current={current} lineTarget={lineTarget} onOpen={onOpen} onGoToLine={onGoToLine} onCommands={onCommands} />}
     </DialogShell>
   )
@@ -95,7 +96,8 @@ export function QuickOpen({ files, log, project, current, lineTarget, registerOp
 interface QuickOpenBodyProps extends PickerBodyProps, Pick<QuickOpenProps, "log" | "project" | "current" | "lineTarget" | "onOpen" | "onGoToLine" | "onCommands"> {
   index: FileIndex
   fileSet: ReadonlySet<string>
-  fileCount: number
+  // fileCount is null while the tree loads.
+  fileCount: number | null
 }
 
 function QuickOpenBody({ initialQuery, dialog, input, close, index, fileSet, fileCount, log, project, current, lineTarget, onOpen, onGoToLine, onCommands }: QuickOpenBodyProps) {
@@ -116,12 +118,13 @@ function QuickOpenBody({ initialQuery, dialog, input, close, index, fileSet, fil
     options = result.matches.map((match) => ({
       key: match.path, kind: "file", path: match.path, line: parsed.line, name: match.name, directory: match.directory,
     }))
-    if (result.total === 0) status = "No matching files"
+    if (fileCount === null) status = "Loading files…"
+    else if (result.total === 0) status = "No matching files"
     else if (result.total > result.matches.length) status = `Showing ${result.matches.length} of ${result.total.toLocaleString()} matches`
   } else if (parsed.kind === "files") {
     options = recents.map((path) => ({ key: path, kind: "file", path, line: parsed.line, name: [], directory: [] }))
     if (options.length) group = "recently opened"
-    else status = fileCount ? `Type to search ${fileWord(fileCount)}` : "No files in this project"
+    else status = fileCount === null ? "Loading files…" : fileCount ? `Type to search ${fileWord(fileCount)}` : "No files in this project"
   }
   const active = options[Math.min(activeIndex, options.length - 1)]
   const list = usePickerScroll(dialog, "data-quick-open", active?.key, query)

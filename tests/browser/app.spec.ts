@@ -19,17 +19,22 @@ async function revealMermaidCases(page: Page) {
   }
 }
 
-test("uses embedded page data on a direct production load", async ({ page }) => {
-  let pageRequests = 0
+// The production shell embeds no page (decision 0192): a direct load reads
+// its page and its tree once each.
+test("a direct production load reads its page and tree once", async ({ page }) => {
+  const requests = { page: 0, tree: 0 }
   page.on("request", (request) => {
-    if (new URL(request.url()).pathname === "/api/page") pageRequests++
+    const path = new URL(request.url()).pathname
+    if (path === "/api/page") requests.page++
+    if (path === "/api/tree") requests.tree++
   })
 
   await page.goto(`${apiOrigin}/view?project=${rootParam}&path=guides%2Fgetting-started.md`)
   await showPreview(page)
 
   await expect(page.getByRole("heading", { level: 1, name: "Getting started" })).toBeVisible()
-  expect(pageRequests).toBe(0)
+  await expect(page.getByRole("complementary", { name: "Files" }).getByRole("treeitem", { name: "getting-started.md" })).toBeVisible()
+  expect(requests).toEqual({ page: 1, tree: 1 })
 })
 
 test("renders local Markdown images", async ({ page }) => {

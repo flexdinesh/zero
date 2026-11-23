@@ -100,8 +100,8 @@ const documentType: FileType = {
 
 const page: PageData = {
   roots: [], sessionKey: "", project: "p", projectUnavailable: false, rootName: "", repository: "p", identity: "", projectKind: "repo",
-  branch: "main", worktrees: 1, tree: [], selected: "src/app.ts", at: "", content: "", source: "a\nb\n", fileSize: 4, fileCount: 1,
-  hasFile: true, empty: false, error: "", warnings: [], documentType, navigationSupported: false, binary: false, tooLarge: false,
+  branch: "main", worktrees: 1, selected: "src/app.ts", at: "", content: "", source: "a\nb\n", fileSize: 4,
+  hasFile: true, error: "", documentType, navigationSupported: false, binary: false, tooLarge: false,
   previewDisabled: false, highlightDisabled: false, searchExcluded: false, previewError: "",
 }
 const modified: ChangedFile = { path: "src/app.ts", status: "modified" }

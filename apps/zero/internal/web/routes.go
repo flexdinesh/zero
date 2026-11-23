@@ -99,7 +99,7 @@ func (a *App) newRoutes() *http.ServeMux {
 	// The desktop app's composer (decision 0184) is the shell on a route
 	// of its own, which reads what it shows from the app's bridge.
 	mux.HandleFunc("GET /composer", func(w http.ResponseWriter, _ *http.Request) {
-		a.serveShell(w, http.StatusOK, nil)
+		a.serveShell(w)
 	})
 	mux.HandleFunc("GET /assets/{name...}", func(w http.ResponseWriter, r *http.Request) {
 		a.serveFrontendAsset(w, r.PathValue("name"))
@@ -122,6 +122,9 @@ func (a *App) newRoutes() *http.ServeMux {
 			name = selected[0]
 		}
 		a.servePageData(w, query.Get("project"), name, query.Get("at"), required)
+	})
+	api("/api/tree", func(w http.ResponseWriter, _ *http.Request, query url.Values) {
+		a.serveTree(w, query.Get("project"))
 	})
 	api("/api/format", func(w http.ResponseWriter, _ *http.Request, query url.Values) {
 		a.serveFormat(w, query.Get("project"), query.Get("path"), query.Get("at"))
@@ -223,53 +226,11 @@ func (a *App) newRoutes() *http.ServeMux {
 	return mux
 }
 
-// serveShellPage serves the app shell. Without a project the browser
-// chooses one, so no page data is embedded; /view requires a file unless it
-// opens a review, walkthrough, feedback, Welcome, or Browser tab.
-func (a *App) serveShellPage(w http.ResponseWriter, r *http.Request) {
-	query := r.URL.Query()
-	projectID := query.Get("project")
-	if projectID == "" {
-		a.serveShell(w, http.StatusOK, nil)
-		return
-	}
-	selected, at := "", ""
-	required := r.URL.Path == "/view" && !reviewQuery(query) && !walkthroughQuery(query) && !feedbackQuery(query) && !welcomeQuery(query) && !browserQuery(query)
-	if required {
-		selected, at = query.Get("path"), query.Get("at")
-	}
-	data, err := a.app.Documents.Page(contract.PageRequest{Project: projectID, Path: selected, At: at, Required: required})
-	a.serveShell(w, statusOf(err), &data)
-}
-
-// reviewQuery reports a pathless /view that opens a review tab (decision
-// 0035): review=working|branch, commit=<hash>, or from=<hash>&to=<hash>.
-func reviewQuery(query url.Values) bool {
-	return !query.Has("path") && (query.Has("review") || query.Has("commit") || query.Has("from") && query.Has("to"))
-}
-
-// walkthroughQuery reports a pathless /view that opens a walkthrough's cover
-// tab (decision 0047): wt=<id>.
-func walkthroughQuery(query url.Values) bool {
-	return !query.Has("path") && query.Get("wt") != ""
-}
-
-// feedbackQuery reports a pathless /view that reveals the Feedback view at
-// a feedback (decision 0120): fb=<id>.
-func feedbackQuery(query url.Values) bool {
-	return !query.Has("path") && query.Get("fb") != ""
-}
-
-// welcomeQuery reports a pathless /view that opens the Welcome tab (decision
-// 0052): welcome=1.
-func welcomeQuery(query url.Values) bool {
-	return !query.Has("path") && query.Get("welcome") == "1"
-}
-
-// browserQuery reports a pathless /view that opens the project's Browser tab
-// (decision 0181): browser=1.
-func browserQuery(query url.Values) bool {
-	return !query.Has("path") && query.Get("browser") == "1"
+// serveShellPage serves the app shell at once: it embeds no page, so a
+// project's scan never delays the first paint (decision 0192). The page reads
+// /api/page and /api/tree itself.
+func (a *App) serveShellPage(w http.ResponseWriter, _ *http.Request) {
+	a.serveShell(w)
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
