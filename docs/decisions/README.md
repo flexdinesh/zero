@@ -192,3 +192,5 @@ rewriting history; update `Status` on the old record.
 | [0190](0190-dispatched-patch-releases.md) | Dispatched patch releases | Accepted; revises 0079 |
 | [0191](0191-open-nothing-implicitly.md) | Open nothing implicitly: no default path, `/` always asks | Accepted; supersedes 0153's only-project landing and the default `.`; extends 0068, 0098, 0146 |
 | [0192](0192-fast-first-paint.md) | Paint first, read the tree apart, keep followed scans | Accepted; extends 0050, 0080, 0191 |
+| [0193](0193-load-in-parallel-paint-once.md) | Load in parallel, paint once when fast | Accepted; supersedes 0192's stream-gated tree and delayed Explorer skeleton; extends 0153, 0191 |
+| [0194](0194-broad-folders.md) | Broad folders are not loaded by default | Accepted; extends 0066, 0146, 0191, 0192 |

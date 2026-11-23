@@ -93,7 +93,11 @@ func (c *HTTP) RemoveRoot(ctx context.Context, root string) (contract.RemovedRoo
 }
 
 func (c *HTTP) Tree(ctx context.Context, request contract.TreeRequest) (contract.TreeData, error) {
-	response, err := c.do(ctx, http.MethodGet, "/api/tree", url.Values{"project": {request.Project}}, nil)
+	query := url.Values{"project": {request.Project}}
+	if request.Scan {
+		query.Set("scan", "1")
+	}
+	response, err := c.do(ctx, http.MethodGet, "/api/tree", query, nil)
 	if err != nil {
 		return contract.TreeData{}, err
 	}

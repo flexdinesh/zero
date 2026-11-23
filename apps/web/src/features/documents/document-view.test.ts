@@ -11,6 +11,7 @@ const emptyPage: PageData = {
   branch: "",
   project: ".",
   projectUnavailable: false,
+  broad: false,
   documentType: null, navigationSupported: false, binary: false, tooLarge: false, previewDisabled: false, searchExcluded: false,
   highlightDisabled: false, previewError: "", content: "", error: "", fileSize: 0,
   hasFile: false, rootName: "", repository: "", identity: "", projectKind: "folder", worktrees: 0, selected: "", at: "", source: "",

@@ -106,13 +106,13 @@ func Roots(roots []string) []Root {
 }
 
 // Discover finds repositories up to maxDepth directories below each root (a
-// root is depth zero) and every worktree of those repositories, wherever it
-// lives. It stops descending at a repository, skips hidden and excluded
+// root is depth zero), broadDepth below a broad root (Broad, decision 0194),
+// and every worktree of those repositories, wherever it lives. It stops descending at a repository, skips hidden and excluded
 // (files.Excluded) directory names, and does not follow symlinks. A root that is not a
 // repository is listed as a folder project. A root that no longer resolves
 // to a directory, or cannot be read, is reported in Skipped; the other roots
 // are still discovered.
-func Discover(roots []string, maxDepth int) Discovery {
+func Discover(roots []string, maxDepth, broadDepth int) Discovery {
 	var skipped []files.Warning
 	canonicalRoots := make([]string, 0, len(roots))
 	for _, root := range roots {
@@ -125,7 +125,11 @@ func Discover(roots []string, maxDepth int) Discovery {
 	}
 	d := discoverer{roots: canonicalRoots, projects: make(map[string]Project), groups: make(map[string]bool)}
 	for _, root := range canonicalRoots {
-		if err := d.walk(root, 0, maxDepth); err != nil {
+		depth := maxDepth
+		if Broad(root) {
+			depth = broadDepth
+		}
+		if err := d.walk(root, 0, depth); err != nil {
 			skipped = append(skipped, files.Warning{Path: root, Err: fmt.Errorf("read discovery root: %w", err)})
 			continue
 		}

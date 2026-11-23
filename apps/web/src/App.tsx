@@ -119,6 +119,7 @@ import type { LiveChange } from "./api/events-contract.ts"
 import { liveTargets } from "./features/live-updates/live-updates.ts"
 import { useLiveUpdates } from "./features/live-updates/use-live-updates.ts"
 import { useProjectTree } from "./workspace/use-project-tree.ts"
+import type { UnscannedFolder } from "./workspace/BroadFolderPrompt.tsx"
 import { usePresence } from "./features/live-updates/use-presence.ts"
 import { useNotificationSync } from "./features/notifications/use-notification-sync.ts"
 import { useSidebar } from "./workspace/use-sidebar.ts"
@@ -273,9 +274,12 @@ export function App({ project }: AppProps) {
     if (result?.kind === "page") setLastPage(result.page)
   }, [result])
   // The tree loads apart from documents, so the workspace shows before a
-  // large folder's scan (decision 0192).
+  // large folder's scan (decision 0192); the route starts it beside the page
+  // (decision 0193).
   const projectTree = useProjectTree(project)
-  const treeFileList = useMemo(() => projectTree.tree ? filePaths(projectTree.tree.tree) : null, [projectTree.tree])
+  // A broad folder's tree waits to be asked for (decision 0194).
+  const unscannedTree = projectTree.tree?.unscanned === true
+  const treeFileList = useMemo(() => projectTree.tree && !projectTree.tree.unscanned ? filePaths(projectTree.tree.tree) : null, [projectTree.tree])
 
   const registerSearch = useCallback((commands: SearchCommands | null) => {
     searchCommands.current = commands
@@ -842,7 +846,10 @@ export function App({ project }: AppProps) {
   // gitVersion counts git state changes (HEAD may have moved); Source's
   // change markers reread with it.
   const [gitVersion, setGitVersion] = useState(0)
-  const { refresh: refreshTree, start: startTree } = projectTree
+  const { refresh: refreshTree, scan: scanTree } = projectTree
+  const unscannedFolder = useMemo((): UnscannedFolder | null => unscannedTree
+    ? { rootName: page.rootName, scan: scanTree, openProjects: chooseProject }
+    : null, [chooseProject, page.rootName, scanTree, unscannedTree])
   const applyLiveChange = useCallback((change: LiveChange) => {
     const targets = liveTargets(change, liveDocument)
     if (targets.page) reread()
@@ -858,13 +865,10 @@ export function App({ project }: AppProps) {
     }
     if (targets.search) searchCommands.current?.markStale(searchShown)
   }, [liveDocument, refreshChanges, refreshCommits, refreshStack, refreshTree, reread, rereadFeedback, searchShown])
-  const liveStatus = useLiveUpdates(project, applyLiveChange, rereadFeedback)
-  // The tree waits for the stream's first status, so live updates follow the
-  // project when its scan is read and keep its index (decision 0192).
-  const streamReported = liveStatus !== null
-  useEffect(() => {
-    if (streamReported) startTree()
-  }, [startTree, streamReported])
+  // A broad folder not yet scanned is followed for its git state only, so
+  // the server never walks it (decision 0194).
+  const liveLease = page.broad && !projectTree.scanConfirmed ? "watched" : "open"
+  const liveStatus = useLiveUpdates(project, applyLiveChange, rereadFeedback, liveLease)
   usePresence()
   const notificationStatus = useNotificationSync(project, settings)
   const languageServers = settings.languageServers === "on"
@@ -1056,7 +1060,7 @@ export function App({ project }: AppProps) {
       languageServers={languageServers} source={showSource && documentMode === "source"} supported={page.navigationSupported}
       mode={documentMode} isLoading={isLoading} caret={caret} openLocation={openLocation} registerCommand={registerNavigation}>
     <SearchProvider documentPane={main} openMatch={openSearchMatch} project={project} registerCommands={registerSearch} reveal={revealSearch}
-      visible={searchShown}>
+      unscanned={page.broad && !projectTree.scanConfirmed} visible={searchShown}>
     <FindProvider scope={activeTab ? tabKey(activeTab) : ""} pane={main} registerCommands={registerFind}>
       <div className={`navigation-progress${isLoading ? " active" : ""}`} aria-hidden="true" />
       <div className="visually-hidden" role="status" aria-live="polite">
@@ -1071,6 +1075,8 @@ export function App({ project }: AppProps) {
             gitStatus={gitStatus}
             tree={projectTree.tree}
             treeFailure={projectTree.failure}
+            treeWaited={projectTree.waited}
+            onScanFiles={scanTree}
             mobile={mobileSidebar}
             visible={visibleSidebarView === "explorer"}
             onDismiss={sidebar.dismiss}
@@ -1083,7 +1089,8 @@ export function App({ project }: AppProps) {
             page={page}
             registerOpen={registerFiles}
           />}
-          search={<SearchSidebarView mobile={mobileSidebar} onDismiss={sidebar.dismiss} onLeave={leaveSearch} visible={searchShown} />}
+          search={<SearchSidebarView mobile={mobileSidebar} onDismiss={sidebar.dismiss} onLeave={leaveSearch} unscanned={unscannedFolder}
+            visible={searchShown} />}
           unseenWalkthroughs={walkthroughs.unseen}
           openFeedbackThreads={feedbackView.openThreadCount}
           feedback={<FeedbackSidebarView project={project} branch={page.branch} view={feedbackView} mobile={mobileSidebar}
@@ -1205,7 +1212,7 @@ export function App({ project }: AppProps) {
         </section>
       </div>
       <StatusBar isLoading={isLoading || formatSlow} error={loadError || (page.project ? page.error : "")} page={page} live={liveStatus}
-        fileCount={projectTree.tree?.fileCount ?? null}
+        fileCount={projectTree.tree && !unscannedTree ? projectTree.tree.fileCount : null}
         diff={reviewCompare ? reviewStatusBar(reviewStatus, currentFile, reviewData) : undefined}
         detail={showImage && image.status === "ready" && image.width > 0
           ? `${image.width} × ${image.height} · ${image.percent}%`
@@ -1219,7 +1226,7 @@ export function App({ project }: AppProps) {
       <ProjectPicker project={project} registerOpen={registerProjects} onOpen={switchProject} />
       <SettingsDialog registerOpen={registerSettings} notificationStatus={notificationStatus} />
       <CommandPalette registerOpen={registerCommands} onRun={runCommand} onExitToFiles={showFilesFrom} wordWrap={wordWrap} />
-      <QuickOpen files={treeFileList} log={historyLog} project={project} current={liveDocument} lineTarget={lineTarget}
+      <QuickOpen files={treeFileList} unscanned={unscannedFolder} log={historyLog} project={project} current={liveDocument} lineTarget={lineTarget}
         registerOpen={registerQuickOpen} beforeShow={sidebar.dismiss} onOpen={openQuickOpenFile} onGoToLine={goToLine}
         onCommands={showCommandsFrom} />
       <ColorThemePicker registerOpen={registerColorTheme} />

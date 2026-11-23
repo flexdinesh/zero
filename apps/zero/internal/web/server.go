@@ -27,7 +27,9 @@ type Config struct {
 	// serving.
 	Roots     *projects.RootSet
 	ScanDepth int
-	Depth     int
+	// ScanDepthExplicit reports that the user set ScanDepth (decision 0194).
+	ScanDepthExplicit bool
+	Depth             int
 	// Types decides presentation; every file within Depth is in scope.
 	Types *document.Registry
 	// LanguageServers runs language servers for requests that opt in; nil
@@ -125,13 +127,14 @@ func New(config Config) (*App, error) {
 	}
 	a := &App{config: config, roots: config.Roots, openFile: openFile, shell: string(shell), servers: config.LanguageServers, watches: config.LiveUpdates, stopping: make(chan struct{})}
 	a.app, err = app.New(app.Config{
-		Roots:           config.Roots,
-		ScanDepth:       config.ScanDepth,
-		Depth:           config.Depth,
-		Types:           config.Types,
-		LanguageServers: config.LanguageServers,
-		SessionKey:      config.SessionKey,
-		Presence:        config.Presence,
+		Roots:             config.Roots,
+		ScanDepth:         config.ScanDepth,
+		ScanDepthExplicit: config.ScanDepthExplicit,
+		Depth:             config.Depth,
+		Types:             config.Types,
+		LanguageServers:   config.LanguageServers,
+		SessionKey:        config.SessionKey,
+		Presence:          config.Presence,
 		// Reads go through the App's openFile, which tests replace.
 		OpenFile:             func(name string) (fs.File, error) { return a.openFile(name) },
 		Watches:              config.LiveUpdates,

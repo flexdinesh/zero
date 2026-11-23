@@ -79,9 +79,10 @@ function lastSearchRequest(worker: WorkerFake): Extract<SearchWorkerRequest, { t
   return message
 }
 
-function setup({ warnings = [], fetchDocuments }: {
+function setup({ warnings = [], fetchDocuments, canLoad }: {
   warnings?: string[]
   fetchDocuments?(signal: AbortSignal): Promise<SearchDocumentsResponse>
+  canLoad?(): boolean
 } = {}) {
   const target = new EventTarget()
   const worker = new WorkerFake()
@@ -110,6 +111,7 @@ function setup({ warnings = [], fetchDocuments }: {
       return next
     },
     shortcutTarget: target,
+    ...(canLoad ? { canLoad } : {}),
     fetchDocuments: async (signal) => {
       fetchCount += 1
       if (fetchDocuments) return fetchDocuments(signal)
@@ -180,6 +182,27 @@ test("Cmd/Ctrl+Shift+F reveals content search and loads documents only once", as
   assert.equal(harness.fetchCount(), 1)
   assert.equal(harness.worker.messages.filter((message) => message.type === "init").length, 1)
   assert.deepEqual(harness.calls.filter((name) => name === "open" || name === "focus"), ["open", "focus", "open", "focus"])
+})
+
+// Decision 0194: a broad folder not yet scanned reads no documents; once
+// scanned, a typed search asks for them.
+test("search reads no documents until it may, then on the next query", async () => {
+  let allowed = false
+  const harness = setup({ canLoad: () => allowed })
+  harness.controller.open()
+  harness.handlers().onRefresh()
+  harness.handlers().onInput(query("guide"))
+  await flushPromises()
+  assert.equal(harness.fetchCount(), 0)
+  assert.deepEqual(harness.calls.filter((name) => name === "open"), ["open"])
+
+  allowed = true
+  harness.handlers().onInput(query("guide body"))
+  await flushPromises()
+  assert.equal(harness.fetchCount(), 1)
+  harness.worker.emit({ type: "ready" })
+  nextTimer(harness.timers)
+  assert.deepEqual(lastSearchRequest(harness.worker).query, query("guide body"))
 })
 
 test("file shortcuts and unmodified Find do not open content search", () => {

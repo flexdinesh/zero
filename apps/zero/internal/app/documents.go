@@ -360,12 +360,16 @@ func (d *Documents) Format(request contract.FormatRequest) (contract.FormatResul
 // Tree reads a project's file tree (GET /api/tree). It always returns a
 // tree; a failure also returns the *Error whose message the tree carries.
 // Nodes carry no selection: the tree is read once per project, apart from
-// its documents (decision 0192).
+// its documents (decision 0192). A broad project's tree is read only when
+// request.Scan asks; else it is Unscanned (decision 0194).
 func (d *Documents) Tree(request contract.TreeRequest) (contract.TreeData, error) {
 	project, err := ResolveProject(d.config.Roots.List(), request.Project)
 	if err != nil {
 		failure := AsError(err)
 		return contract.TreeData{Project: request.Project, Tree: []contract.TreeNode{}, Error: failure.Message, ErrorCode: failure.Code, Warnings: []string{}}, failure
+	}
+	if !request.Scan && projects.Broad(project.Root) {
+		return contract.TreeData{Project: project.ID, Tree: []contract.TreeNode{}, Warnings: []string{}, Unscanned: true}, nil
 	}
 	index, err := d.scan(project.Root)
 	if err != nil {
@@ -414,6 +418,7 @@ func (d *Documents) Page(request contract.PageRequest) (contract.PageData, error
 		Branch:      checkout.Branch,
 		Worktrees:   checkout.Worktrees,
 		Selected:    selected,
+		Broad:       projects.Broad(project.Root),
 	}
 	// A folder zero cannot read explains itself without a scan (0146).
 	if err := CheckFolder(project.Root); err != nil {

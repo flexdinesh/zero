@@ -1,57 +1,84 @@
 import type { TreeData } from "@zero/contracts"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 import { isAbort } from "../api/http.ts"
-import { loadTree } from "../api/page-data.ts"
-
-// treeStartDelay caps how long the tree waits for the live stream's first
-// status. Read while live updates follow the project, its index is kept for
-// the documents opened next (decision 0192).
-const treeStartDelay = 1_000
+import type { TreeLoadResult } from "../api/page-data.ts"
+import { treeStore, type TreeStore } from "./tree-store.ts"
+import { readMemory, rememberScan, scanConfirmed, updateMemory } from "./workspace-memory.ts"
 
 export interface ProjectTree {
   // tree is the project's latest tree, or null until the first arrives.
   tree: TreeData | null
   // failure explains why the tree could not be read; a kept tree stays.
   failure: string
-  // start reads the tree now: the live stream's first status calls it.
-  start(): void
+  // waited reports that the route waited out its first-paint budget for
+  // this tree: its skeleton shows at once, continuing the frame's.
+  waited: boolean
+  // scanConfirmed reports that this browser asked to scan the project's
+  // broad folder (decision 0194).
+  scanConfirmed: boolean
   // refresh rereads the tree, keeping the current one meanwhile.
   refresh(): void
+  // scan confirms scanning the project's broad folder, remembered in this
+  // browser, and reads its tree.
+  scan(): void
+}
+
+interface TreeState {
+  tree: TreeData | null
+  failure: string
+}
+
+function stateOf(result: TreeLoadResult | null): TreeState {
+  if (result === null) return { tree: null, failure: "" }
+  return result.kind === "tree" ? { tree: result.tree, failure: "" } : { tree: null, failure: result.message }
 }
 
 // useProjectTree reads a project's file tree apart from its documents, so the
-// workspace shows before a large folder's scan (decision 0192). Mount it
-// once per project.
-export function useProjectTree(project: string): ProjectTree {
-  const [tree, setTree] = useState<TreeData | null>(null)
-  const [failure, setFailure] = useState("")
-  const [started, setStarted] = useState(false)
-  const [version, setVersion] = useState(0)
+// workspace shows before a large folder's scan (decision 0192). The route
+// loader starts the read beside the page; a tree it already has mounts with
+// the workspace (decision 0193). Mount it once per project.
+export function useProjectTree(project: string, store: TreeStore = treeStore): ProjectTree {
+  const [state, setState] = useState<TreeState>(() => stateOf(store.settled(project)))
+  const [waited] = useState(() => store.waitedOut(project))
+  const [confirmed, setConfirmed] = useState(() => scanConfirmed(readMemory(), project))
+  const live = useRef(true)
 
-  useEffect(() => {
-    if (started) return
-    const timer = setTimeout(() => setStarted(true), treeStartDelay)
-    return () => clearTimeout(timer)
-  }, [started])
-
-  useEffect(() => {
-    if (!project || !started) return
-    const controller = new AbortController()
-    loadTree(project, controller.signal).then((result) => {
-      if (result.kind === "tree") {
-        setTree(result.tree)
-        setFailure("")
-      } else {
-        setFailure(result.message)
-      }
+  const take = useCallback((read: Promise<TreeLoadResult>) => {
+    read.then((result) => {
+      if (!live.current) return
+      // A failed reread keeps the tree it had; the tree it has is kept as is.
+      setState((current) => result.kind === "tree"
+        ? current.tree === result.tree && !current.failure ? current : { tree: result.tree, failure: "" }
+        : { tree: current.tree, failure: result.message })
     }, (error: unknown) => {
-      if (!isAbort(error)) setFailure("Could not load files.")
+      if (live.current && !isAbort(error)) setState((current) => ({ tree: current.tree, failure: "Could not load files." }))
     })
-    return () => controller.abort()
-  }, [project, started, version])
+  }, [])
 
-  const start = useCallback(() => setStarted(true), [])
-  const refresh = useCallback(() => setVersion((current) => current + 1), [])
-  return { tree, failure, start, refresh }
+  useEffect(() => {
+    live.current = true
+    if (!project) return
+    const unmount = store.mount(project)
+    // Join the loader's read, settled or pending, or read now when the
+    // route started none.
+    take(store.start(project))
+    return () => {
+      live.current = false
+      unmount()
+    }
+  }, [project, store, take])
+
+  const refresh = useCallback(() => {
+    if (project) take(store.reread(project))
+  }, [project, store, take])
+  const scan = useCallback(() => {
+    if (!project) return
+    updateMemory((memory) => rememberScan(memory, project))
+    setConfirmed(true)
+    // The unscanned tree gives way to the loading one.
+    setState({ tree: null, failure: "" })
+    take(store.reread(project))
+  }, [project, store, take])
+  return { tree: state.tree, failure: state.failure, waited, scanConfirmed: confirmed, refresh, scan }
 }

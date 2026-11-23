@@ -1,4 +1,5 @@
 import type { LiveChange, LiveStatus } from "../../api/events-contract.ts"
+import { projectUrl } from "../../api/project-url.ts"
 
 // LiveTargets are what one change rereads (decision 0050).
 export interface LiveTargets {
@@ -50,4 +51,15 @@ export function liveIndicator(status: LiveStatus): LiveIndicator {
     return { label: "Polling", description: `Live updates: checking the project for changes every few seconds.${reason}`, mode: status.mode }
   }
   return { label: "Off", description: `Live updates are off; the project rereads when you return to it.${reason}`, mode: status.mode }
+}
+
+// LiveLease is how closely a stream follows its project (decision 0066):
+// open watches the tree and git state, watched git state only.
+export type LiveLease = "open" | "watched"
+
+// liveEventsUrl is a project's event stream at a lease; open is the
+// server's default.
+export function liveEventsUrl(project: string, lease: LiveLease): string {
+  const url = projectUrl("/api/events", project)
+  return lease === "open" ? url : `${url}&lease=${lease}`
 }

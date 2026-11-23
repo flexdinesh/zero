@@ -124,7 +124,7 @@ func (a *App) newRoutes() *http.ServeMux {
 		a.servePageData(w, query.Get("project"), name, query.Get("at"), required)
 	})
 	api("/api/tree", func(w http.ResponseWriter, _ *http.Request, query url.Values) {
-		a.serveTree(w, query.Get("project"))
+		a.serveTree(w, query.Get("project"), query.Get("scan") == "1")
 	})
 	api("/api/format", func(w http.ResponseWriter, _ *http.Request, query url.Values) {
 		a.serveFormat(w, query.Get("project"), query.Get("path"), query.Get("at"))

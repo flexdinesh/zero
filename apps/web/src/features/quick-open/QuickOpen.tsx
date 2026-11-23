@@ -12,6 +12,7 @@ import type { HighlightRange } from "../search/search-engine.ts"
 import { highlightedParts } from "../search/search-highlights.ts"
 import type { HistoryLog } from "../../workspace/navigation-history.ts"
 import { useNativePicker, usePickerScroll, type PickerBodyProps } from "../../workspace/use-native-picker.ts"
+import { BroadFolderPrompt, type UnscannedFolder } from "../../workspace/BroadFolderPrompt.tsx"
 
 // Rows shown at once; the status line counts the rest.
 const resultLimit = 100
@@ -26,6 +27,8 @@ export interface QuickOpenOptions {
 interface QuickOpenProps {
   // files is every file in the project's tree, or null while it loads.
   files: readonly string[] | null
+  // unscanned is set while the project's broad folder is unscanned.
+  unscanned: UnscannedFolder | null
   log: HistoryLog
   project: string
   // current is the working-tree file on screen; recents leave it out.
@@ -56,7 +59,7 @@ const fileWord = (count: number) => `${count.toLocaleString()} ${count === 1 ? "
 // QuickOpen finds a file by name, as VS Code's and Zed's Cmd/Ctrl+P do:
 // recent files first, fuzzy matches as you type, `path:42` and `:42` for a
 // line, and `>` for commands. Arrows move, Enter opens, Escape closes.
-export function QuickOpen({ files, log, project, current, lineTarget, registerOpen, beforeShow, onOpen, onGoToLine, onCommands }: QuickOpenProps) {
+export function QuickOpen({ files, unscanned, log, project, current, lineTarget, registerOpen, beforeShow, onOpen, onGoToLine, onCommands }: QuickOpenProps) {
   const { dialog, body, show, close } = useNativePicker(beforeShow)
   const index = useMemo(() => indexFiles(files ?? []), [files])
   const fileSet = useMemo(() => new Set(files), [files])
@@ -87,20 +90,20 @@ export function QuickOpen({ files, log, project, current, lineTarget, registerOp
       onCancel={(event) => { event.preventDefault(); close(true) }}
       onClick={(event) => { if (event.target === dialog.current) close(true) }}
     >
-      {body && <QuickOpenBody {...body} index={index} fileSet={fileSet} fileCount={files?.length ?? null} log={log} project={project}
+      {body && <QuickOpenBody {...body} index={index} fileSet={fileSet} fileCount={files?.length ?? null} unscanned={unscanned} log={log} project={project}
         current={current} lineTarget={lineTarget} onOpen={onOpen} onGoToLine={onGoToLine} onCommands={onCommands} />}
     </DialogShell>
   )
 }
 
-interface QuickOpenBodyProps extends PickerBodyProps, Pick<QuickOpenProps, "log" | "project" | "current" | "lineTarget" | "onOpen" | "onGoToLine" | "onCommands"> {
+interface QuickOpenBodyProps extends PickerBodyProps, Pick<QuickOpenProps, "unscanned" | "log" | "project" | "current" | "lineTarget" | "onOpen" | "onGoToLine" | "onCommands"> {
   index: FileIndex
   fileSet: ReadonlySet<string>
   // fileCount is null while the tree loads.
   fileCount: number | null
 }
 
-function QuickOpenBody({ initialQuery, dialog, input, close, index, fileSet, fileCount, log, project, current, lineTarget, onOpen, onGoToLine, onCommands }: QuickOpenBodyProps) {
+function QuickOpenBody({ initialQuery, dialog, input, close, index, fileSet, fileCount, unscanned, log, project, current, lineTarget, onOpen, onGoToLine, onCommands }: QuickOpenBodyProps) {
   const [query, setQuery] = useState(initialQuery)
   const [activeIndex, setActiveIndex] = useState(0)
   const parsed = useMemo(() => parseQuickOpenQuery(query), [query])
@@ -111,7 +114,11 @@ function QuickOpenBody({ initialQuery, dialog, input, close, index, fileSet, fil
   let options: Option[] = []
   let status = ""
   let group = ""
-  if (parsed.kind === "line") {
+  // An unscanned folder has no files to find; a line still goes.
+  const prompt = unscanned !== null && parsed.kind === "files" ? unscanned : null
+  if (prompt) {
+    options = []
+  } else if (parsed.kind === "line") {
     if (lineTarget) options = [{ key: "line", kind: "line", line: parsed.line }]
     else status = "Open a text document to go to a line"
   } else if (parsed.kind === "files" && result) {
@@ -189,6 +196,15 @@ function QuickOpenBody({ initialQuery, dialog, input, close, index, fileSet, fil
         onKeyDown={onKeyDown}
       />
       <div className="search-status" role="status">{status}</div>
+      {prompt && <BroadFolderPrompt rootName={prompt.rootName}
+        onScan={() => {
+          prompt.scan()
+          input.current?.focus()
+        }}
+        onOpenProjects={() => {
+          close(false)
+          prompt.openProjects()
+        }} />}
       <div ref={list} id="quick-open-results" className="search-results quick-open-results" role="listbox" aria-label="Files">
         {group && <p className="search-group-title quick-open-group" aria-hidden="true">{group}</p>}
         {options.map((option, position) => {

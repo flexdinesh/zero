@@ -22,6 +22,7 @@ import { treeRowHeight } from "../../components/ui/tree-rows.ts"
 import { useSettings } from "../../settings/SettingsProvider.tsx"
 import { uiScale } from "../../settings/settings.ts"
 import { SidebarBody } from "../../workspace/SidebarBody.tsx"
+import { BroadFolderPrompt } from "../../workspace/BroadFolderPrompt.tsx"
 import { projectMemory, readMemory, rememberExpanded, restoreExpanded, updateMemory } from "../../workspace/workspace-memory.ts"
 
 const mac = typeof navigator !== "undefined" && navigator.platform.includes("Mac")
@@ -48,6 +49,11 @@ interface FileTreeProps {
   tree: TreeData | null
   // treeFailure explains a tree that could not be read.
   treeFailure: string
+  // treeWaited shows the loading rows at once: the route waited out its
+  // budget for the tree, so the frame's rows are on screen (decision 0193).
+  treeWaited: boolean
+  // onScanFiles confirms scanning a broad folder the tree left unscanned.
+  onScanFiles(): void
   mobile: boolean
   visible: boolean
   onNavigate(path: string): void
@@ -112,12 +118,14 @@ export function FileTree({ onReveal, registerOpen, mobile, ...props }: FileTreeP
   </SidebarBody>
 }
 
-function Explorer({ gitStatus, tree, treeFailure, onFindFile, onNavigate, onOpenProjects, onOpenWorktrees, onDismiss, onShowHistory, page, mobile, visible, itemHeight, state, filter }: Omit<FileTreeProps, "onReveal" | "registerOpen"> & {
+function Explorer({ gitStatus, tree, treeFailure, treeWaited, onScanFiles, onFindFile, onNavigate, onOpenProjects, onOpenWorktrees, onDismiss, onShowHistory, page, mobile, visible, itemHeight, state, filter }: Omit<FileTreeProps, "onReveal" | "registerOpen"> & {
   itemHeight: number
   filter: FilenameFilterState
   state: RefObject<ExplorerState>
 }) {
   const hasData = tree !== null
+  // A broad folder's tree waits to be asked for (decision 0194).
+  const unscanned = tree?.unscanned === true
   const treeNodes = tree?.tree ?? noNodes
   const warnings = tree?.warnings ?? noWarnings
   const visibleTree = useMemo(() => filterTreeByFilename(treeNodes, filter.matcher), [treeNodes, filter.matcher])
@@ -339,7 +347,7 @@ function Explorer({ gitStatus, tree, treeFailure, onFindFile, onNavigate, onOpen
         <IconButton ref={filterButton} label="Filter files by name" aria-pressed={filter.shown} aria-controls={filterShelfId}
           indicator={filterActive && !filter.shown}
           title={filterActive && !filter.shown ? `Filter files by name (filtering: ${filter.applied})` : "Filter files by name"}
-          disabled={!hasData || page.projectUnavailable}
+          disabled={!hasData || unscanned || page.projectUnavailable}
           icon={<FunnelIcon aria-hidden="true" />} onClick={toggleFilter} />
         <IconButton label={hasExpanded ? "Collapse all folders" : "Expand all folders"}
           disabled={!hasData || directoryPaths.length === 0}
@@ -347,12 +355,13 @@ function Explorer({ gitStatus, tree, treeFailure, onFindFile, onNavigate, onOpen
           onClick={toggleDirectories} />
         {mobile && <IconButton label="Close files" icon={<XIcon aria-hidden="true" />} onClick={onDismiss} />}
       </div>
-      <div className="explorer-shelf" id={filterShelfId} hidden={!filter.shown || !hasData || page.projectUnavailable}>
+      <div className="explorer-shelf" id={filterShelfId} hidden={!filter.shown || !hasData || unscanned || page.projectUnavailable}>
         <FilenameFilter filter={filter} inputRef={filterInput}
           totalCount={totalCount} visibleCount={visibleCount} onFocusTree={focusFirstRow} onHide={hideFilter} />
       </div>
       {page.projectUnavailable ? <p className="muted">{page.project ? "Project unavailable." : "No folder is open."}</p>
-        : !hasData ? treeFailure ? <p className="muted">Files unavailable.</p> : <SkeletonRows label="Loading files" />
+        : !hasData ? treeFailure ? <p className="muted">Files unavailable.</p> : <SkeletonRows label="Loading files" delayed={!treeWaited} />
+        : tree.unscanned ? <BroadFolderPrompt rootName={page.rootName} onScan={onScanFiles} onOpenProjects={onOpenProjects} />
         : tree.error ? <p className="muted">{tree.errorCode === "privacyBlocked" || tree.errorCode === "folderUnreadable" ? "Can't read this folder." : "Files unavailable."}</p>
         : tree.empty ? <p className="muted">No files found.</p>
         : paths.length === 0 ? <p className="muted explorer-empty">

@@ -31,6 +31,8 @@ type Config struct {
 	RootsFile string // required
 	Depth     int
 	ScanDepth int
+	// ScanDepthExplicit reports that the user set ScanDepth (decision 0194).
+	ScanDepthExplicit bool
 	// Lifetime is when the daemon and its remote listener stop on their own.
 	Lifetime Lifetime
 	// Log receives startup, skipped roots, exposures, the stop reason, and
@@ -81,7 +83,7 @@ func Run(ctx context.Context, config Config) error {
 	exposed := &exposures{}
 	server := app.ServerInfo{Mode: contract.DiagnosticsDaemon, Protocol: ProtocolVersion, LogFile: config.LogFile, CrashFile: config.CrashFile,
 		InstallMethod: config.InstallMethod, Exposure: exposed.serving}
-	rt, err := runtime.New(runtime.Config{Roots: roots.Set(), RootControl: roots, Depth: config.Depth, ScanDepth: config.ScanDepth, SessionKey: "daemon", Presence: true, Server: server, Log: log})
+	rt, err := runtime.New(runtime.Config{Roots: roots.Set(), RootControl: roots, Depth: config.Depth, ScanDepth: config.ScanDepth, ScanDepthExplicit: config.ScanDepthExplicit, SessionKey: "daemon", Presence: true, Server: server, Log: log})
 	if err != nil {
 		return err
 	}

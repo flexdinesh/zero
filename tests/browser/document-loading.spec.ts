@@ -111,3 +111,40 @@ test("the file tree loads apart from the document", async ({ page }, info) => {
   await expect(files.getByRole("treeitem", { name: "getting-started.md", exact: true })).toBeVisible()
   await expect(files.getByRole("status")).toHaveCount(0)
 })
+
+// Decision 0193: the route reads the tree beside the page, and a quick tree
+// mounts with the workspace, so a small project never shows its skeleton.
+test("the tree starts with the page and a small project shows no skeleton", async ({ page }) => {
+  await page.addInitScript(() => {
+    const seen = () => {
+      if (document.querySelector(".file-explorer .ui-skeleton-rows")) document.documentElement.dataset.explorerSkeleton = "shown"
+    }
+    new MutationObserver(seen).observe(document, { childList: true, subtree: true })
+  })
+  let release = () => {}
+  const held = new Promise<void>((resolve) => { release = resolve })
+  let treeRequested = false
+  let pageRequested = false
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/tree") treeRequested = true
+  })
+  await page.route((url) => url.pathname === "/api/page" && url.searchParams.get("path") === "guides/getting-started.md", async (route) => {
+    pageRequested = true
+    await held
+    await route.continue()
+  })
+  const files = page.getByRole("complementary", { name: "Files" })
+  try {
+    await page.goto("/view?path=guides%2Fgetting-started.md", { waitUntil: "commit" })
+    // The development server's first module load can take seconds.
+    await expect.poll(() => pageRequested, { timeout: 15_000 }).toBe(true)
+    await expect.poll(() => treeRequested).toBe(true)
+    // The page is held, so the workspace has not mounted.
+    await expect(page.locator(".file-explorer")).toHaveCount(0)
+  } finally {
+    release()
+  }
+  await expect(files.getByRole("treeitem", { name: "getting-started.md", exact: true })).toBeVisible()
+  await expect(page.getByRole("tab", { name: "getting-started.md" })).toHaveAttribute("aria-selected", "true")
+  expect(await page.evaluate(() => document.documentElement.dataset.explorerSkeleton ?? "")).toBe("")
+})

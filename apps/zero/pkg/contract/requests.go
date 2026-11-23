@@ -1,8 +1,11 @@
 package contract
 
-// TreeRequest reads a project's file tree (decision 0192).
+// TreeRequest reads a project's file tree (decision 0192). Scan reads a
+// broad folder's tree too (HTTP: scan=1); without it a broad folder's tree
+// is Unscanned (decision 0194).
 type TreeRequest struct {
 	Project string
+	Scan    bool
 }
 
 // PageRequest selects a project and, optionally, one document. Path

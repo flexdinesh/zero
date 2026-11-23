@@ -219,5 +219,6 @@
   "fileCount": 16,
   "empty": false,
   "error": "",
-  "warnings": []
+  "warnings": [],
+  "unscanned": false
 }

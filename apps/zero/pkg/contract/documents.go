@@ -57,6 +57,9 @@ type TreeData struct {
 	// for a project folder zero cannot read (decision 0146).
 	ErrorCode string   `json:"errorCode,omitempty"`
 	Warnings  []string `json:"warnings"`
+	// Unscanned reports a broad folder's tree left unread: the request did
+	// not ask to scan it, so Tree is empty (decision 0194).
+	Unscanned bool `json:"unscanned"`
 }
 
 // PageData is GET /api/page: a project and, when one is selected, a
@@ -72,8 +75,12 @@ type PageData struct {
 	Project    string `json:"project"`
 	// ProjectUnavailable reports that the project itself could not be
 	// resolved, as opposed to a file within it.
-	ProjectUnavailable bool   `json:"projectUnavailable"`
-	RootName           string `json:"rootName"`
+	ProjectUnavailable bool `json:"projectUnavailable"`
+	// Broad reports a project folder too broad to scan by default (home,
+	// the filesystem root, and the like): its tree waits to be asked for
+	// and live updates follow its git state only until then (decision 0194).
+	Broad    bool   `json:"broad"`
+	RootName string `json:"rootName"`
 	// Repository names the project's repository (origin remote, else main
 	// worktree folder), empty for a folder.
 	Repository string `json:"repository"`

@@ -89,7 +89,7 @@ async function mockLongSource(page: Page) {
   }
   await page.route(`**/api/page?project=${rootParam}&path=long.txt`, (route) => route.fulfill({ json: {
     content: "", source, highlightDisabled: false, empty: false, error: "", fileCount: 1, fileSize: source.length,
-    hasFile: true, roots: ["/example"], sessionKey: "/example", repository: "", identity: "", projectKind: "folder", branch: "", worktrees: 0, project: fixtureRoot, projectUnavailable: false, rootName: "example",
+    hasFile: true, roots: ["/example"], sessionKey: "/example", repository: "", identity: "", projectKind: "folder", branch: "", worktrees: 0, project: fixtureRoot, projectUnavailable: false, broad: false, rootName: "example",
     selected: "long.txt", warnings: [], previewError: "", documentType: type,
     navigationSupported: false, binary: false, tooLarge: false, previewDisabled: false, searchExcluded: false, at: "",
     tree: [{ name: "long.txt", path: "long.txt", fileType: "text", isDir: false, open: false, selected: true, children: [] }],

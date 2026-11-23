@@ -35,16 +35,19 @@ const (
 )
 
 type options struct {
-	cliName    cliName
-	paths      []string
-	depth      int
-	scanDepth  int
-	host       string
-	hostSet    bool
-	port       int
-	portSet    bool
-	noOpen     bool
-	controlDir string
+	cliName   cliName
+	paths     []string
+	depth     int
+	scanDepth int
+	// scanDepthSet reports --scan-depth given, which then bounds discovery
+	// in broad roots too (decision 0194).
+	scanDepthSet bool
+	host         string
+	hostSet      bool
+	port         int
+	portSet      bool
+	noOpen       bool
+	controlDir   string
 	// repo finds the project by its repository's identity instead of a path
 	// (decision 0188); normalized.
 	repo string
@@ -164,6 +167,7 @@ func newServeCommand(use string, runCommand runner, addFlags func(*cobra.Command
 			if opts.foreground && !opts.remote && !opts.tailscale {
 				return errors.New("--foreground needs --remote or --tailscale")
 			}
+			opts.scanDepthSet = command.Flags().Changed("scan-depth")
 			opts.hostSet = command.Flags().Changed("host")
 			opts.portSet = command.Flags().Changed("port")
 			opts.cliName = cliName(command.Root().Name())
@@ -204,7 +208,7 @@ func run(ctx context.Context, opts options, stdin io.Reader, stdout, stderr io.W
 
 	// Validate the root before binding a port or opening a browser.
 	discoveryStarted := time.Now()
-	discovery := projects.Discover(roots, opts.scanDepth)
+	discovery := projects.Discover(roots, opts.scanDepth, projects.BroadDepth(opts.scanDepth, opts.scanDepthSet))
 	discoveryDuration := time.Since(discoveryStarted)
 	// NewRootSet rejected missing roots; an unreadable root still fails startup.
 	if len(discovery.Skipped) > 0 {
@@ -222,7 +226,7 @@ func run(ctx context.Context, opts options, stdin io.Reader, stdout, stderr io.W
 			return err
 		}
 	}
-	rt, err := runtime.New(runtime.Config{Roots: rootSet, ScanDepth: opts.scanDepth, Depth: opts.depth, OpenBrowser: openBrowser,
+	rt, err := runtime.New(runtime.Config{Roots: rootSet, ScanDepth: opts.scanDepth, ScanDepthExplicit: opts.scanDepthSet, Depth: opts.depth, OpenBrowser: openBrowser,
 		Server: app.ServerInfo{Mode: contract.DiagnosticsBrowser, InstallMethod: installMethodName}})
 	if err != nil {
 		return err

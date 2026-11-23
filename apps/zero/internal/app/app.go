@@ -26,7 +26,11 @@ type Config struct {
 	// while serving.
 	Roots     *projects.RootSet
 	ScanDepth int
-	Depth     int
+	// ScanDepthExplicit reports that the user set ScanDepth, which then
+	// bounds discovery in broad roots too; else they use
+	// projects.BroadScanDepth (decision 0194).
+	ScanDepthExplicit bool
+	Depth             int
 	// Types decides presentation and is required; every file within Depth is
 	// in scope.
 	Types *document.Registry

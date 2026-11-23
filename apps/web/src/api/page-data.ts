@@ -13,6 +13,7 @@ export const emptyPage: PageData = {
   sessionKey: "",
   project: "",
   projectUnavailable: false,
+  broad: false,
   documentType: null,
   navigationSupported: false,
   binary: false,
@@ -62,10 +63,13 @@ export async function loadPage({ pathname, project, selected, at = "", signal }:
 // workspace shows before a large folder's scan (decision 0192).
 export type TreeLoadResult = { kind: "tree"; tree: TreeData } | { kind: "failure"; message: string }
 
-export async function loadTree(project: string, signal: AbortSignal): Promise<TreeLoadResult> {
+// scan asks for a broad folder's tree too; without it a broad folder's tree
+// comes back unscanned (decision 0194).
+export async function loadTree(project: string, signal: AbortSignal, scan = false): Promise<TreeLoadResult> {
+  const endpoint = projectUrl("/api/tree", project) + (scan ? "&scan=1" : "")
   try {
     // Trees carry their own error, so any status with a tree is a tree.
-    return { kind: "tree", tree: await fetchJSON(projectUrl("/api/tree", project), { signal, anyStatus: true }, isTreeData, treeError) }
+    return { kind: "tree", tree: await fetchJSON(endpoint, { signal, anyStatus: true }, isTreeData, treeError) }
   } catch (error: unknown) {
     if (error instanceof RequestError) return { kind: "failure", message: error.message }
     throw error

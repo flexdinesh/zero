@@ -58,7 +58,7 @@ func ResolveProject(roots []string, id string) (Workspace, error) {
 // where the projects are from the caller's side (decision 0187).
 func (p *Projects) List(ctx context.Context) contract.ProjectsResponse {
 	roots := p.config.Roots.List()
-	discovery := projects.Discover(roots, p.config.ScanDepth)
+	discovery := projects.Discover(roots, p.config.ScanDepth, projects.BroadDepth(p.config.ScanDepth, p.config.ScanDepthExplicit))
 	host, err := os.Hostname()
 	if err != nil {
 		host = ""

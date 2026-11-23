@@ -54,7 +54,7 @@ func runRemote(ctx context.Context, opts options, stdout, stderr io.Writer) erro
 // when no UI needs it (decision 0098). With --foreground the daemon runs in
 // this process instead, never stops itself, and ends with it (decision 0125).
 func serveRemote(ctx context.Context, opts options, stdout, stderr io.Writer, deps remoteDeps) error {
-	roots, err := validateRoots(opts.paths, opts.scanDepth)
+	roots, err := validateRoots(opts.paths, opts.scanDepth, opts.scanDepthSet)
 	if err != nil {
 		return err
 	}
@@ -67,7 +67,7 @@ func serveRemote(ctx context.Context, opts options, stdout, stderr io.Writer, de
 	var foreground *foregroundDaemon
 	if opts.foreground {
 		runCtx, cancel := context.WithCancel(ctx)
-		foreground = startForegroundDaemon(runCtx, deps.foreground, daemonOptions{socket: socket, depth: opts.depth, scanDepth: opts.scanDepth}, stderr)
+		foreground = startForegroundDaemon(runCtx, deps.foreground, daemonOptions{socket: socket, depth: opts.depth, scanDepth: opts.scanDepth, scanDepthSet: opts.scanDepthSet}, stderr)
 		defer func() {
 			cancel()
 			_ = foreground.wait()
@@ -80,7 +80,7 @@ func serveRemote(ctx context.Context, opts options, stdout, stderr io.Writer, de
 		}
 		deps.roots.ensure = func(context.Context, daemonOptions) (daemon.Status, bool, error) { return status, true, nil }
 	}
-	project, err := openDaemonRoots(ctx, roots, opts.depth, opts.scanDepth, deps.roots, stderr)
+	project, err := openDaemonRoots(ctx, roots, opts.depth, opts.scanDepth, opts.scanDepthSet, deps.roots, stderr)
 	if err != nil {
 		return err
 	}

@@ -35,6 +35,8 @@ type Config struct {
 	Roots     *projects.RootSet
 	Depth     int
 	ScanDepth int
+	// ScanDepthExplicit reports that the user set ScanDepth (decision 0194).
+	ScanDepthExplicit bool
 	// OpenBrowser opens published walkthroughs that ask; nil never opens.
 	OpenBrowser func(url string) error
 	// SessionKey keys the browser's session memory; "" keys it by roots.
@@ -63,7 +65,7 @@ type Runtime struct {
 // New builds the web app over document.Builtins(); language servers, the
 // watch hub, and the walkthrough service use web.New's defaults.
 func New(config Config) (*Runtime, error) {
-	app, err := web.New(web.Config{Roots: config.Roots, ScanDepth: config.ScanDepth, Depth: config.Depth, Types: document.Builtins(), OpenBrowser: config.OpenBrowser, SessionKey: config.SessionKey, Presence: config.Presence, RootControl: config.RootControl, Server: config.Server, Log: config.Log})
+	app, err := web.New(web.Config{Roots: config.Roots, ScanDepth: config.ScanDepth, ScanDepthExplicit: config.ScanDepthExplicit, Depth: config.Depth, Types: document.Builtins(), OpenBrowser: config.OpenBrowser, SessionKey: config.SessionKey, Presence: config.Presence, RootControl: config.RootControl, Server: config.Server, Log: config.Log})
 	if err != nil {
 		return nil, fmt.Errorf("create web interface: %w", err)
 	}

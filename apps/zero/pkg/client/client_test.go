@@ -371,6 +371,48 @@ func TestDataAPIParityAcrossTransports(t *testing.T) {
 
 // TestMetricsOnEveryTransport samples the process on each transport; the
 // values move between samples, so only their shape is compared.
+// A broad folder's tree is read only when asked; its page says it is broad
+// (decision 0194).
+func TestBroadTreeParityAcrossTransports(t *testing.T) {
+	home, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "notes.md"), []byte("notes\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	f := serveFixture(t, home)
+	ctx := context.Background()
+
+	unscanned := f.same(t, "Tree of a broad folder", func(c client.Client) outcome {
+		return result(c.Tree(ctx, contract.TreeRequest{Project: f.root}))
+	})
+	want := contract.TreeData{Project: f.root, Tree: []contract.TreeNode{}, Warnings: []string{}, Unscanned: true}
+	if data, ok := unscanned.Value.(contract.TreeData); !ok || unscanned.Err != nil || !reflect.DeepEqual(data, want) {
+		t.Errorf("Tree of a broad folder = %+v, want %+v", unscanned, want)
+	}
+	scanned := f.same(t, "Tree of a broad folder asked to scan", func(c client.Client) outcome {
+		return result(c.Tree(ctx, contract.TreeRequest{Project: f.root, Scan: true}))
+	})
+	if data, ok := scanned.Value.(contract.TreeData); !ok || scanned.Err != nil || data.Unscanned || data.FileCount != 1 {
+		t.Errorf("Tree asked to scan = %+v, want its one file", scanned)
+	}
+	page := f.same(t, "Page of a broad folder", func(c client.Client) outcome {
+		return result(c.Page(ctx, contract.PageRequest{Project: f.root}))
+	})
+	if data, ok := page.Value.(contract.PageData); !ok || page.Err != nil || !data.Broad {
+		t.Errorf("Page of a broad folder = %+v, want broad", page)
+	}
+	// A document in a broad folder still reads.
+	document := f.same(t, "Page in a broad folder", func(c client.Client) outcome {
+		return result(c.Page(ctx, contract.PageRequest{Project: f.root, Path: "notes.md"}))
+	})
+	if data, ok := document.Value.(contract.PageData); !ok || document.Err != nil || !data.Broad || data.Source != "notes\n" {
+		t.Errorf("Page in a broad folder = %+v, want notes.md", document)
+	}
+}
+
 func TestMetricsOnEveryTransport(t *testing.T) {
 	f := newFixture(t)
 	for _, transport := range f.transports {
