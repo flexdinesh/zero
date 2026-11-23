@@ -53,6 +53,15 @@ one project is read at a time, and every switch reads it from disk. Each switch
 restores that project's tabs and expanded folders, including after reloads.
 `--depth` limits the file tree within a project.
 
+Broad folders are not loaded by default: `/`, your home folder and its
+`Library`, `/home`, `/Users`, `/root`, `/Volumes`, `/mnt`, `/media`,
+`/run/media`, `/usr`, `/opt`, `/var`, `/etc`, `/System`, `/Library`, and
+`/Applications`. Opening one serves it until the daemon stops but never saves
+it, and a saved one is not served again. Zero looks for repositories only one
+folder deep inside it unless you pass `--scan-depth`. Opened as a project, its
+Explorer offers **Scan files** instead of listing every file; the choice is
+remembered in this browser.
+
 A repository opens whole: its own folders cannot be opened as projects, and
 Open folder never descends into a repository. A repository with
 worktrees is one picker entry that opens the last-used worktree; press → (or

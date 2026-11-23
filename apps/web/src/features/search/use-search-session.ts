@@ -27,16 +27,19 @@ export interface SearchSessionOptions {
   documentPane: RefObject<HTMLElement | null>
   openMatch: OpenSearchMatch
   project: string
+  // unscanned holds off reading documents: the project's broad folder is
+  // not confirmed for scanning yet (decision 0194).
+  unscanned: boolean
   visible: boolean
   reveal(): void
 }
 
 // useSearchSession indexes one project's documents; mount one per project.
-export function useSearchSession({ documentPane, openMatch, project, reveal, visible }: SearchSessionOptions) {
+export function useSearchSession({ documentPane, openMatch, project, reveal, unscanned, visible }: SearchSessionOptions) {
   const input = useRef<HTMLInputElement>(null)
   const handlers = useRef<SearchHandlers | null>(null)
   const controllerRef = useRef<ReturnType<typeof createSearchController> | null>(null)
-  const latest = useRef({ documentPane, openMatch, project, reveal })
+  const latest = useRef({ documentPane, openMatch, project, reveal, unscanned })
   const [query, setQuery] = useState<SearchQuery>(emptyQuery)
   const queryRef = useRef(query)
   const [details, setDetails] = useState(false)
@@ -50,7 +53,7 @@ export function useSearchSession({ documentPane, openMatch, project, reveal, vis
   const [focusRequest, setFocusRequest] = useState(0)
   const handledFocus = useRef(0)
 
-  useLayoutEffect(() => { latest.current = { documentPane, openMatch, project, reveal } }, [documentPane, openMatch, project, reveal])
+  useLayoutEffect(() => { latest.current = { documentPane, openMatch, project, reveal, unscanned } }, [documentPane, openMatch, project, reveal, unscanned])
   useLayoutEffect(() => { resultsRef.current = results }, [results])
   useLayoutEffect(() => { activeRef.current = active }, [active])
 
@@ -94,6 +97,7 @@ export function useSearchSession({ documentPane, openMatch, project, reveal, vis
     }
     const controller = createSearchController({
       fetchDocuments: (signal) => fetchDocuments(latest.current.project, signal),
+      canLoad: () => !latest.current.unscanned,
       createWorker: () => new Worker(new URL("./search-worker.ts", import.meta.url), { type: "module" }),
       view,
     })

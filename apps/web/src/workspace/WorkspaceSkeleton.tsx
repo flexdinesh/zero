@@ -24,7 +24,8 @@ export function WorkspaceSkeleton() {
           <div className="activity-bar" />
           <aside className="sidebar" aria-label="Files">
             <div className="workspace-skeleton-header" />
-            <SkeletonRows label="Loading files" />
+            {/* The frame fades in as a whole. */}
+            <SkeletonRows label="Loading files" delayed={false} />
           </aside>
         </div>
         <div className="sidebar-resizer" aria-hidden="true" />

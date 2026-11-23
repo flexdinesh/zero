@@ -34,6 +34,10 @@ type Subscription struct {
 	// checkout whose head can't be read, reports none.
 	last     *contract.HeadRef
 	baseline bool
+	// warm scans the project once, in the background, when the first
+	// status that follows its tree arrives, so the index is kept for later
+	// reads (decision 0193); nil at the watched level, or once started.
+	warm func()
 
 	// repository is the project's feedback repository key.
 	repository string
@@ -66,6 +70,12 @@ func (e *Events) Subscribe(request contract.EventsRequest) (*Subscription, error
 		return nil, fail(contract.KindUnavailable, "Live updates are unavailable.")
 	}
 	result := &Subscription{watch: subscription, root: project.Root, repository: e.feedbackRepository(project.Root)}
+	// A broad folder's page follows it at the open level only once its
+	// tree was asked for (decision 0194), so warming it then is wanted.
+	if level == watch.LevelOpen {
+		root := project.Root
+		result.warm = func() { _, _ = e.scan(root) }
+	}
 	result.stopNotices = e.notices.listen(result.announce)
 	result.stopFeedback = e.feedback.listen(result.announceFeedback)
 	return result, nil
@@ -150,11 +160,16 @@ func (s *Subscription) Close() {
 // Next returns the pending events in order: a status (the first followed by
 // the checkout's head), then a change (followed by the head when git state
 // changed and the head moved), then any walkthroughs published, then any
-// feedback changes in the project's repository.
+// feedback changes in the project's repository. At the open level, the
+// first status that follows the tree starts the project's scan.
 func (s *Subscription) Next() []contract.Event {
 	var events []contract.Event
 	status, change := s.watch.Next()
 	if status != nil {
+		if s.warm != nil && status.Mode != watch.ModeOff {
+			go s.warm()
+			s.warm = nil
+		}
 		events = append(events, contract.Event{Name: contract.EventStatus, Status: &contract.StatusEvent{Mode: string(status.Mode), Reason: status.Reason}})
 		if !s.baseline {
 			s.baseline = true

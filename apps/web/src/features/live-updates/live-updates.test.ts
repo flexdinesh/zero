@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 
 import type { LiveChange } from "../../api/events-contract.ts"
-import { everything, liveIndicator, liveTargets } from "./live-updates.ts"
+import { everything, liveEventsUrl, liveIndicator, liveTargets } from "./live-updates.ts"
 
 const change = (fields: Partial<LiveChange>): LiveChange => ({ paths: [], tree: false, git: false, overflow: false, ...fields })
 
@@ -41,4 +41,10 @@ test("the indicator names each mode and explains polling and off", () => {
   assert.equal(off.label, "Off")
   assert.match(off.description, /rereads when you return/)
   assert.match(off.description, /8 projects/)
+})
+
+// Decision 0194: a broad folder not yet scanned follows git state only.
+test("a stream asks for the watched lease only when it holds one", () => {
+  assert.equal(liveEventsUrl("/home/me", "open"), "/api/events?project=%2Fhome%2Fme")
+  assert.equal(liveEventsUrl("/home/me", "watched"), "/api/events?project=%2Fhome%2Fme&lease=watched")
 })

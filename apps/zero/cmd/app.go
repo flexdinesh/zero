@@ -122,7 +122,7 @@ func openInApp(ctx context.Context, opts options, stdin io.Reader, stdout, stder
 	var roots []string
 	if opts.repo == "" {
 		var err error
-		if roots, err = validateRoots(opts.paths, opts.scanDepth); err != nil {
+		if roots, err = validateRoots(opts.paths, opts.scanDepth, opts.scanDepthSet); err != nil {
 			return err
 		}
 	}
@@ -140,7 +140,7 @@ func openInApp(ctx context.Context, opts options, stdin io.Reader, stdout, stder
 
 	rootsDeps := deps.daemonRoots()
 	rootsDeps.cliName = opts.cliName
-	project, err := openDaemonRoots(ctx, roots, opts.depth, opts.scanDepth, rootsDeps, stderr)
+	project, err := openDaemonRoots(ctx, roots, opts.depth, opts.scanDepth, opts.scanDepthSet, rootsDeps, stderr)
 	if err != nil {
 		return fallback(err.Error(), "")
 	}
@@ -191,7 +191,7 @@ func openDaemonRoot(ctx context.Context, socket, path string) (daemon.OpenResult
 
 // validateRoots checks paths and discovery as browser mode does. No paths
 // is no roots: the daemon serves what it already has.
-func validateRoots(paths []string, scanDepth int) ([]string, error) {
+func validateRoots(paths []string, scanDepth int, scanDepthSet bool) ([]string, error) {
 	if len(paths) == 0 {
 		return nil, nil
 	}
@@ -201,7 +201,7 @@ func validateRoots(paths []string, scanDepth int) ([]string, error) {
 	}
 	roots := rootSet.List()
 	// NewRootSet rejected missing roots; an unreadable root still fails.
-	if discovery := projects.Discover(roots, scanDepth); len(discovery.Skipped) > 0 {
+	if discovery := projects.Discover(roots, scanDepth, projects.BroadDepth(scanDepth, scanDepthSet)); len(discovery.Skipped) > 0 {
 		return nil, discovery.Skipped[0].Err
 	}
 	return roots, nil
@@ -217,8 +217,9 @@ type daemonRootsDeps struct {
 
 // openDaemonRoots ensures the daemon and opens each root in it, returning
 // the first root's project. Its errors read as notices. depth and scanDepth
-// apply to a daemon it starts; a running one with others gets a warning.
-func openDaemonRoots(ctx context.Context, roots []string, depth, scanDepth int, deps daemonRootsDeps, stderr io.Writer) (string, error) {
+// (explicit when scanDepthSet) apply to a daemon it starts; a running one
+// with others gets a warning.
+func openDaemonRoots(ctx context.Context, roots []string, depth, scanDepth int, scanDepthSet bool, deps daemonRootsDeps, stderr io.Writer) (string, error) {
 	socket := deps.socket
 	if socket == "" {
 		var err error
@@ -226,7 +227,7 @@ func openDaemonRoots(ctx context.Context, roots []string, depth, scanDepth int, 
 			return "", fmt.Errorf("zero daemon is unavailable (%w)", err)
 		}
 	}
-	status, started, err := deps.ensure(ctx, daemonOptions{socket: socket, depth: depth, scanDepth: scanDepth, idleExit: daemon.DefaultIdleExit})
+	status, started, err := deps.ensure(ctx, daemonOptions{socket: socket, depth: depth, scanDepth: scanDepth, scanDepthSet: scanDepthSet, idleExit: daemon.DefaultIdleExit})
 	var mismatch *daemon.ProtocolMismatchError
 	if errors.As(err, &mismatch) {
 		return "", deps.cliName.explainError(err)

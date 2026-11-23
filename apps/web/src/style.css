@@ -51,6 +51,7 @@
 @import "./workspace/sidebar.css" layer(features);
 @import "./workspace/activity-bar.css" layer(features);
 @import "./workspace/workspace-skeleton.css" layer(features);
+@import "./workspace/broad-folder.css" layer(features);
 @import "./features/search/search.css" layer(features);
 @import "./features/find/find.css" layer(features);
 @import "./features/source-control/source-control.css" layer(features);

@@ -28,8 +28,11 @@ type daemonOptions struct {
 	socket    string
 	depth     int
 	scanDepth int
-	idleExit  time.Duration
-	json      bool
+	// scanDepthSet reports --scan-depth given, which then bounds discovery
+	// in broad roots too (decision 0194).
+	scanDepthSet bool
+	idleExit     time.Duration
+	json         bool
 	// rootsFile overrides daemon.DefaultRootsFile() (hidden; dev and test
 	// isolation). An absolute path; "" uses the default.
 	rootsFile string
@@ -70,6 +73,7 @@ func newDaemonCommandWith(actions daemonActions) *cobra.Command {
 					return err
 				}
 				if starts {
+					opts.scanDepthSet = command.Flags().Changed("scan-depth")
 					if err := validateDaemonOptions(opts); err != nil {
 						return err
 					}
@@ -149,7 +153,7 @@ func serveDaemon(ctx context.Context, opts daemonOptions, lifetime daemon.Lifeti
 	}
 	logs := openDaemonLog(opts.socket, stderr)
 	defer logs.close()
-	err = daemon.Run(ctx, daemon.Config{Socket: opts.socket, RootsFile: rootsFile, Depth: opts.depth, ScanDepth: opts.scanDepth, Lifetime: lifetime,
+	err = daemon.Run(ctx, daemon.Config{Socket: opts.socket, RootsFile: rootsFile, Depth: opts.depth, ScanDepth: opts.scanDepth, ScanDepthExplicit: opts.scanDepthSet, Lifetime: lifetime,
 		Log: logs.logger, LogFile: logs.file, CrashFile: logs.crash, InstallMethod: installMethodName, IdentityFile: identityFile, Tailscale: &tailscale.Client{}})
 	if errors.Is(err, daemon.ErrRunning) {
 		return fmt.Errorf("%w at %s", err, opts.socket)
@@ -321,7 +325,8 @@ func startDaemon(opts daemonOptions) daemon.StartFunc {
 
 // daemonRunArgs are the arguments ensure starts `zero daemon run` with.
 // Only flags that differ from their defaults are forwarded, so a process
-// monitor shows a short command line (decision 0151). defaultSocket is
+// monitor shows a short command line (decision 0151), and --scan-depth
+// whenever it was given, so the daemon treats it as explicit (decision 0194). defaultSocket is
 // daemon.DefaultSocket() in this environment, which the child inherits; ""
 // forwards --socket always.
 func daemonRunArgs(opts daemonOptions, defaultSocket string) []string {
@@ -332,7 +337,7 @@ func daemonRunArgs(opts daemonOptions, defaultSocket string) []string {
 	if opts.depth != defaultDepth {
 		args = append(args, "--depth", strconv.Itoa(opts.depth))
 	}
-	if opts.scanDepth != defaultScanDepth {
+	if opts.scanDepthSet || opts.scanDepth != defaultScanDepth {
 		args = append(args, "--scan-depth", strconv.Itoa(opts.scanDepth))
 	}
 	if opts.idleExit != daemon.DefaultIdleExit {

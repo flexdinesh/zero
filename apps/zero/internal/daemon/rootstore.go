@@ -17,12 +17,17 @@ import (
 // Roots owns the daemon's served roots and their file (decisions 0061,
 // 0146): adds, opens, and removals serialize under mu and save. A save
 // writes the served roots plus the roots skipped at load, so a root that
-// overlapped another is not forgotten. It implements app.RootControl.
+// overlapped another is not forgotten. A broad root (projects.Broad) is
+// served for the daemon's lifetime but never saved, and the roots it
+// replaced stay saved (decision 0194). It implements app.RootControl.
 type Roots struct {
 	mu      sync.Mutex
 	set     *projects.RootSet
 	skipped []string
-	file    string
+	// held are saved roots a broad root replaced: not served, but kept in
+	// every save so a restart serves them again.
+	held []string
+	file string
 }
 
 // NewRoots returns the roots of set, keeping skipped in every save to file.
@@ -31,9 +36,9 @@ func NewRoots(set *projects.RootSet, skipped []string, file string) *Roots {
 }
 
 // LoadedRoots reads the saved roots from file. A saved root that no longer
-// exists stops being served: it is dropped and the file saved without it
-// (decision 0146). Other roots that fail to load, such as overlapping ones,
-// are skipped and kept. Each is logged.
+// exists, or is broad (decision 0194), stops being served: it is dropped
+// and the file saved without it (decision 0146). Other roots that fail to
+// load, such as overlapping ones, are skipped and kept. Each is logged.
 func LoadedRoots(file string, log *slog.Logger) (*Roots, error) {
 	saved, err := LoadRoots(file)
 	if err != nil {
@@ -43,6 +48,11 @@ func LoadedRoots(file string, log *slog.Logger) (*Roots, error) {
 	var skipped []string
 	dropped := false
 	for _, root := range saved {
+		if projects.Broad(root) {
+			log.Info("no longer serving broad root", "root", root)
+			dropped = true
+			continue
+		}
 		_, _, err := set.Add(root)
 		switch {
 		case err == nil:
@@ -96,8 +106,9 @@ func (r *Roots) Add(path string) (string, bool, error) {
 
 // Open serves path, an absolute directory zero can read: within a served
 // root nothing changes; otherwise it becomes a root, replacing the roots
-// inside it, and is saved. A folder zero cannot read is refused with
-// app.FolderError's explanation and nothing changes (decision 0146).
+// inside it, and is saved. A broad root is not saved, and the roots it
+// replaced stay saved (decision 0194). A folder zero cannot read is refused
+// with app.FolderError's explanation and nothing changes (decision 0146).
 func (r *Roots) Open(path string) (contract.OpenedRoot, error) {
 	if !filepath.IsAbs(path) {
 		return contract.OpenedRoot{}, &app.Error{Kind: contract.KindInvalid, Code: contract.CodeInvalidRoot, Message: "Path must be absolute."}
@@ -112,7 +123,13 @@ func (r *Roots) Open(path string) (contract.OpenedRoot, error) {
 		return contract.OpenedRoot{}, &app.Error{Kind: contract.KindInvalid, Code: contract.CodeInvalidRoot, Message: err.Error()}
 	}
 	if added {
-		r.skipped = slices.DeleteFunc(r.skipped, func(skipped string) bool { return files.Within(root, skipped) })
+		if projects.Broad(root) {
+			r.held = append(r.held, slices.DeleteFunc(slices.Clone(replaced), projects.Broad)...)
+		} else {
+			within := func(saved string) bool { return files.Within(root, saved) }
+			r.skipped = slices.DeleteFunc(r.skipped, within)
+			r.held = slices.DeleteFunc(r.held, within)
+		}
 		if err := r.save(); err != nil {
 			r.mu.Unlock()
 			return contract.OpenedRoot{}, notSaved(err)
@@ -148,9 +165,12 @@ func (r *Roots) Remove(root string) ([]string, error) {
 	return nonNil(r.set.List()), nil
 }
 
-// save writes the served and skipped roots; callers hold mu or own r.
+// save writes the served roots but broad ones, the held roots, and the
+// skipped roots; callers hold mu or own r.
 func (r *Roots) save() error {
-	return SaveRoots(r.file, append(r.set.List(), r.skipped...))
+	saved := slices.DeleteFunc(r.set.List(), projects.Broad)
+	saved = append(saved, r.held...)
+	return SaveRoots(r.file, append(saved, r.skipped...))
 }
 
 func notSaved(err error) *app.Error {

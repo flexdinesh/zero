@@ -1584,13 +1584,10 @@ func TestWebViewApp(t *testing.T) {
 		isolate("empty")
 		app := w.launch()
 		defer app.stop()
-		app.waitEval("the no folder state", `return document.body.innerText.includes("No folder is open.") && !document.body.innerText.includes("invalid page")`)
-		app.waitEval("a status bar without an error", `return document.querySelector(".status-state").textContent.trim() === "Ready"`)
+		// Serving no folder, Choose a project says so (decision 0193).
+		app.waitEval("the no folder state", `const text = document.body.innerText; return text.includes("Choose a project") && text.includes("No folder is open.") && !text.includes("invalid page")`)
 		app.capture("no-folder.png")
-		app.eval(`[...document.querySelectorAll("button")].find((button) => button.textContent === "Open a folder").click(); return true`)
-		app.waitEval("the picker's Open Folder", `return document.body.innerText.includes("No projects yet.")`)
-		app.capture("no-folder-picker.png")
-		// The picker browses the daemon's disk from home (decision 0146).
+		// Open folder… browses the daemon's disk from home (decision 0146).
 		app.eval(`[...document.querySelectorAll("button")].find((button) => button.textContent === "Open folder…").click(); return true`)
 		app.waitEval("Browse at home", browsing)
 		app.capture("no-folder-browse.png")
@@ -2041,7 +2038,7 @@ func TestWebViewApp(t *testing.T) {
 			t.Fatal(err)
 		}
 		app.eval(`document.querySelector("a").click(); return true`)
-		app.waitEval("the app after Try again", `const text = document.body.innerText; return text.includes("Files") && !text.includes("can't reach its daemon")`)
+		app.waitEval("the app after Try again", `const text = document.body.innerText; return text.includes("Choose a project") && !text.includes("can't reach its daemon")`)
 	})
 }
 

@@ -5,11 +5,14 @@ import {
 
 import { deleteJSON, failureReason, fetchJSON, postJSON } from "./http.ts"
 import { within } from "../features/projects/project-picker.ts"
+import { sharedRequest } from "../lib/shared-request.ts"
 import { lastProject, type WorkspaceMemory } from "../workspace/workspace-memory.ts"
 
-export function fetchProjects(signal?: AbortSignal): Promise<ProjectsResponse> {
-  return fetchJSON("/api/projects", { signal }, isProjectsResponse, (failure) => `Couldn't list projects: ${failureReason(failure)}.`)
-}
+// fetchProjects lists the projects. Concurrent callers (presence, roots,
+// place, the picker) share one request: the server discovers repositories
+// for each, which is slow with a home folder served (decision 0193).
+export const fetchProjects: (signal?: AbortSignal) => Promise<ProjectsResponse> = sharedRequest((signal) =>
+  fetchJSON("/api/projects", { signal }, isProjectsResponse, (failure) => `Couldn't list projects: ${failureReason(failure)}.`))
 
 // Server reasons for folders are full sentences.
 export function fetchDirectories(path: string, signal?: AbortSignal): Promise<DirectoriesResponse> {

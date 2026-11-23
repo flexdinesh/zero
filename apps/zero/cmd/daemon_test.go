@@ -53,7 +53,8 @@ func TestDaemonCommandParsesFlags(t *testing.T) {
 		opts daemonOptions
 	}{
 		{[]string{"run"}, "run", daemonOptions{socket: defaultSocket, depth: 5, scanDepth: 10, idleExit: 30 * time.Minute}},
-		{[]string{"ensure", "--json", "--socket", "/tmp/sf/d.sock", "--depth", "3", "--scan-depth", "4", "--idle-exit", "0"}, "ensure", daemonOptions{socket: "/tmp/sf/d.sock", depth: 3, scanDepth: 4, json: true}},
+		{[]string{"ensure", "--json", "--socket", "/tmp/sf/d.sock", "--depth", "3", "--scan-depth", "4", "--idle-exit", "0"}, "ensure", daemonOptions{socket: "/tmp/sf/d.sock", depth: 3, scanDepth: 4, scanDepthSet: true, json: true}},
+		{[]string{"run", "--scan-depth", "10"}, "run", daemonOptions{socket: defaultSocket, depth: 5, scanDepth: 10, scanDepthSet: true, idleExit: 30 * time.Minute}},
 		{[]string{"--socket", "/tmp/sf/d.sock", "stop"}, "stop", daemonOptions{socket: "/tmp/sf/d.sock"}},
 		{[]string{"status", "--json"}, "status", daemonOptions{socket: defaultSocket, json: true}},
 		{[]string{"run", "--roots-file", "/tmp/sf/roots.json"}, "run", daemonOptions{socket: defaultSocket, depth: 5, scanDepth: 10, idleExit: 30 * time.Minute, rootsFile: "/tmp/sf/roots.json"}},
@@ -238,6 +239,9 @@ func TestDaemonRunArgsForwardOnlyNonDefaults(t *testing.T) {
 		{"other socket", daemonOptions{socket: "/tmp/d.sock", depth: defaultDepth, scanDepth: defaultScanDepth, idleExit: daemon.DefaultIdleExit}, socket, "daemon run --socket /tmp/d.sock"},
 		{"every flag", daemonOptions{socket: socket, depth: 2, scanDepth: 3, idleExit: 0, rootsFile: "/tmp/roots.json"}, socket,
 			"daemon run --depth 2 --scan-depth 3 --idle-exit 0s --roots-file /tmp/roots.json"},
+		// A given --scan-depth stays explicit in the daemon (decision 0194).
+		{"scan depth given at its default", daemonOptions{socket: socket, depth: defaultDepth, scanDepth: defaultScanDepth, scanDepthSet: true, idleExit: daemon.DefaultIdleExit}, socket,
+			"daemon run --scan-depth 10"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if got := strings.Join(daemonRunArgs(test.opts, test.defaultSocket), " "); got != test.want {

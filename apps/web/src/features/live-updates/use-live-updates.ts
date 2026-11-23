@@ -1,8 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 
 import { isFeedbackEvent, isLiveChange, isLiveStatus, type LiveChange, type LiveStatus } from "../../api/events-contract.ts"
-import { projectUrl } from "../../api/project-url.ts"
-import { everything } from "./live-updates.ts"
+import { everything, liveEventsUrl, type LiveLease } from "./live-updates.ts"
 
 // Returns to the page reread at most this often.
 const returnThrottle = 2_000
@@ -127,9 +126,11 @@ function eventData(event: Event): unknown {
 // useLiveUpdates runs followLiveUpdates for project and calls onChange with
 // each batch. Feedback rereads on announcements and initial subscription:
 // its initial read can precede an announcement the stream cannot replay
-// (decision 0120). Mount it once per project.
+// (decision 0120). A broad folder not yet scanned holds the watched lease,
+// so the server never walks it (decision 0194); a new lease reopens the
+// stream. Mount it once per project.
 export function useLiveUpdates(project: string, onChange: (change: LiveChange) => void,
-  refreshFeedback?: () => void): LiveStatus | null {
+  refreshFeedback?: () => void, lease: LiveLease = "open"): LiveStatus | null {
   const [status, setStatus] = useState<LiveStatus | null>(null)
   const latest = useRef(onChange)
   const latestFeedback = useRef(refreshFeedback)
@@ -142,7 +143,7 @@ export function useLiveUpdates(project: string, onChange: (change: LiveChange) =
     if (!project) return
     const follower = followLiveUpdates({
       open(handlers) {
-        const source = new EventSource(projectUrl("/api/events", project))
+        const source = new EventSource(liveEventsUrl(project, lease))
         source.addEventListener("status", (event) => {
           const value = eventData(event)
           if (isLiveStatus(value)) handlers.status(value)
@@ -180,7 +181,7 @@ export function useLiveUpdates(project: string, onChange: (change: LiveChange) =
       document.removeEventListener("visibilitychange", visibility)
       window.removeEventListener("focus", focus)
     }
-  }, [project])
+  }, [lease, project])
 
   return status
 }

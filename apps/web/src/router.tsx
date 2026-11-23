@@ -14,7 +14,7 @@ import { isAbort } from "./api/http.ts"
 import { loadPage } from "./api/page-data.ts"
 import { parseDiffLineAnchor } from "./features/source-control/diff-line-selection.ts"
 import { ChooseProject } from "./features/projects/ChooseProject.tsx"
-import { defaultProject, fetchProjects, landing, repoKey, repoLanding, type Landing, type RepoLanding } from "./api/projects-data.ts"
+import { defaultProject, fetchProjects, repoKey, repoLanding, type RepoLanding } from "./api/projects-data.ts"
 import { compareSearch, legacyCompare, reviewFragment, routeCompare } from "./features/source-control/compare.ts"
 import { isCommitHash } from "./lib/commit-hash.ts"
 import { routeAt } from "./workspace/workspace-tabs.ts"
@@ -22,6 +22,8 @@ import { routeStep, routeWalkthrough } from "./features/walkthrough/walkthrough-
 import { routeFeedback, routeThread } from "./features/feedback/feedback-model.ts"
 import { navigationHistoryFor } from "./workspace/navigation-history-store.ts"
 import { WorkspaceSkeleton } from "./workspace/WorkspaceSkeleton.tsx"
+import { loadsWorkspace } from "./workspace/first-load.ts"
+import { treeStore, withRouteTree } from "./workspace/tree-store.ts"
 
 interface PageSearch {
   [key: string]: unknown
@@ -145,9 +147,13 @@ const rootRoute = createRootRoute({
 // FirstLoad draws the workspace's frame until the first route has loaded:
 // the router publishes no match before its loaders finish, and a deep link's
 // document can wait on a large folder's scan (decision 0192). Later
-// navigations keep the workspace, which shows its own progress.
+// navigations keep the workspace, which shows its own progress. A route
+// that shows no workspace (asking for a project) draws no frame
+// (decision 0193).
 function FirstLoad({ children }: { children: ReactNode }): ReactElement {
-  const loading: boolean = useRouterState({ select: (state) => state.matches.length === 0 })
+  const loading: boolean = useRouterState({
+    select: (state) => state.matches.length === 0 && loadsWorkspace(state.location.pathname, state.location.search),
+  })
   return <>{loading && <WorkspaceSkeleton />}{children}</>
 }
 
@@ -156,9 +162,8 @@ const indexRoute = createRoute({
   path: "/",
   validateSearch,
   // Without a project the page asks which, even when there is only one
-  // (decisions 0153, 0191). When projects cannot be listed, it asks too and
-  // reports why.
-  // Serving no folder keeps the workspace's no-folder state.
+  // (decisions 0153, 0191), and paints before projects are listed: serving
+  // no folder, it says so itself (decision 0193).
   beforeLoad: async ({ search, abortController }) => {
     // A repo= link opens its checkout, else asks among its checkouts, or
     // among every project when this server has none.
@@ -167,23 +172,18 @@ const indexRoute = createRoute({
       if (found.kind === "open") throw redirect({ to: "/", search: withProject(withoutRepo(search), found.project), replace: true })
       return { choose: true }
     }
-    if (search.project) return { choose: false }
-    let chosen: Landing = { kind: "choose" }
-    try {
-      chosen = landing(await fetchProjects(abortController.signal))
-    } catch (error: unknown) {
-      if (isAbort(error)) throw error
-    }
-    return { choose: chosen.kind === "choose" }
+    return { choose: !search.project }
   },
   loaderDeps: ({ search }) => ({ project: search.project ?? "" }),
-  // Choosing a project loads no page.
-  loader: ({ abortController, context, deps }) => context.choose ? choosing : loadPage({
-    pathname: "/",
-    project: deps.project,
-    selected: "",
-    signal: abortController.signal,
-  }),
+  // Choosing a project loads no page. A project's tree loads beside its
+  // page (decision 0193).
+  loader: ({ abortController, context, deps, preload }) => context.choose ? choosing
+    : withRouteTree(treeStore, { project: deps.project, preload, signal: abortController.signal }, () => loadPage({
+      pathname: "/",
+      project: deps.project,
+      selected: "",
+      signal: abortController.signal,
+    })),
 })
 
 const viewRoute = createRoute({
@@ -226,13 +226,13 @@ const viewRoute = createRoute({
     const diff = routeCompare(search) !== null || (!search.path && (search.wt !== undefined || search.welcome !== undefined || search.browser !== undefined || search.fb !== undefined))
     return { project: search.project ?? "", selected: diff ? "" : search.path ?? "", at: diff ? "" : search.at ?? "", diff }
   },
-  loader: ({ abortController, deps }) => loadPage({
+  loader: ({ abortController, deps, preload }) => withRouteTree(treeStore, { project: deps.project, preload, signal: abortController.signal }, () => loadPage({
     pathname: deps.diff ? "/" : "/view",
     project: deps.project,
     selected: deps.selected,
     at: deps.at,
     signal: abortController.signal,
-  }),
+  })),
 })
 
 // composerRoute is the page the desktop app shows beside a pick on the

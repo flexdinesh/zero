@@ -18,6 +18,9 @@ export interface ProjectMemory {
   active: StoredTab
   // Absent uses the server's initial expansion; [] remembers all collapsed.
   expanded?: string[]
+  // scan records that this browser asked to scan the project's broad
+  // folder (home and the like), so its tree loads (decision 0194).
+  scan?: true
 }
 
 export interface WorkspaceMemory {
@@ -47,6 +50,7 @@ function parseProject(value: unknown): ProjectMemory | null {
     tabs: storedTabs(value.tabs),
     active: active ? storedTab(active) : "",
     ...(Array.isArray(value.expanded) ? { expanded: stringArray(value.expanded) } : {}),
+    ...(value.scan === true ? { scan: true } : {}),
   }
 }
 
@@ -106,6 +110,25 @@ export function rememberExpanded(memory: WorkspaceMemory, project: string, expan
       expanded: [...new Set(expanded)],
     }, maxProjects),
   }
+}
+
+// rememberScan records that the project's broad folder may be scanned.
+export function rememberScan(memory: WorkspaceMemory, project: string): WorkspaceMemory {
+  return {
+    ...memory,
+    projects: withEntry(memory.projects, project, {
+      tabs: [],
+      active: "",
+      ...projectMemory(memory, project),
+      scan: true,
+    }, maxProjects),
+  }
+}
+
+// scanConfirmed reports whether this browser asked to scan the project's
+// broad folder.
+export function scanConfirmed(memory: WorkspaceMemory, project: string): boolean {
+  return projectMemory(memory, project)?.scan === true
 }
 
 // forgetProject drops a project's workspace; a forgotten last project

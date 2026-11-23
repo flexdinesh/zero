@@ -74,9 +74,10 @@ func (a *App) serveRaw(w http.ResponseWriter, projectID, name string) {
 }
 
 // serveTree writes a project's tree at its outcome's status; a failed tree
-// still carries its project and error (decision 0192).
-func (a *App) serveTree(w http.ResponseWriter, projectID string) {
-	data, err := a.app.Documents.Tree(contract.TreeRequest{Project: projectID})
+// still carries its project and error (decision 0192). scan reads a broad
+// folder's tree too (scan=1, decision 0194).
+func (a *App) serveTree(w http.ResponseWriter, projectID string, scan bool) {
+	data, err := a.app.Documents.Tree(contract.TreeRequest{Project: projectID, Scan: scan})
 	writeJSON(w, statusOf(err), data)
 }
 

@@ -29,7 +29,7 @@ function LifecycleFixture() {
   }, [navigationPrefix])
   const registerCommands = useCallback((commands: SearchCommands | null) => { openSearch.current = commands?.open ?? null }, [])
   return (
-    <SearchProvider documentPane={pane} openMatch={openMatch} project={project} registerCommands={registerCommands} reveal={() => {}} visible>
+    <SearchProvider documentPane={pane} openMatch={openMatch} project={project} registerCommands={registerCommands} reveal={() => {}} unscanned={false} visible>
       <Button variant="outline" onClick={() => setHTML(replacementHTML)}>Update Markdown</Button>
       <Button variant="outline" onClick={() => setVisible((current) => !current)}>Toggle document</Button>
       <Button variant="outline" onClick={() => setNavigationPrefix("updated")}>Update navigation</Button>

@@ -10,9 +10,11 @@ import {
   projectMemory,
   rememberExpanded,
   rememberProject,
+  rememberScan,
   rememberedProjects,
   restoreTabs,
   restoreExpanded,
+  scanConfirmed,
   startupTab,
   type ProjectMemory,
 } from "./workspace-memory.ts"
@@ -199,4 +201,21 @@ test("documents restored before the tree are kept, then the removed ones go", ()
   // The active tab stays to say its file is gone; snapshots read git.
   assert.deepEqual(missingTabs(restored.tabs, files, documentTab("gone.md")), [])
   assert.deepEqual(missingTabs(restored.tabs, files, documentTab("README.md")), [documentTab("gone.md")])
+})
+
+// Decision 0194: a broad folder is scanned once this browser asked, and
+// stays so across tab and folder memory and a reload.
+test("a confirmed scan is remembered per project beside tabs and folders", () => {
+  const readme = documentTab("README.md")
+  let memory = rememberScan(emptyMemory, "/home/me")
+  assert.equal(scanConfirmed(memory, "/home/me"), true)
+  assert.equal(scanConfirmed(memory, "/work/zero"), false)
+  memory = rememberProject(memory, "daemon", "/home/me", [readme], readme)
+  memory = rememberExpanded(memory, "/home/me", ["notes/"])
+  assert.equal(scanConfirmed(memory, "/home/me"), true)
+  const parsed = parseMemory(JSON.parse(JSON.stringify(memory)))
+  assert.equal(scanConfirmed(parsed, "/home/me"), true)
+  assert.deepEqual(projectMemory(parsed, "/home/me")?.expanded, ["notes/"])
+  assert.equal(scanConfirmed(parseMemory({ last: {}, projects: { "/home/me": { tabs: [], active: "", scan: "yes" } } }), "/home/me"), false)
+  assert.equal(scanConfirmed(forgetProject(memory, "/home/me"), "/home/me"), false)
 })

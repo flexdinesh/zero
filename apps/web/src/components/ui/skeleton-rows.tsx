@@ -18,15 +18,18 @@ const rowShapes: readonly { depth: 0 | 1 | 2; width: "short" | "medium" | "long"
 interface SkeletonRowsProps {
   // label names what is loading, for assistive technology.
   label: string
+  // delayed (default) fades the rows in after --delay-progress; false shows
+  // them at once, continuing a skeleton already on screen (decision 0193).
+  delayed?: boolean
   className?: string
 }
 
 // SkeletonRows stands in for list rows still loading: static bars with no
 // shimmer. It appears only after --delay-progress, so a quick load never
 // flashes it.
-export function SkeletonRows({ label, className }: SkeletonRowsProps) {
+export function SkeletonRows({ label, delayed = true, className }: SkeletonRowsProps) {
   return (
-    <div className={cn("ui-skeleton-rows", className)} role="status" aria-busy="true">
+    <div className={cn("ui-skeleton-rows", className)} role="status" aria-busy="true" data-delayed={delayed ? undefined : "false"}>
       <span className="visually-hidden">{`${label}…`}</span>
       {rowShapes.map((row, index) => (
         <div key={index} className="ui-skeleton-row" data-depth={row.depth} data-width={row.width} aria-hidden="true">

@@ -68,7 +68,7 @@ func TestRootCommandDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	// No path adds no folder, not even "." (decision 0191).
-	if len(got.paths) != 0 || got.depth != 5 || got.scanDepth != 10 || got.host != defaultHost || got.hostSet || got.port != 0 || got.portSet || got.noOpen {
+	if len(got.paths) != 0 || got.depth != 5 || got.scanDepth != 10 || got.scanDepthSet || got.host != defaultHost || got.hostSet || got.port != 0 || got.portSet || got.noOpen {
 		t.Fatalf("default options = %+v", got)
 	}
 }
@@ -117,6 +117,18 @@ func TestRootCommandParsesAdditiveFlags(t *testing.T) {
 	}
 	if strings.Join(got.paths, ",") != "docs" || got.depth != 3 || got.host != "192.0.2.10" || !got.hostSet || got.port != 8080 || !got.portSet || !got.noOpen {
 		t.Fatalf("parsed options = %+v", got)
+	}
+}
+
+// A given --scan-depth, even at its default, bounds broad roots too
+// (decision 0194).
+func TestRootCommandReportsAGivenScanDepth(t *testing.T) {
+	got, err := executeCommand(t, []string{"docs", "--scan-depth", "10"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.scanDepth != 10 || !got.scanDepthSet {
+		t.Fatalf("parsed options = %+v, want scan depth 10 given", got)
 	}
 }
 

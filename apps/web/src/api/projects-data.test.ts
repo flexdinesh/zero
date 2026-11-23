@@ -2,7 +2,8 @@ import assert from "node:assert/strict"
 import test from "node:test"
 
 import type { ProjectsResponse } from "@zero/contracts"
-import { checkoutsOf, landing, lastOpened, repoLanding } from "./projects-data.ts"
+import { checkoutsOf, fetchProjects, landing, lastOpened, repoLanding } from "./projects-data.ts"
+import { isAbort } from "./http.ts"
 import { emptyMemory, forgetProject, rememberProject } from "../workspace/workspace-memory.ts"
 
 const sessionKey = "/work\n/home"
@@ -98,4 +99,26 @@ test("a link's project that is another repository here gives way to the identity
   assert.deepEqual(repoLanding(repos, "/work/zero", "github.com/me/site"), { kind: "open", project: "/home/site" })
   assert.deepEqual(repoLanding(repos, "/elsewhere/zero", "github.com/me/site"), { kind: "open", project: "/home/site" })
   assert.deepEqual(repoLanding(repos, "/home/site", "github.com/none/here"), { kind: "missing" })
+})
+
+// Decision 0193: presence, roots, place, and the picker ask at once; the
+// server discovers repositories once for them all.
+test("concurrent project lists share one request, and each caller may leave", async (t) => {
+  let release = () => {}
+  const held = new Promise<void>((resolve) => { release = resolve })
+  const fetchMock = t.mock.method(globalThis, "fetch", async () => {
+    await held
+    return new Response(JSON.stringify(projects), { headers: { "Content-Type": "application/json" } })
+  })
+  const leaving = new AbortController()
+  const reads = [fetchProjects(), fetchProjects(new AbortController().signal), fetchProjects(leaving.signal)]
+  leaving.abort()
+  release()
+  const [first, second, left] = await Promise.allSettled(reads)
+  assert.equal(fetchMock.mock.callCount(), 1)
+  assert.deepEqual(first?.status === "fulfilled" ? first.value : null, projects)
+  assert.deepEqual(second?.status === "fulfilled" ? second.value : null, projects)
+  assert.equal(left?.status === "rejected" && isAbort(left.reason), true)
+  await fetchProjects()
+  assert.equal(fetchMock.mock.callCount(), 2)
 })

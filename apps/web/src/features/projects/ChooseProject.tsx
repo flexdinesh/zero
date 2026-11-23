@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import type { ProjectsResponse } from "@zero/contracts"
 import { Button } from "../../components/ui/button.tsx"
 import { isAbort } from "../../api/http.ts"
-import { checkoutsOf, fetchProjects, lastOpened, repoKey } from "../../api/projects-data.ts"
+import { checkoutsOf, fetchProjects, landing, lastOpened, repoKey } from "../../api/projects-data.ts"
 import { desktopBridge, type ProjectMatch } from "../../lib/desktop-bridge.ts"
 import { useDelayedFlag } from "../../lib/use-delayed-flag.ts"
 import { TitleBar } from "../../workspace/TitleBar.tsx"
@@ -50,11 +50,13 @@ function useElsewhere(identity: string) {
   return { matches: found.identity === identity ? found.matches : [], open }
 }
 
-// ChooseProject is what a link that names no project shows while there is a
-// choice (decision 0153): the served projects, the last opened one marked,
-// and nothing loaded until one is picked. A link that names a repository
-// identity (repo=, decision 0188) lists its checkouts, or says this server
-// has none and lists every project; the pick keeps the link's target.
+// ChooseProject is what a link that names no project shows (decisions 0153,
+// 0191): the served projects, the last opened one marked, and nothing
+// loaded until one is picked. It paints before projects are listed, and
+// says so when no folder is served (decision 0193). A link that names a
+// repository identity (repo=, decision 0188) lists its checkouts, or says
+// this server has none and lists every project; the pick keeps the link's
+// target.
 export function ChooseProject() {
   usePresence()
   const navigate = useNavigate()
@@ -104,6 +106,9 @@ export function ChooseProject() {
   const identity = checkouts > 0 && !showAll ? repo : ""
   const elsewhere = useElsewhere(response && repo && checkouts === 0 ? repo : "")
   const scanning = useDelayedFlag(load.kind === "loading" && response === null, 150)
+  // Serving no folder there is nothing to choose: the page says so, as the
+  // workspace did (decision 0193).
+  const noFolder = response !== null && !repo && landing(response).kind === "none"
   const status = load.kind === "error" ? <>
     <span>{load.message}</span>
     <Button variant="outline" onClick={() => {
@@ -117,7 +122,7 @@ export function ChooseProject() {
       <main className="choose-project">
         <div className="choose-project-body">
           <h1 className="choose-project-title">{identity ? "Choose a checkout" : "Choose a project"}</h1>
-          {response && (identity
+          {noFolder ? <p className="choose-project-summary">No folder is open.</p> : response && (identity
             ? <p className="choose-project-summary">
               {count(checkouts, "checkout", "checkouts")} of <span className="choose-project-identity">{repo}</span>.{" "}
               <Button variant="link" size="inline" onClick={() => setShowAll(true)}>Show all projects</Button>
@@ -135,10 +140,12 @@ export function ChooseProject() {
               ))}
             </ul>
           )}
-          {response
+          {noFolder ? response?.manageRoots === true && (
+            <Button variant="outline" onClick={openFolder}><FolderOpenIcon aria-hidden="true" />Open folder…</Button>
+          ) : response
             ? <ProjectList key={identity} response={response} current="" last={last} enter autoFocus status={status} identity={identity} onOpen={open} />
             : <div className="project-list-status" role="status" aria-live="polite">{status ?? (scanning ? "Scanning for projects…" : "")}</div>}
-          {response?.manageRoots && (
+          {!noFolder && response?.manageRoots && (
             <div className="choose-project-actions">
               <Button variant="link" size="inline" onClick={openFolder}><FolderOpenIcon aria-hidden="true" />Open folder…</Button>
             </div>

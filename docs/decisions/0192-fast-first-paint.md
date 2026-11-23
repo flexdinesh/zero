@@ -1,6 +1,7 @@
 # 0192: Paint first, read the tree apart, keep followed scans
 
-- Status: Accepted
+- Status: Accepted; the tree's wait for the live stream and the Explorer's
+  own delayed skeleton superseded by [0193](0193-load-in-parallel-paint-once.md)
 - Date: 2026-11-23
 - Extends: [0050](0050-live-updates.md), [0080](0080-application-layer-contracts-and-transports.md),
   [0191](0191-open-nothing-implicitly.md)

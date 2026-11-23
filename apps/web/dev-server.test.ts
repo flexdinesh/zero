@@ -101,6 +101,10 @@ test("shouldOpenBrowser permits only frontend dev lifecycles outside SSH", () =>
 })
 
 test("mockFixtureName maps supported API scenarios", () => {
+  // The mock project is not broad: a scan request reads the same tree, and
+  // a watched stream reports the same status (decision 0194).
+  assert.deepEqual(mockFixtureName("GET", "/tree?project=%2Fmock&scan=1"), { name: "tree.json", status: 200 })
+  assert.equal(mockFixtureName("GET", "/events?project=%2Fmock&lease=watched")?.name, "events-status.json")
   assert.deepEqual(mockFixtureName("GET", "/page"), {
     name: "page-index.json",
     status: 200,

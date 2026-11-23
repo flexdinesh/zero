@@ -21,6 +21,7 @@ import { highlightedParts } from "./search-highlights.ts"
 import { fileRowKey, matchRowKey, parentResultKey, resultRows, resultSummary, type ResultRow } from "./search-results.ts"
 import { useSearchSessionState } from "./SearchProvider.tsx"
 import type { SearchSession } from "./use-search-session.ts"
+import { BroadFolderPrompt, type UnscannedFolder } from "../../workspace/BroadFolderPrompt.tsx"
 
 type Toggle = "matchCase" | "wholeWord" | "regex"
 
@@ -48,6 +49,9 @@ interface SearchViewProps {
   onDismiss(): void
   // onLeave moves focus out of the view, to the document.
   onLeave(): void
+  // unscanned is set while the project's broad folder is unscanned: the
+  // view offers to scan it instead of searching (decision 0194).
+  unscanned?: UnscannedFolder | null
 }
 
 export function SearchSidebarView({ visible, ...props }: SearchViewProps & { visible: boolean }) {
@@ -55,7 +59,7 @@ export function SearchSidebarView({ visible, ...props }: SearchViewProps & { vis
   return <SidebarBody visible={visible}><SearchView {...props} session={session} visible={visible} /></SidebarBody>
 }
 
-export function SearchView({ mobile, onDismiss, onLeave, session, visible }: SearchViewProps & { session: SearchSession; visible: boolean }) {
+export function SearchView({ mobile, onDismiss, onLeave, unscanned = null, session, visible }: SearchViewProps & { session: SearchSession; visible: boolean }) {
   const { active, collapsed, details, query, results, status, stepped } = session
   const scroll = useRef<HTMLDivElement>(null)
   const lastStep = useRef<typeof stepped>(null)
@@ -157,6 +161,7 @@ export function SearchView({ mobile, onDismiss, onLeave, session, visible }: Sea
           disabled={!results?.files.length} onClick={() => session.setAllCollapsed(anyExpanded)} />
         {mobile && <IconButton label="Close search" icon={<XIcon aria-hidden="true" />} onClick={onDismiss} />}
       </>} />
+      {unscanned ? <BroadFolderPrompt rootName={unscanned.rootName} onScan={unscanned.scan} onOpenProjects={unscanned.openProjects} /> : <>
       <div className="search-form">
         <TextField className="search-box" inputRef={session.input} id="search-input" inputClassName="search-box-input" type="text"
           autoComplete="off" spellCheck={false} placeholder="Search" aria-label="Search" value={query.pattern}
@@ -232,6 +237,7 @@ export function SearchView({ mobile, onDismiss, onLeave, session, visible }: Sea
           </div>
         </div>
       )}
+      </>}
     </section>
   )
 }

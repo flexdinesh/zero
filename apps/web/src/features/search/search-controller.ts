@@ -49,6 +49,9 @@ export interface SearchControllerOptions {
   clearTimer?: (timer: TimerHandle) => void
   debounceMs?: number
   fetchDocuments: (signal: AbortSignal) => Promise<SearchDocumentsResponse>
+  // canLoad reports whether documents may be fetched; a broad folder not yet
+  // scanned may not (decision 0194). Defaults to always.
+  canLoad?: () => boolean
   createWorker: () => SearchWorker
   setTimer?: (callback: () => void, delay: number) => TimerHandle
   shortcutTarget?: EventTarget
@@ -89,6 +92,7 @@ export function createSearchController({
   view,
   createWorker,
   fetchDocuments,
+  canLoad = () => true,
   shortcutTarget = globalThis.document,
   debounceMs = 150,
   setTimer = globalThis.setTimeout.bind(globalThis),
@@ -160,6 +164,9 @@ export function createSearchController({
       return
     }
     if (!ready) {
+      // A search typed before documents were asked for (the folder was
+      // scanned meanwhile) asks for them now.
+      if (!loading && canLoad()) void ensureLoaded()
       view.setStatus({ kind: "loading", message: "Preparing search…" })
       return
     }
@@ -206,13 +213,14 @@ export function createSearchController({
       fail()
       return
     }
+    if (!canLoad()) return
     if (stale) reload()
     else void ensureLoaded()
   }
 
   // reload fetches documents again, as files may have changed on disk.
   const reload = (): void => {
-    if (!started) return
+    if (!started || !canLoad()) return
     stale = false
     unavailable = false
     ready = false

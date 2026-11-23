@@ -147,3 +147,44 @@ test("with no checkout here, the desktop app offers other open connections' chec
     ["find", site], ["open", "r-0123456789ab", "/home/dev/guides"],
   ])
 })
+
+// Decision 0193: / asks at once, before projects are listed.
+test("the choice paints before projects are listed", async ({ page }) => {
+  let release = () => {}
+  const held = new Promise<void>((resolve) => { release = resolve })
+  let requested = false
+  await page.route("**/api/projects", async (route) => {
+    requested = true
+    await held
+    await route.continue()
+  })
+  try {
+    await page.goto("/")
+    await expect(chooser(page).getByRole("heading", { name: "Choose a project", level: 1 })).toBeVisible()
+    await expect.poll(() => requested).toBe(true)
+    await expect(page.locator(".workspace-skeleton")).toHaveCount(0)
+    await expect(chooser(page).getByRole("button", { name: /^markdown/ })).toHaveCount(0)
+  } finally {
+    release()
+  }
+  await expect(chooser(page).getByRole("button", { name: /^markdown/ })).toBeVisible()
+  await expect(chooser(page)).toContainText("Serving 1 folder.")
+})
+
+// Serving no folder, the choice says so and offers to open one where the
+// server can (decision 0193).
+test("serving no folder, the choice says so", async ({ page }) => {
+  for (const manageRoots of [true, false]) {
+    await page.unrouteAll({ behavior: "wait" })
+    await page.route("**/api/projects", async (route) => {
+      const response = await route.fetch()
+      const json: unknown = await response.json()
+      if (typeof json !== "object" || json === null) throw new Error("unexpected projects payload")
+      await route.fulfill({ response, json: { ...json, roots: [], projects: [], manageRoots } })
+    })
+    await page.goto("/")
+    await expect(chooser(page).getByText("No folder is open.")).toBeVisible()
+    await expect(chooser(page).getByRole("textbox", { name: "Filter projects" })).toHaveCount(0)
+    await expect(chooser(page).getByRole("button", { name: "Open folder…" })).toHaveCount(manageRoots ? 1 : 0)
+  }
+})

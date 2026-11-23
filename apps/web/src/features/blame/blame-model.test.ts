@@ -97,7 +97,7 @@ test("blame reads the working tree or a snapshot", () => {
 
 test("only text files within the preview limit show blame", () => {
   const page: PageData = {
-    roots: [], sessionKey: "", project: "p", projectUnavailable: false, rootName: "", repository: "p", identity: "", projectKind: "repo",
+    roots: [], sessionKey: "", project: "p", projectUnavailable: false, broad: false, rootName: "", repository: "p", identity: "", projectKind: "repo",
     branch: "main", worktrees: 1, selected: "a.go", at: "", content: "", source: "a\n", fileSize: 2,
     hasFile: true, error: "", documentType: null, navigationSupported: false, binary: false, tooLarge: false,
     previewDisabled: false, highlightDisabled: false, searchExcluded: false, previewError: "",
