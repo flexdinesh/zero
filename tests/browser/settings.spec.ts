@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test"
+import { rootParam } from "./fixture-root.ts"
 
 test("shared list buttons keep selection and focus inside the scrollbar lane", async ({ page }) => {
-  await page.goto("/")
+  await page.goto(`/?project=${rootParam}`)
   await page.getByRole("button", { name: "Settings", exact: true }).click()
   const categories = page.getByRole("navigation", { name: "Settings categories" })
   const row = categories.getByRole("button", { name: "Code Navigation" })
@@ -30,7 +31,7 @@ test("shared list buttons keep selection and focus inside the scrollbar lane", a
 })
 
 test("settings categories, global search, and modified filter compose and recover", async ({ page }) => {
-  await page.goto("/")
+  await page.goto(`/?project=${rootParam}`)
   await page.getByRole("button", { name: "Settings", exact: true }).click()
   const dialog = page.getByRole("dialog", { name: "Settings", exact: true })
   const categories = dialog.getByRole("navigation", { name: "Settings categories" })
@@ -74,7 +75,7 @@ test("settings categories, global search, and modified filter compose and recove
 test("settings keeps controls and footer reachable on short desktop and mobile", async ({ page }) => {
   for (const viewport of [{ width: 1280, height: 480 }, { width: 390, height: 667 }]) {
     await page.setViewportSize(viewport)
-    await page.goto("/")
+    await page.goto(`/?project=${rootParam}`)
     await page.getByRole("button", { name: "Settings", exact: true }).click()
     const dialog = page.getByRole("dialog", { name: "Settings", exact: true })
     const font = dialog.getByRole("spinbutton", { name: "Appearance: Font Size" })

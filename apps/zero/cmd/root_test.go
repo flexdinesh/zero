@@ -67,7 +67,8 @@ func TestRootCommandDefaults(t *testing.T) {
 	if err := command.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(got.paths, ",") != "." || got.depth != 5 || got.scanDepth != 10 || got.host != defaultHost || got.hostSet || got.port != 0 || got.portSet || got.noOpen {
+	// No path adds no folder, not even "." (decision 0191).
+	if len(got.paths) != 0 || got.depth != 5 || got.scanDepth != 10 || got.host != defaultHost || got.hostSet || got.port != 0 || got.portSet || got.noOpen {
 		t.Fatalf("default options = %+v", got)
 	}
 }
@@ -486,6 +487,23 @@ func TestRunDiscoversProjects(t *testing.T) {
 	}
 }
 
+func TestRunWithoutAPathAsksForOne(t *testing.T) {
+	var stdout bytes.Buffer
+	err := run(context.Background(), options{depth: 5, noOpen: true, controlDir: t.TempDir()}, strings.NewReader(""), &stdout, &bytes.Buffer{})
+	// Browser mode cannot open a folder from the page: it serves none
+	// implicitly (decision 0191).
+	if !errors.Is(err, errNoPath) || !strings.Contains(err.Error(), "`zero browser .`") {
+		t.Fatalf("err = %v, want errNoPath naming `zero browser .`", err)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("stdout = %q, want nothing served", stdout.String())
+	}
+	named := run(context.Background(), options{depth: 5, noOpen: true, controlDir: t.TempDir(), cliName: "z"}, strings.NewReader(""), &stdout, &bytes.Buffer{})
+	if !errors.Is(named, errNoPath) || !strings.Contains(named.Error(), "`z browser .`") {
+		t.Errorf("err = %v, want the invoked name", named)
+	}
+}
+
 func TestRunServesEveryPathAndRejectsOverlap(t *testing.T) {
 	disableColor(t)
 	parent := t.TempDir()
@@ -543,12 +561,12 @@ func TestBrowserCommandMatchesRoot(t *testing.T) {
 	}
 }
 
-func TestBrowserCommandDefaultsToCurrentDirectory(t *testing.T) {
+func TestBrowserCommandAddsNoDefaultPath(t *testing.T) {
 	got, err := executeCommand(t, []string{"browser"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(got.paths, ",") != "." || got.depth != 5 || got.scanDepth != 10 || got.host != defaultHost || got.port != 0 || got.portSet || got.noOpen {
+	if len(got.paths) != 0 || got.depth != 5 || got.scanDepth != 10 || got.host != defaultHost || got.port != 0 || got.portSet || got.noOpen {
 		t.Fatalf("browser options = %+v", got)
 	}
 }

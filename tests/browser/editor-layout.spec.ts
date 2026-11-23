@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test"
+import { rootParam } from "./fixture-root.ts"
 
 test("file tree supports arrow navigation and Enter activation", async ({ page }) => {
-  await page.goto("/")
+  await page.goto(`/?project=${rootParam}`)
   const explorer = page.getByRole("complementary", { name: "Files" })
   const directory = explorer.getByRole("treeitem", { name: "guides", exact: true })
   await directory.focus()
@@ -42,7 +43,7 @@ test("mobile explorer opens, selects, and closes with reading controls reachable
 
 test("mobile content search opens in the drawer and closes it when a match opens", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto("/")
+  await page.goto(`/?project=${rootParam}`)
   await page.locator(".status-bar").getByRole("button", { name: /^Find in files/ }).click()
   const drawer = page.getByRole("dialog", { name: "Search", exact: true })
   const search = drawer.getByRole("textbox", { name: "Search", exact: true })

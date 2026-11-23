@@ -153,7 +153,7 @@ rewriting history; update `Status` on the old record.
 | [0150](0150-remote-connect-copy.md) | Copy the connect command on `--remote` | Accepted; extends 0098 |
 | [0151](0151-desktop-app-named-zero.md) | Desktop app named Zero; process names | Accepted; supersedes 0095's and 0118's desktop names; revises 0101's PATH launcher |
 | [0152](0152-persistent-logs-and-problem-reports.md) | Persistent logs and Report a Problem | Accepted; extends 0061, 0080, 0081, 0094 |
-| [0153](0153-links-name-their-project.md) | Links name their project; a link without one asks | Accepted; supersedes 0052's Landing and 0007's landing project; extends 0098, 0127 |
+| [0153](0153-links-name-their-project.md) | Links name their project; a link without one asks | Accepted; only-project landing superseded by 0191; supersedes 0052's Landing and 0007's landing project; extends 0098, 0127 |
 | [0154](0154-document-tabs-before-content-and-bounded-scroll-anchors.md) | Document tabs before content and bounded scroll anchors | Accepted; extends 0048, 0111 |
 | [0155](0155-review-file-activation-expands-diffs.md) | Review file activation expands its diff | Accepted; amends 0137 |
 | [0156](0156-feedback-badge-and-sidebar-width.md) | Open feedback badge and window-relative sidebar width | Accepted; amends 0120, 0102 |
@@ -190,3 +190,4 @@ rewriting history; update `Status` on the old record.
 | [0188](0188-stable-project-identities.md) | Stable project identities | Accepted; extends 0012, 0053, 0081, 0098, 0120, 0153 |
 | [0189](0189-stdio-mcp-server.md) | `zero mcp`, a stdio MCP server for agents | Accepted; supersedes 0120's and 0176's "no MCP"; extends 0047, 0065, 0080, 0087, 0118, 0127, 0187 |
 | [0190](0190-dispatched-patch-releases.md) | Dispatched patch releases | Accepted; revises 0079 |
+| [0191](0191-open-nothing-implicitly.md) | Open nothing implicitly: no default path, `/` always asks | Accepted; supersedes 0153's only-project landing and the default `.`; extends 0068, 0098, 0146 |

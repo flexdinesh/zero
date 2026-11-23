@@ -5,7 +5,7 @@ import { apiOrigin } from "./ports.ts"
 import { dragWithoutSelection, exerciseResizeLifecycle, resizeBox, selectContent } from "./resize.ts"
 
 for (const entry of [
-  { name: "embedded binary", url: `${apiOrigin}/` },
+  { name: "embedded binary", url: `${apiOrigin}/?project=${rootParam}` },
 ]) {
   test(`search retains query and results across document navigation (${entry.name})`, async ({ page }) => {
     let indexRequests = 0
@@ -40,7 +40,7 @@ test("search survives unavailable Worker and recovers when support returns", asy
       throw new Error("Worker unavailable")
     } })
   })
-  await page.goto("/")
+  await page.goto(`/?project=${rootParam}`)
   await page.locator(".status-bar").getByRole("button", { name: /^Find in files/ }).click()
   await expect(page.locator(".search-message")).toContainText("Search is unavailable.")
   await page.evaluate(() => { document.documentElement.dataset.restoreWorker = "true" })

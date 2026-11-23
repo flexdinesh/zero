@@ -139,16 +139,19 @@ test("Open folder serves a host folder and Stop serving removes it", async ({ br
     await expect(page).toHaveURL(new RegExp(`project=${encodeURIComponent(other)}`))
     await expect(page.getByRole("treeitem", { name: "notes.md" })).toBeVisible()
 
-    // Stopping the current project's folder lands on the next served one.
+    // Stopping the current project's folder asks for another (decision 0191).
     await page.keyboard.press("Control+o")
     await page.getByRole("button", { name: `Stop serving ${other}` }).click()
-    await expect(page).toHaveURL(new RegExp(`project=${encodeURIComponent(project)}`))
+    await expect(page.getByRole("heading", { name: "Choose a project", level: 1 })).toBeVisible()
+    await expect(page).not.toHaveURL(/project=/)
     const roots = await context.request.get(`${signIn.origin}/api/projects`)
     const listed: unknown = await roots.json()
     expect(JSON.stringify(listed)).not.toContain(other)
 
     // A served folder that turns unreadable explains itself and can stop.
     if (unreadable) {
+      await page.goto(`${signIn.origin}/?${new URLSearchParams({ project }).toString()}`)
+      await expect(page.getByRole("treeitem", { name: "guide.md" })).toBeVisible()
       await page.keyboard.press("Control+o")
       await page.getByRole("combobox", { name: "Switch project" }).press("/")
       await folderPath.fill(`${other}/`)
@@ -158,7 +161,7 @@ test("Open folder serves a host folder and Stop serving removes it", async ({ br
       await page.reload()
       await expect(page.getByRole("alert")).toContainText(`zero can't read ${other}`)
       await page.getByRole("button", { name: "Stop serving other" }).click()
-      await expect(page).toHaveURL(new RegExp(`project=${encodeURIComponent(project)}`))
+      await expect(page.getByRole("heading", { name: "Choose a project", level: 1 })).toBeVisible()
       chmodSync(other, 0o755)
     }
   } finally {

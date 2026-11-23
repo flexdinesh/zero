@@ -772,7 +772,9 @@ func TestWebViewApp(t *testing.T) {
 		app.waitEval("the crash page", `return document.body.innerText.includes("crashed")`)
 		app.capture("crashed.png")
 		app.eval(`document.querySelector("a").click(); return true`)
-		app.waitEval("the page after Try again", treeShows("README.md"))
+		// Try again starts over at the connection's first page, which asks
+		// for a project (decision 0191).
+		app.waitEval("the page after Try again", `return document.body.innerText.includes("Choose a project")`)
 	})
 
 	app.stop()

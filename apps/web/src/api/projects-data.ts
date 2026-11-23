@@ -30,11 +30,10 @@ export function removeRoot(root: string, signal?: AbortSignal): Promise<RemovedR
     (failure) => failure.kind === "rejected" ? failure.error : `Couldn't stop serving the folder: ${failureReason(failure)}.`)
 }
 
-// Landing is what a URL without a project shows (decision 0153): the only
-// project there is, the choice among them, or, serving no folder, the
-// workspace's no-folder state.
+// Landing is what a URL without a project shows (decisions 0153, 0191): the
+// choice among the projects, or, serving no folder, the workspace's
+// no-folder state.
 export type Landing =
-  | { kind: "open"; project: string }
   | { kind: "choose" }
   | { kind: "none" }
 
@@ -43,13 +42,11 @@ export function defaultProject(projects: ProjectsResponse): string {
   return projects.roots[0]?.path ?? ""
 }
 
-// landing opens the one available project and otherwise asks: a link that
-// names no project never opens one the user did not choose.
+// landing always asks: a link that names no project opens nothing the user
+// did not choose, not even the only project (decision 0191), so a large
+// folder is never scanned implicitly.
 export function landing(projects: ProjectsResponse): Landing {
-  if (projects.roots.length === 0) return { kind: "none" }
-  const available = projects.projects.filter((project) => project.available)
-  const only = available.length === 1 ? available[0] : undefined
-  return only ? { kind: "open", project: only.id } : { kind: "choose" }
+  return projects.roots.length === 0 ? { kind: "none" } : { kind: "choose" }
 }
 
 // repoKey is a repo= link value as identities are compared: links carry

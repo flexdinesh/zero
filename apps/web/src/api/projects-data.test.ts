@@ -25,14 +25,14 @@ test("a URL without a project asks when there is a choice, even with one remembe
   assert.deepEqual(landing(projects), { kind: "choose" })
 })
 
-test("a URL without a project opens the only available project", () => {
+test("a URL without a project asks even when there is only one project (decision 0191)", () => {
   const rootOnly: ProjectsResponse = { ...projects, roots: projects.roots.slice(0, 1), projects: projects.projects.slice(0, 1) }
-  assert.deepEqual(landing(rootOnly), { kind: "open", project: "/work" })
+  assert.deepEqual(landing(rootOnly), { kind: "choose" })
   const oneAvailable: ProjectsResponse = {
     ...projects,
     projects: projects.projects.map((project) => ({ ...project, available: project.id === "/work/api" })),
   }
-  assert.deepEqual(landing(oneAvailable), { kind: "open", project: "/work/api" })
+  assert.deepEqual(landing(oneAvailable), { kind: "choose" })
 })
 
 test("with no available project, the URL asks so the problems show", () => {

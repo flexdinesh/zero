@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test"
+import { rootParam } from "./fixture-root.ts"
 
 import { copiedText, grantClipboard, recordClipboard } from "./clipboard.ts"
 
@@ -25,7 +26,7 @@ test("Report a Problem shows the redacted report, copies it, and links a new iss
       return null
     }
   })
-  await page.goto("/")
+  await page.goto(`/?project=${rootParam}`)
 
   const dialog = await openReport(page)
   const preview = dialog.getByLabel("Problem report", { exact: true })
@@ -51,7 +52,7 @@ test("Report a Problem shows the redacted report, copies it, and links a new iss
 
 test("the Welcome tab opens Report a Problem", async ({ page }) => {
   // A first landing opens Welcome.
-  await page.goto("/")
+  await page.goto(`/?project=${rootParam}`)
   await page.getByRole("main").getByRole("button", { name: "Report a problem…" }).click()
   await expect(page.getByRole("dialog", { name: "Report a Problem" })).toBeVisible()
 })

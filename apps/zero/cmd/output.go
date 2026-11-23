@@ -88,6 +88,11 @@ func writeRemoteStartup(output io.Writer, info remoteStartup) {
 		}
 		writeStartupValue(output, label, path, name, directory)
 	}
+	// A pathless start serves the daemon's folders, which may be none yet
+	// (decision 0191).
+	if len(info.Directories) == 0 {
+		writeStartupValue(output, label, path, "serving:  ", "no folder yet; open one from the app")
+	}
 	_, _ = fmt.Fprintln(output)
 	if info.Tailnet != "" {
 		writeStartupValue(output, label, url, "tailnet:  ", info.Tailnet)
