@@ -1,11 +1,15 @@
 name: Release
 
-# Pushing a vX.Y.Z tag that points at a main commit publishes that stable
-# release (decision 0079): check -> build (build.yml) -> publish -> image
-# (ghcr.io/flexdinesh/zero:X.Y.Z and latest, decision 0125). The tag is
-# the plain main commit; nothing is committed or pushed. A published release
-# is never rebuilt or replaced.
+# Publishes one stable release (decisions 0079, 0190): check -> build
+# (build.yml) -> publish -> image (ghcr.io/flexdinesh/zero:X.Y.Z and latest,
+# decision 0125). Run it from the Actions tab on main: it releases main's
+# commit as the next patch of .release-version's major.minor series
+# (tools/release-version), and publish creates the tag. Pushing a vX.Y.Z tag
+# that points at a main commit releases that tag instead. Tags name plain main
+# commits; nothing is committed. A published release is never rebuilt or
+# replaced, so dispatching again with no new commit publishes nothing.
 on:
+  workflow_dispatch:
   push:
     tags:
       - "v*"
@@ -31,11 +35,40 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Go
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: tools/go.mod
+          cache: false
+
+      # A dispatch releases main's commit as the next patch of
+      # .release-version's series, or as the tag already on that commit.
+      - name: Select tag
+        id: select
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$EVENT" != workflow_dispatch ]]; then
+            echo "tag=$REF_NAME" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$REF" != refs/heads/main ]]; then
+            echo "Run the release workflow on main, not $REF" >&2
+            exit 1
+          fi
+          echo "tag=$(go run ./tools/release-version)" >> "$GITHUB_OUTPUT"
+
       - name: Check tag
         id: tag
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ steps.select.outputs.tag }}
         shell: bash
         run: |
           set -euo pipefail
@@ -45,8 +78,13 @@ jobs:
             echo "$TAG is not a vX.Y.Z release tag" >&2
             exit 1
           fi
-          # Annotated tags resolve to the commit they name.
-          commit="$(git rev-parse "refs/tags/${TAG}^{commit}")"
+          # Annotated tags resolve to the commit they name; a dispatch's new
+          # tag does not exist yet and names the checked-out main commit.
+          if git rev-parse --verify --quiet "refs/tags/${TAG}^{commit}" >/dev/null; then
+            commit="$(git rev-parse "refs/tags/${TAG}^{commit}")"
+          else
+            commit="$(git rev-parse HEAD)"
+          fi
           git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
           if ! git merge-base --is-ancestor "$commit" refs/remotes/origin/main; then
             echo "$TAG points at $commit, which is not on main" >&2
@@ -94,6 +132,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.check.outputs.tag }}
+          COMMIT: ${{ needs.check.outputs.commit }}
         shell: bash
         run: |
           set -euo pipefail
@@ -102,10 +141,12 @@ jobs:
             echo "$TAG is already published."
             exit 0
           fi
+          # Creates the tag at COMMIT when a dispatch selected a new one, only
+          # after every asset built.
           gh release create "$TAG" release-dist/* \
+            --target "$COMMIT" \
             --title "$TAG" \
             --generate-notes \
-            --verify-tag \
             --latest
 
   # Pushes the image build.yml made from this release's archives.

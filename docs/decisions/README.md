@@ -83,7 +83,7 @@ rewriting history; update `Status` on the old record.
 | [0076](0076-remote-servers-over-http.md) | Remote servers over http; ssh driven from the app | Superseded by 0095 (ssh, server windows) and 0098 (no-UI serving, links) |
 | [0077](0077-desktop-shell-stays-on-electron.md) | Desktop shell stays on Electron | Superseded by 0095 |
 | [0078](0078-apps-and-packages-layout.md) | `apps/` and `packages/` layout | Accepted; revised by 0080 |
-| [0079](0079-releases-edge-prerelease-and-install-scripts.md) | Releases, the edge prerelease, and install scripts only | Accepted; revised by 0092 and 0095 (names, assets), 0093 (edge assets), 0101 (one script per channel); edge superseded by 0134 |
+| [0079](0079-releases-edge-prerelease-and-install-scripts.md) | Releases, the edge prerelease, and install scripts only | Accepted; revised by 0092 and 0095 (names, assets), 0093 (edge assets), 0101 (one script per channel), 0190 (dispatched patch releases); edge superseded by 0134 |
 | [0080](0080-application-layer-contracts-and-transports.md) | Application layer, generated contracts, and transports | Accepted; source control stages by 0083; in-process package by 0084; navigation, metrics, image reads by 0085; walkthroughs by 0087 |
 | [0081](0081-desktop-bridge-v2-native-features.md) | Desktop bridge v2: reveal, native context menus, recent folders, folder drop | Accepted; folder drop and recent folders superseded by 0095; `openFolder` by 0146 |
 | [0082](0082-native-mygo-experiment.md) | Experimental native app on mygo | Superseded for the native UI by 0094 |
@@ -189,3 +189,4 @@ rewriting history; update `Status` on the old record.
 | [0187](0187-name-the-machine-agents-run-on.md) | Name the machine agents run on | Accepted; extends 0049, 0098, 0120, 0127, 0178 |
 | [0188](0188-stable-project-identities.md) | Stable project identities | Accepted; extends 0012, 0053, 0081, 0098, 0120, 0153 |
 | [0189](0189-stdio-mcp-server.md) | `zero mcp`, a stdio MCP server for agents | Accepted; supersedes 0120's and 0176's "no MCP"; extends 0047, 0065, 0080, 0087, 0118, 0127, 0187 |
+| [0190](0190-dispatched-patch-releases.md) | Dispatched patch releases | Accepted; revises 0079 |
