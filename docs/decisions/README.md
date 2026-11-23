@@ -122,7 +122,7 @@ rewriting history; update `Status` on the old record.
 | [0117](0117-review-order-viewed-flow-and-view-options.md) | One review order, a quicker Viewed flow, and View options | Accepted; revises 0035, 0040, 0051 |
 | [0118](0118-zero-name-and-collision-safe-installs.md) | Zero name and collision-safe installs | Accepted; supersedes 0100 naming; revises 0073, 0101, 0104 |
 | [0119](0119-desktop-title-band-on-macos.md) | Themed desktop shell on macOS | Accepted; revises 0081, 0095; revised by 0185 |
-| [0120](0120-review-feedback-threads.md) | Review feedback threads | Accepted; extends 0028, 0035, 0047, 0050, 0066, 0080, 0099 |
+| [0120](0120-review-feedback-threads.md) | Review feedback threads | Accepted; extends 0028, 0035, 0047, 0050, 0066, 0080, 0099; "without MCP" superseded by 0189 |
 | [0121](0121-final-tab-close-keeps-window.md) | Closing the final tab keeps the desktop window | Accepted; supersedes 0097 final-tab close |
 | [0122](0122-type-roles-and-list-size.md) | Type roles and the list size | Accepted; revises 0033; file rows revised by 0130 |
 | [0123](0123-pane-headers-and-two-line-commit-rows.md) | Pane headers toggle across their width; two-line commit rows | Accepted; supersedes 0040 pane header, extends 0042, 0112; Commits and Branches action rows superseded by 0129; Uncommitted action row by 0130 |
@@ -175,7 +175,7 @@ rewriting history; update `Status` on the old record.
 | [0173](0173-document-word-wrap.md) | Document word wrap | Accepted; extends 0014, 0139 |
 | [0174](0174-scoped-select-all.md) | Scoped Select All | Accepted; extends 0033, 0172 |
 | [0175](0175-guest-browser-host-window.md) | Guest browser host window | Accepted; Window superseded by 0184; extends 0067, 0081, 0094, 0095 |
-| [0176](0176-visual-feedback-targets.md) | Visual feedback targets | Accepted; UI superseded by 0184; extends 0120, 0156, 0159, 0175; sweep extended by 0179 |
+| [0176](0176-visual-feedback-targets.md) | Visual feedback targets | Accepted; UI superseded by 0184; extends 0120, 0156, 0159, 0175; sweep extended by 0179; "no MCP" superseded by 0189 |
 | [0177](0177-ui-review-in-the-desktop-app.md) | UI review in the desktop app | Superseded by 0184 |
 | [0178](0178-agent-facing-visual-thread-output.md) | Agent-facing visual thread output | Accepted; extends 0120, 0176 |
 | [0179](0179-sweep-interrupted-uploads.md) | Sweep interrupted uploads | Accepted; extends 0176 |
@@ -188,3 +188,4 @@ rewriting history; update `Status` on the old record.
 | [0186](0186-panel-surfaces.md) | Panel surfaces in desktop web views | Accepted; extends 0033, 0184 |
 | [0187](0187-name-the-machine-agents-run-on.md) | Name the machine agents run on | Accepted; extends 0049, 0098, 0120, 0127, 0178 |
 | [0188](0188-stable-project-identities.md) | Stable project identities | Accepted; extends 0012, 0053, 0081, 0098, 0120, 0153 |
+| [0189](0189-stdio-mcp-server.md) | `zero mcp`, a stdio MCP server for agents | Accepted; supersedes 0120's and 0176's "no MCP"; extends 0047, 0065, 0080, 0087, 0118, 0127, 0187 |

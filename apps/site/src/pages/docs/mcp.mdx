@@ -1,0 +1,79 @@
+---
+showAskAi: false
+---
+
+# MCP server
+
+`zero mcp` gives agents Zero's review feedback and walkthrough tools over the
+[Model Context Protocol](https://modelcontextprotocol.io). The agent starts it
+itself and talks to it on standard input and output; there is no port and
+nothing to keep running. Like `zero feedback` and `zero walkthrough`, it works
+on Zero's store directly, so no Zero window or server needs to be open, and any
+open window updates within a second.
+
+Agents with a shell can use the CLI and the
+[skills](https://github.com/flexdinesh/zero/tree/main/skills) instead; the MCP
+server is for agents without a shell, and for agents that should see
+screenshots as images and the walkthrough format as a schema.
+
+## Set it up
+
+`zero mcp config` prints the setup with this machine's path to zero:
+
+```sh
+zero mcp config --agent claude   # a claude mcp add command for Claude Code
+zero mcp config --agent codex    # an entry for ~/.codex/config.toml
+zero mcp config                  # mcpServers JSON: Cursor's mcp.json and most others
+```
+
+For Claude Code, run the command it prints. For other agents, paste the output
+into the agent's MCP configuration.
+
+## Where to run it
+
+Run the agent, and so `zero mcp`, on the machine that serves the project:
+that is where the code and its feedback are.
+
+- **This computer.** Use `zero mcp config` as above.
+- **A remote host** (`zero --remote` or `--tailscale`). Run the agent on the
+  host and set up `zero mcp` there. An agent on your own computer would change
+  the wrong copy of the code.
+- **A sandbox** (`zero attach`). An agent inside the container runs
+  `/tmp/.zero/zero mcp`. An agent on the container's host runs it through
+  Docker:
+
+  ```sh
+  zero mcp config --container my-sandbox
+  ```
+
+  which starts `docker exec -i my-sandbox /tmp/.zero/zero mcp`. Zero installs
+  itself in the container again on every attach, so the container must be
+  running and attached.
+
+## Projects
+
+Every tool takes an optional `project`: the repository or worktree root, as an
+absolute path. Without it, a tool uses `zero mcp --project DIR` when the server
+was started with one, else the repository of the directory the agent started
+the server in. Most coding agents start servers in the open workspace; when a
+tool reports that it can't find the project, pass `project`.
+
+## Tools
+
+| Tool | What it does |
+| --- | --- |
+| `feedback_show` | The threads awaiting the agent as Markdown (`all` for every thread), with the feedback as structured data |
+| `feedback_list` | The repository's feedback, one per branch |
+| `feedback_reply` | Reply to a thread as the agent; `status` `resolved`, `wontfix`, or `open` |
+| `feedback_comment` | Start a thread on lines of a working-tree file, or the whole file |
+| `feedback_attachment` | A screenshot thread's image as PNG; `crop` returns the region plus a margin |
+| `walkthrough_schema` | The walkthrough JSON Schema |
+| `walkthrough_publish` | Publish a walkthrough; the arguments are the draft. `"open": true` opens it as `zero walkthrough publish` does |
+| `walkthrough_list` | A project's walkthroughs, newest first |
+| `walkthrough_delete` | Delete a walkthrough by id |
+
+Rejected requests come back as tool errors that list every problem by field,
+as the CLI prints them. See [Review feedback](/docs/feedback) and
+[Walkthroughs](/docs/walkthroughs) for what the threads and steps mean.
+
+A directory named `mcp` is opened as `zero ./mcp`.

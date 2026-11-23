@@ -307,7 +307,7 @@ func TestRootCommandsShowingTheUpdateNotice(t *testing.T) {
 	root := newRootCommandWith(nil, nil)
 	want := map[string]bool{
 		"zero": true, "browser": true, "connect": true, "attach": true, "remote": true, "walkthrough": true, "feedback": true,
-		"serve-stdio": false, "connection": false, "daemon": false, "update": false,
+		"serve-stdio": false, "connection": false, "daemon": false, "update": false, "mcp": false,
 	}
 	if !showsUpdateNotice(root) {
 		t.Fatal("bare zero does not show the notice")

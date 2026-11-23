@@ -23,6 +23,7 @@ import (
 	"github.com/flexdinesh/zero/internal/document"
 	"github.com/flexdinesh/zero/internal/projects"
 	"github.com/flexdinesh/zero/internal/walkthrough"
+	"github.com/flexdinesh/zero/pkg/contract"
 	"github.com/spf13/cobra"
 )
 
@@ -103,8 +104,136 @@ func newWalkthroughCommand(publish publishRunner) *cobra.Command {
 			return err
 		},
 	}
-	command.AddCommand(publishCommand, schemaCommand)
+	var listOpts walkthroughsOptions
+	listCommand := &cobra.Command{
+		Use:           "list",
+		Short:         "List a project's walkthroughs, most recently updated first",
+		Args:          cobra.NoArgs,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(command *cobra.Command, _ []string) error {
+			return printWalkthroughs(listOpts, command.OutOrStdout())
+		},
+	}
+	listCommand.Flags().StringVar(&listOpts.project, "project", "", "the project directory (default: the current directory's repository)")
+	listCommand.Flags().BoolVar(&listOpts.json, "json", false, "print the walkthroughs as JSON")
+	var deleteOpts walkthroughsOptions
+	deleteCommand := &cobra.Command{
+		Use:           "delete <id>",
+		Short:         "Delete one of a project's walkthroughs",
+		Args:          cobra.ExactArgs(1),
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(command *cobra.Command, args []string) error {
+			root, err := deleteWalkthrough(deleteOpts, args[0])
+			if err != nil {
+				return err
+			}
+			_, err = io.WriteString(command.OutOrStdout(), deletedText(args[0], root))
+			return err
+		},
+	}
+	deleteCommand.Flags().StringVar(&deleteOpts.project, "project", "", "the project directory (default: the current directory's repository)")
+	command.AddCommand(publishCommand, schemaCommand, listCommand, deleteCommand)
 	return command
+}
+
+// walkthroughsOptions name the project whose stored walkthroughs list and
+// delete read: --project, or else the current directory's repository.
+type walkthroughsOptions struct {
+	project string
+	json    bool
+	// Test seams, not flags.
+	walkthroughDir string                 // "" uses walkthrough.DefaultDirectory()
+	getwd          func() (string, error) // nil uses os.Getwd
+}
+
+// openWalkthroughs is the application layer over the project as its own
+// root, reading the walkthrough store the server reads.
+func openWalkthroughs(opts walkthroughsOptions) (string, *app.App, error) {
+	dir := opts.project
+	if dir == "" {
+		getwd := opts.getwd
+		if getwd == nil {
+			getwd = os.Getwd
+		}
+		wd, err := getwd()
+		if err != nil {
+			return "", nil, err
+		}
+		dir = wd
+	}
+	root, err := repositoryRoot(dir)
+	if err != nil {
+		return "", nil, err
+	}
+	roots, err := projects.NewRootSet([]string{root})
+	if err != nil {
+		return "", nil, err
+	}
+	application, err := app.New(app.Config{Roots: roots, Depth: feedbackDepth, Types: document.Builtins(), WalkthroughDirectory: opts.walkthroughDir})
+	if err != nil {
+		return "", nil, err
+	}
+	return root, application, nil
+}
+
+// listWalkthroughs returns the project's root and its walkthroughs.
+func listWalkthroughs(opts walkthroughsOptions) (string, []contract.WalkthroughSummary, error) {
+	root, application, err := openWalkthroughs(opts)
+	if err != nil {
+		return "", nil, err
+	}
+	summaries, err := application.Walkthroughs.List(root)
+	if err != nil {
+		return "", nil, errors.New(app.AsError(err).Message)
+	}
+	return root, summaries, nil
+}
+
+// deleteWalkthrough removes the project's walkthrough id and returns the
+// project's root. Open windows drop it on their next list poll.
+func deleteWalkthrough(opts walkthroughsOptions, id string) (string, error) {
+	root, application, err := openWalkthroughs(opts)
+	if err != nil {
+		return "", err
+	}
+	if err := application.Walkthroughs.Delete(root, id); err != nil {
+		if app.AsError(err).Code == contract.CodeWalkthroughUnavailable {
+			return "", fmt.Errorf("no walkthrough %q for %s", id, root)
+		}
+		return "", errors.New(app.AsError(err).Message)
+	}
+	return root, nil
+}
+
+func printWalkthroughs(opts walkthroughsOptions, stdout io.Writer) error {
+	root, summaries, err := listWalkthroughs(opts)
+	if err != nil {
+		return err
+	}
+	if opts.json {
+		return writeJSONLine(stdout, summaries)
+	}
+	_, err = io.WriteString(stdout, walkthroughsText(root, summaries))
+	return err
+}
+
+// walkthroughsText is one line per walkthrough: its id, title, steps, and
+// when it was last published.
+func walkthroughsText(root string, summaries []contract.WalkthroughSummary) string {
+	if len(summaries) == 0 {
+		return fmt.Sprintf("No walkthroughs for %s yet.\n", root)
+	}
+	var out strings.Builder
+	for _, summary := range summaries {
+		fmt.Fprintf(&out, "%s  %s  %s, updated %s\n", summary.ID, summary.Title, count(summary.StepCount, "step"), messageTime(summary.UpdatedAt))
+	}
+	return out.String()
+}
+
+func deletedText(id, root string) string {
+	return fmt.Sprintf("deleted walkthrough %s from %s\n", id, root)
 }
 
 type publishResult struct {
@@ -122,17 +251,7 @@ func publishWalkthrough(ctx context.Context, opts publishOptions, stdin io.Reade
 	if err != nil {
 		return err
 	}
-	directory := opts.walkthroughDir
-	if directory == "" {
-		directory, err = walkthrough.DefaultDirectory()
-		if err != nil {
-			return err
-		}
-	}
-	publishCtx, cancel := context.WithTimeout(ctx, publishTimeout)
-	defer cancel()
-	service := walkthrough.NewService(walkthrough.NewStore(directory), standaloneTargets{depth: opts.depth, types: document.Builtins()})
-	published, err := service.Publish(publishCtx, draft)
+	result, err := storeWalkthrough(ctx, opts, draft, stderr)
 	var problems walkthrough.Problems
 	if errors.As(err, &problems) {
 		_, _ = fmt.Fprintln(stderr, "invalid walkthrough:")
@@ -142,14 +261,51 @@ func publishWalkthrough(ctx context.Context, opts publishOptions, stdin io.Reade
 		return errNotPublished
 	}
 	if err != nil {
-		return fmt.Errorf("publish walkthrough: %w", err)
+		return err
+	}
+	if opts.json {
+		encoder := json.NewEncoder(stdout)
+		encoder.SetEscapeHTML(false)
+		return encoder.Encode(result)
+	}
+	_, _ = io.WriteString(stdout, publishText(result, draft.Open, opts.cliName, linkTerminal(stdout, opts.env())))
+	return nil
+}
+
+// env is the publish's environment lookup: the test seam's, or the process's.
+func (opts publishOptions) env() func(string) string {
+	if opts.getenv == nil {
+		return os.Getenv
+	}
+	return opts.getenv
+}
+
+// storeWalkthrough checks and stores draft, tells a running daemon, finds
+// what shows it, and opens that when the draft asks (decision 0065). A
+// rejected draft fails with walkthrough.Problems.
+func storeWalkthrough(ctx context.Context, opts publishOptions, draft walkthrough.Draft, stderr io.Writer) (publishResult, error) {
+	directory := opts.walkthroughDir
+	if directory == "" {
+		var err error
+		directory, err = walkthrough.DefaultDirectory()
+		if err != nil {
+			return publishResult{}, err
+		}
+	}
+	publishCtx, cancel := context.WithTimeout(ctx, publishTimeout)
+	defer cancel()
+	service := walkthrough.NewService(walkthrough.NewStore(directory), standaloneTargets{depth: opts.depth, types: document.Builtins()})
+	published, err := service.Publish(publishCtx, draft)
+	var problems walkthrough.Problems
+	if errors.As(err, &problems) {
+		return publishResult{}, problems
+	}
+	if err != nil {
+		return publishResult{}, fmt.Errorf("publish walkthrough: %w", err)
 	}
 
 	stored := published.Walkthrough
-	getenv := opts.getenv
-	if getenv == nil {
-		getenv = os.Getenv
-	}
+	getenv := opts.env()
 	goos := opts.goos
 	if goos == "" {
 		goos = goruntime.GOOS
@@ -185,7 +341,7 @@ func publishWalkthrough(ctx context.Context, opts publishOptions, stdin io.Reade
 		if controlDir == "" {
 			controlDir, err = control.DefaultDirectory()
 			if err != nil {
-				return err
+				return publishResult{}, err
 			}
 		}
 		var mismatches []string
@@ -212,30 +368,31 @@ func publishWalkthrough(ctx context.Context, opts publishOptions, stdin io.Reade
 			desktop = "zero://" + id + "/view?" + viewerQuery.Encode()
 		}
 	}
-	if opts.json {
-		encoder := json.NewEncoder(stdout)
-		encoder.SetEscapeHTML(false)
-		return encoder.Encode(publishResult{ID: stored.ID, Project: stored.Project, Created: published.Created, URL: viewer, DesktopURL: desktop})
-	}
+	return publishResult{ID: stored.ID, Project: stored.Project, Created: published.Created, URL: viewer, DesktopURL: desktop}, nil
+}
+
+// publishText is publish's text output: what was stored, then where it
+// shows or how to view it. tty writes links as OSC 8 hyperlinks.
+func publishText(result publishResult, asked bool, name cliName, tty bool) string {
+	var out strings.Builder
 	outcome := "replaced"
-	if published.Created {
+	if result.Created {
 		outcome = "created"
 	}
-	_, _ = fmt.Fprintf(stdout, "published %s (%s) for %s\n", stored.ID, outcome, stored.Project)
-	tty := linkTerminal(stdout, getenv)
+	fmt.Fprintf(&out, "published %s (%s) for %s\n", result.ID, outcome, result.Project)
 	switch {
-	case desktop != "":
-		_, _ = fmt.Fprintf(stdout, "desktop: %s\n", hyperlink(desktop, tty))
-	case strings.HasPrefix(viewer, "http://"):
-		_, _ = fmt.Fprintf(stdout, "web: %s\n", hyperlink(viewer, tty))
-	case viewer != "":
-		_, _ = fmt.Fprintf(stdout, "desktop: %s\n", hyperlink(viewer, tty))
-	case draft.Open:
-		_, _ = fmt.Fprintf(stdout, "no running zero shows this project, so nothing opened; run: %s %s, then open Walkthroughs\n", opts.cliName, stored.Project)
+	case result.DesktopURL != "":
+		fmt.Fprintf(&out, "desktop: %s\n", hyperlink(result.DesktopURL, tty))
+	case strings.HasPrefix(result.URL, "http://"):
+		fmt.Fprintf(&out, "web: %s\n", hyperlink(result.URL, tty))
+	case result.URL != "":
+		fmt.Fprintf(&out, "desktop: %s\n", hyperlink(result.URL, tty))
+	case asked:
+		fmt.Fprintf(&out, "no running zero shows this project, so nothing opened; run: %s %s, then open Walkthroughs\n", name, result.Project)
 	default:
-		_, _ = fmt.Fprintf(stdout, "no running zero shows this project; run: %s %s, then open Walkthroughs\n", opts.cliName, stored.Project)
+		fmt.Fprintf(&out, "no running zero shows this project; run: %s %s, then open Walkthroughs\n", name, result.Project)
 	}
-	return nil
+	return out.String()
 }
 
 // announceToDaemon tells a running daemon about the publish so its control

@@ -114,7 +114,10 @@ browser (never on a machine without a UI, such as an SSH session). Without one,
 it prints
 how to view the walkthrough: `zero <project>`, then the Walkthroughs view.
 The CLI never starts a server. `zero walkthrough schema` prints the JSON
-Schema.
+Schema. `zero walkthrough list` lists the current repository's walkthroughs
+and `zero walkthrough delete <id>` removes one (`--project DIR` for another).
+Agents without a shell publish with the `walkthrough_publish` tool of the
+[MCP server](/docs/mcp).
 
 Agents can also publish with `POST /api/walkthroughs` on a running zero:
 

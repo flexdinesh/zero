@@ -1,6 +1,6 @@
 # 0120: Review feedback threads
 
-- Status: Accepted
+- Status: Accepted; "without MCP" superseded by [0189](0189-stdio-mcp-server.md)
 - Date: 2026-11-10
 - Extends: [0028](0028-diff-line-links-and-copy.md), [0035](0035-compare-list-and-review-tab.md),
   [0047](0047-walkthroughs.md), [0050](0050-live-updates.md), [0066](0066-lease-levels-and-desktop-events.md),

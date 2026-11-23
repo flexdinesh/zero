@@ -91,6 +91,7 @@ func newNamedRootCommand(name cliName, runApp, runBrowser runner) *cobra.Command
 	command.AddCommand(withUpdateNotice(newRemoteCommand(name)))
 	command.AddCommand(withUpdateNotice(newWalkthroughCommand(publishWalkthrough)))
 	command.AddCommand(withUpdateNotice(newFeedbackCommand()))
+	command.AddCommand(newMCPCommand())
 	command.AddCommand(newDaemonCommand())
 	command.AddCommand(newUpdateCommand())
 	return command
