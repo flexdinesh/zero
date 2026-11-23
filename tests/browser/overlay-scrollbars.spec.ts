@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page } from "@playwright/test"
 
 import { test } from "./live-test.ts"
+import { rootParam } from "./fixture-root.ts"
 import { apiOrigin } from "./ports.ts"
 
 type Axis = "x" | "y"
@@ -11,7 +12,7 @@ function bar(page: Page, axis: Axis) {
   return page.locator(`.ui-scrollbar[data-axis='${axis}']`)
 }
 
-async function openApp(page: Page, url = apiOrigin) {
+async function openApp(page: Page, url = `${apiOrigin}/?project=${rootParam}`) {
   await page.goto(url)
   await expect(page.getByRole("button", { name: "Settings", exact: true })).toBeVisible()
   await expect(page.locator(".ui-scrollbars")).toHaveCount(1)

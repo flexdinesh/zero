@@ -1,6 +1,6 @@
 # 0153: Links name their project; a link without one asks
 
-- Status: Accepted
+- Status: Accepted; `/` opening the only project superseded by [0191](0191-open-nothing-implicitly.md)
 - Date: 2026-11-15
 - Supersedes parts of: [0052](0052-welcome-tab-and-contextual-empty-state.md)
   (Landing), [0007](0007-projects-and-project-picker.md) (the first root as

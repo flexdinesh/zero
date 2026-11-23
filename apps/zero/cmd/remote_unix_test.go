@@ -212,6 +212,36 @@ func TestRemoteStringConnects(t *testing.T) {
 	}
 }
 
+func TestRemoteWithoutAPathServesTheDaemonsFolders(t *testing.T) {
+	disableColor(t)
+	deps, socket := realRemote(t)
+	opts := remoteOptions("")
+	opts.paths = nil
+	var printed, stderr bytes.Buffer
+	if err := serveRemote(context.Background(), opts, &printed, &stderr, deps); err != nil {
+		t.Fatalf("%v\n%s", err, stderr.String())
+	}
+	// Nothing is added: the string names no project, so its window asks
+	// (decision 0191).
+	if !strings.Contains(printed.String(), "serving:  no folder yet; open one from the app") {
+		t.Errorf("output = %q, want the no-folder line", printed.String())
+	}
+	invite, err := connection.ParseInvite(connectLine(t, printed.String()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if invite.Project != "" {
+		t.Errorf("string project = %q, want none", invite.Project)
+	}
+	served, err := servedRoots(context.Background(), socket)
+	if err != nil || len(served) != 0 {
+		t.Errorf("served = %v, %v; want no folder", served, err)
+	}
+	if err := remoteStop(context.Background(), daemon.NewClient(socket), io.Discard); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRemoteWebPrintsATokenLinkOnlyWhenAsked(t *testing.T) {
 	disableColor(t)
 	root := appRoot(t)

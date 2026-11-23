@@ -79,6 +79,10 @@ func chooseLaunch(opts options, goos string, getenv func(string) string) launch 
 // errNoUI is bare zero on a machine with no UI (decision 0098).
 var errNoUI = errors.New("no display here; run `zero <path> --remote` to open this machine's files from your computer")
 
+// errNoPath is browser mode without a folder: it cannot open one from the
+// page, so it serves nothing implicitly (decision 0191).
+var errNoPath = errors.New("pass a folder to serve, as in `zero browser .`")
+
 // runApp opens the paths in the desktop app through the daemon, falling back
 // to browser mode with a notice when the app or daemon is unavailable.
 func runApp(ctx context.Context, opts options, stdin io.Reader, stdout, stderr io.Writer) error {
@@ -88,6 +92,12 @@ func runApp(ctx context.Context, opts options, stdin io.Reader, stdout, stderr i
 func openInApp(ctx context.Context, opts options, stdin io.Reader, stdout, stderr io.Writer, deps appDeps) error {
 	serveInBrowser := func() error { return deps.browser(ctx, opts, stdin, stdout, stderr) }
 	fallback := func(notice, hint string) error {
+		// Browser mode serves only a folder it was given (decision 0191).
+		if len(opts.paths) == 0 && opts.repo == "" {
+			_, _ = fmt.Fprintf(stderr, "%s\n", notice)
+			_, _ = io.WriteString(stderr, hint)
+			return opts.cliName.explainError(errNoPath)
+		}
 		_, _ = fmt.Fprintf(stderr, "%s; serving in browser mode\n", notice)
 		_, _ = io.WriteString(stderr, hint)
 		return serveInBrowser()
@@ -135,7 +145,12 @@ func openInApp(ctx context.Context, opts options, stdin io.Reader, stdout, stder
 		return fallback(err.Error(), "")
 	}
 
-	target := withRepo("zero://local/?"+url.Values{"project": {project}}.Encode(), project)
+	// Without a path the app opens on the daemon's folders and asks which
+	// (decision 0191).
+	target := "zero://local/"
+	if project != "" {
+		target = withRepo("zero://local/?"+url.Values{"project": {project}}.Encode(), project)
+	}
 	if opts.repo != "" {
 		project = opts.repo
 		target = "zero://local/?" + url.Values{"repo": {opts.repo}}.Encode()
@@ -150,6 +165,10 @@ func openInApp(ctx context.Context, opts options, stdin io.Reader, stdout, stder
 			return fallback(desktopapp.ErrNotInstalled.Error(), hint)
 		}
 		return fallback(fmt.Sprintf("could not open the Zero app (%v)", err), hint)
+	}
+	if project == "" {
+		_, _ = fmt.Fprintf(stdout, "opened zero\ndesktop: %s\n", link)
+		return nil
 	}
 	_, _ = fmt.Fprintf(stdout, "opened %s in zero\ndesktop: %s\n", project, link)
 	return nil
@@ -170,8 +189,12 @@ func openDaemonRoot(ctx context.Context, socket, path string) (daemon.OpenResult
 	return daemon.NewClient(socket).Open(ctx, path)
 }
 
-// validateRoots checks paths and discovery as browser mode does.
+// validateRoots checks paths and discovery as browser mode does. No paths
+// is no roots: the daemon serves what it already has.
 func validateRoots(paths []string, scanDepth int) ([]string, error) {
+	if len(paths) == 0 {
+		return nil, nil
+	}
 	rootSet, err := projects.NewRootSet(paths)
 	if err != nil {
 		return nil, err

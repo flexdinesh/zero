@@ -40,6 +40,8 @@ func (name cliName) explainError(err error) error {
 	switch {
 	case errors.Is(err, errNoUI):
 		message = fmt.Sprintf("no display here; run `%s <path> --remote` to open this machine's files from your computer", name)
+	case errors.Is(err, errNoPath):
+		message = fmt.Sprintf("pass a folder to serve, as in `%s browser .`", name)
 	case errors.Is(err, errRemoteUnavailable):
 		message = fmt.Sprintf("the running zero daemon cannot serve remotely; stop it with `%s daemon stop` and run this again", name)
 	case errors.As(err, &mismatch):

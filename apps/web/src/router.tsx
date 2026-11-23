@@ -145,8 +145,8 @@ const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
   validateSearch,
-  // Without a project, open the only one there is; otherwise the page asks
-  // which (decision 0153). When projects cannot be listed, it asks too and
+  // Without a project the page asks which, even when there is only one
+  // (decisions 0153, 0191). When projects cannot be listed, it asks too and
   // reports why.
   // Serving no folder keeps the workspace's no-folder state.
   beforeLoad: async ({ search, abortController }) => {
@@ -164,7 +164,6 @@ const indexRoute = createRoute({
     } catch (error: unknown) {
       if (isAbort(error)) throw error
     }
-    if (chosen.kind === "open") throw redirect({ to: "/", search: withProject(search, chosen.project), replace: true })
     return { choose: chosen.kind === "choose" }
   },
   loaderDeps: ({ search }) => ({ project: search.project ?? "" }),

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test"
+import { rootParam } from "./fixture-root.ts"
 
 // openColorTheme runs Preferences: Color Theme from the command palette.
 async function openColorTheme(page: Page) {
@@ -18,7 +19,7 @@ function storedTheme(page: Page) {
 }
 
 test("the Color Theme pick previews on arrows, reverts on Escape, and keeps on Enter", async ({ page }) => {
-  await page.goto("/")
+  await page.goto(`/?project=${rootParam}`)
   const html = page.locator("html")
 
   const picker = await openColorTheme(page)
@@ -59,7 +60,7 @@ test("the Color Theme pick previews on arrows, reverts on Escape, and keeps on E
 
 test("the reopened command palette scrolls the active option and returns focus", async ({ page }) => {
   await page.setViewportSize({ width: 1000, height: 480 })
-  await page.goto("/")
+  await page.goto(`/?project=${rootParam}`)
   const opener = page.getByRole("button", { name: "Settings", exact: true })
   const palette = page.getByRole("dialog", { name: "Command palette" })
   const input = palette.getByRole("combobox", { name: "Command" })

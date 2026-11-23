@@ -60,7 +60,7 @@ func TestRootCommandWithoutRepoKeepsPaths(t *testing.T) {
 		args []string
 		want []string
 	}{
-		{nil, []string{"."}},
+		{nil, []string{}},
 		{[]string{"."}, []string{"."}},
 		{[]string{"github.com/o/r"}, []string{"github.com/o/r"}},
 	} {

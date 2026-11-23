@@ -67,7 +67,8 @@ running daemon, so the app's next window uses the new version. Packages are on
 zero .
 ```
 
-opens the current directory. Only one copy runs: a second command or link opens
+opens the current directory. `zero` without a path opens the app on the
+folders it already serves and asks which to open. Only one copy runs: a second command or link opens
 in the running app. Zero checks the directory, starts the daemon if needed, adds the directory to
 it, opens the project in the app, and exits. `--no-open` prints the `zero://`
 link instead.

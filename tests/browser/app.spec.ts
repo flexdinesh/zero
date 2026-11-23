@@ -44,7 +44,7 @@ test("renders local Markdown images", async ({ page }) => {
 })
 
 test("searches fixture content and opens a match at its source line", async ({ page }) => {
-  await page.goto("/")
+  await page.goto(`/?project=${rootParam}`)
 
   const search = page.getByRole("textbox", { name: "Search", exact: true })
   await expect(page.getByRole("tab", { name: "Welcome" })).toHaveAttribute("aria-selected", "true")
@@ -126,7 +126,7 @@ test("recovers from an invalid page response", async ({ page }) => {
     }
     await route.continue()
   })
-  await page.goto("/")
+  await page.goto(`/?project=${rootParam}`)
 
   await page.locator(".status-bar").getByRole("button", { name: /^Find in files/ }).press("ControlOrMeta+Shift+f")
   const search = page.getByRole("textbox", { name: "Search", exact: true })
@@ -147,7 +147,7 @@ test("commits only the latest rapid navigation", async ({ page }) => {
     await delayedResponse
     await route.continue().catch(() => {})
   })
-  await page.goto("/")
+  await page.goto(`/?project=${rootParam}`)
 
   const tree = page.getByRole("complementary", { name: "Files" })
   await tree.getByRole("treeitem", { name: "guides", exact: true }).click()
@@ -169,7 +169,7 @@ async function themeSetting(page: Page) {
 test("system theme follows live OS changes", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" })
   await page.addInitScript(() => window.localStorage.setItem("zero-theme", "system"))
-  await page.goto("/")
+  await page.goto(`/?project=${rootParam}`)
 
   await expect(page.locator("html")).toHaveClass(/light/)
   await page.emulateMedia({ colorScheme: "dark" })

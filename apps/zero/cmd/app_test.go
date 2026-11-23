@@ -115,6 +115,42 @@ func TestAppOpensProjectInDesktopApp(t *testing.T) {
 	}
 }
 
+func TestAppWithoutAPathOpensTheAppOnTheDaemonsFolders(t *testing.T) {
+	fake, deps := newAppFake()
+
+	stdout, stderr, err := runAppWith(appOptions(), deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// No folder is added and none is named: the page asks (decision 0191).
+	want := "zero://local/"
+	if stdout != "opened zero\ndesktop: "+want+"\n" || stderr != "" {
+		t.Errorf("stdout = %q, stderr = %q", stdout, stderr)
+	}
+	if !reflect.DeepEqual(fake.openedURLs, []string{want}) {
+		t.Errorf("opened %v, want %s", fake.openedURLs, want)
+	}
+	if len(fake.openedRoots) != 0 || len(fake.ensured) != 1 || len(fake.served) != 0 {
+		t.Errorf("fake = %+v; want the daemon ensured and no root opened", fake)
+	}
+}
+
+func TestAppWithoutAPathServesNothingInBrowserMode(t *testing.T) {
+	fake, deps := newAppFake()
+	deps.installed = func(context.Context) (bool, error) { return false, nil }
+
+	stdout, stderr, err := runAppWith(appOptions(), deps)
+	if !errors.Is(err, errNoPath) {
+		t.Fatalf("err = %v, want errNoPath", err)
+	}
+	if want := "the Zero app is not installed\n" + desktopapp.InstallHint("linux"); stderr != want || stdout != "" {
+		t.Errorf("stdout = %q, stderr = %q, want stderr %q", stdout, stderr, want)
+	}
+	if len(fake.served) != 0 {
+		t.Errorf("served %+v without a path", fake.served)
+	}
+}
+
 func TestAppOpensEveryPathAndTargetsTheFirstProject(t *testing.T) {
 	parent := appRoot(t)
 	first, second := filepath.Join(parent, "b-first"), filepath.Join(parent, "a-second")

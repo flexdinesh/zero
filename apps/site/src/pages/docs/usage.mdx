@@ -18,6 +18,11 @@ Or another directory:
 zero path/to/markdown
 ```
 
+A path is never implied: `zero` on its own opens the desktop app on the
+folders it already serves and lets you choose or open one there, so it never
+scans a large folder such as your home folder by accident. `zero browser`
+needs a path.
+
 With the [desktop app](/docs/desktop) installed, `zero [path]` opens the
 directory in it and exits. Without it, or with `--host` or `--port`, it serves
 in a browser, as `zero browser [path]` does. On a machine without a UI (an
@@ -84,9 +89,9 @@ again. Turn it off with **Workbench › Show Welcome on Startup** in Settings.
 ## Choose a project
 
 Every link `zero` prints or opens names its project. A link without one, such
-as the desktop app opened on its own or the string `zero remote status`
-prints, opens the only project there is (or, serving no folder, the empty
-workspace), and otherwise shows **Choose a project**: every served project under a filter, with the one you last opened
+as the desktop app opened on its own, `zero` without a path, or the string
+`zero remote status` prints, shows **Choose a project**, even when only one
+project is served (serving no folder shows the empty workspace): every served project under a filter, with the one you last opened
 there marked **Last opened**. Enter opens it, or the first match once you
 type; nothing loads until you pick.
 

@@ -131,9 +131,9 @@ func newServeCommand(use string, runCommand runner, addFlags func(*cobra.Command
 					return err
 				}
 				opts.repo = repo
-			} else if len(opts.paths) == 0 {
-				opts.paths = []string{"."}
 			}
+			// Without a path nothing is added: bare zero opens the app on the
+			// daemon's folders, and browser mode asks for one (decision 0191).
 			if opts.depth < 0 {
 				return errors.New("--depth must be zero or greater")
 			}
@@ -192,6 +192,9 @@ func run(ctx context.Context, opts options, stdin io.Reader, stdout, stderr io.W
 	opts, err := withRepoPath(ctx, opts, daemonCheckouts)
 	if err != nil {
 		return err
+	}
+	if len(opts.paths) == 0 {
+		return opts.cliName.explainError(errNoPath)
 	}
 	rootSet, err := projects.NewRootSet(opts.paths)
 	if err != nil {

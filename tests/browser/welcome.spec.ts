@@ -70,7 +70,7 @@ test("a project with nothing to restore opens Welcome with the projects", async 
 test("remembered tabs restore instead of Welcome; with nothing to restore it returns", async ({ page }) => {
   await page.goto(`/view?project=${rootParam}&path=README.md`)
   await expect(tabs(page).getByRole("tab")).toHaveText(["README.md"])
-  await page.goto("/")
+  await page.goto(`/?project=${rootParam}`)
   await expect(page).toHaveURL(endsWith(`/view?project=${rootParam}&path=README.md`))
   await expect(tabs(page).getByRole("tab")).toHaveText(["README.md"])
 
