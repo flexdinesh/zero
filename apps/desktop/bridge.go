@@ -36,12 +36,13 @@ func preloadScript(state experimental.State) string {
 	browser, titleBar := "", ""
 	if state.Enabled {
 		browser = `
-    browserOpen(project, url) { return call("BrowserOpen", project, url) },
-    browserState(project) { return call("BrowserState", project) },
-    browserAction(project, action) { return call("BrowserAction", project, action) },
-    browserFrame(project, frame) { return call("BrowserFrame", project, frame) },
-    browserSnapshot(project) { return call("BrowserSnapshot", project) },
-    browserPins(project, pins, visible) { return call("BrowserPins", project, pins, visible) },
+    browserTabs: true,
+    browserOpen(project, url, tab) { return call("BrowserOpen", project, url, tab ?? 1) },
+    browserState(project, tab) { return call("BrowserState", project, tab ?? 1) },
+    browserAction(project, action, tab) { return call("BrowserAction", project, action, tab ?? 1) },
+    browserFrame(project, frame, tab) { return call("BrowserFrame", project, frame, tab ?? 1) },
+    browserSnapshot(project, tab) { return call("BrowserSnapshot", project, tab ?? 1) },
+    browserPins(project, pins, visible, tab) { return call("BrowserPins", project, pins, visible, tab ?? 1) },
     composerCapture() { return call("ComposerCapture") },
     composerWalk(direction) { return call("ComposerWalk", direction) },
     composerResize(height) { return call("ComposerResize", height) },
@@ -224,59 +225,66 @@ func (b *bridgeService) RevealPath(ctx context.Context, project, relative any) (
 // making the guest when the project has none (decision 0184). Any
 // connection's window may: the guest is that window's, in its connection's
 // own browsing session.
-func (b *bridgeService) BrowserOpen(ctx context.Context, project, pageURL any) error {
+func (b *bridgeService) BrowserOpen(ctx context.Context, project, pageURL, tab any) error {
 	window, ok := callerWindow(ctx, b.anyConnection)
 	if !ok {
 		return errRefused
 	}
 	request, ok := bridge.ParseBrowserOpen(project, pageURL)
-	if !ok {
+	number, okTab := bridge.ParseBrowserTab(tab)
+	if !ok || !okTab {
 		return errRefused
 	}
+	request.Tab = number
 	b.host.browserOpen(window, request)
 	return nil
 }
 
 // BrowserState answers what the Browser tab shows of the project's guest in
 // the sender's window, or null when it has none.
-func (b *bridgeService) BrowserState(ctx context.Context, project any) (*review.BrowserState, error) {
+func (b *bridgeService) BrowserState(ctx context.Context, project, tab any) (*review.BrowserState, error) {
 	window, ok := callerWindow(ctx, b.anyConnection)
 	if !ok {
 		return nil, errRefused
 	}
 	name, ok := bridge.ParseBrowserProject(project)
-	if !ok {
+	number, okTab := bridge.ParseBrowserTab(tab)
+	if !ok || !okTab {
 		return nil, errRefused
 	}
-	return b.host.browserState(window, name), nil
+	return b.host.browserState(window, guestKey{project: name, tab: number}), nil
 }
 
 // BrowserAction does what the Browser tab asks of the project's guest in the
 // sender's window; nothing when it has none.
-func (b *bridgeService) BrowserAction(ctx context.Context, project, action any) error {
+func (b *bridgeService) BrowserAction(ctx context.Context, project, action, tab any) error {
 	window, ok := callerWindow(ctx, b.anyConnection)
 	if !ok {
 		return errRefused
 	}
 	request, ok := bridge.ParseBrowserAction(project, action)
-	if !ok {
+	number, okTab := bridge.ParseBrowserTab(tab)
+	if !ok || !okTab {
 		return errRefused
 	}
+	request.Tab = number
 	b.host.browserAct(window, request)
 	return nil
 }
 
 // BrowserFrame shows the project's guest over the rectangle of the sender's
 // page its Browser tab fills, or hides it for null.
-func (b *bridgeService) BrowserFrame(ctx context.Context, project, frame any) error {
+func (b *bridgeService) BrowserFrame(ctx context.Context, project, frame, tab any) error {
 	window, ok := callerWindow(ctx, b.anyConnection)
 	if !ok {
 		return errRefused
 	}
 	request, ok := bridge.ParseBrowserFrame(project, frame)
-	if !ok {
+	number, okTab := bridge.ParseBrowserTab(tab)
+	if !ok || !okTab {
 		return errRefused
 	}
+	request.Tab = number
 	b.host.browserFrame(window, request)
 	return nil
 }
@@ -284,30 +292,33 @@ func (b *bridgeService) BrowserFrame(ctx context.Context, project, frame any) er
 // BrowserSnapshot answers the frame the project's guest shows now, a base64
 // PNG, or null: the page draws it in the guest's place while one of its own
 // layers covers the tab.
-func (b *bridgeService) BrowserSnapshot(ctx context.Context, project any) (*string, error) {
+func (b *bridgeService) BrowserSnapshot(ctx context.Context, project, tab any) (*string, error) {
 	window, ok := callerWindow(ctx, b.anyConnection)
 	if !ok {
 		return nil, errRefused
 	}
 	name, ok := bridge.ParseBrowserProject(project)
-	if !ok {
+	number, okTab := bridge.ParseBrowserTab(tab)
+	if !ok || !okTab {
 		return nil, errRefused
 	}
-	return b.host.browserSnapshot(window, name), nil
+	return b.host.browserSnapshot(window, guestKey{project: name, tab: number}), nil
 }
 
 // BrowserPins marks earlier comments on the page of the project's guest in
 // the sender's window, shown or hidden; the app places them again after
 // each load.
-func (b *bridgeService) BrowserPins(ctx context.Context, project, pins, visible any) error {
+func (b *bridgeService) BrowserPins(ctx context.Context, project, pins, visible, tab any) error {
 	window, ok := callerWindow(ctx, b.anyConnection)
 	if !ok {
 		return errRefused
 	}
 	request, ok := bridge.ParseBrowserPins(project, pins, visible)
-	if !ok {
+	number, okTab := bridge.ParseBrowserTab(tab)
+	if !ok || !okTab {
 		return errRefused
 	}
+	request.Tab = number
 	b.host.browserPins(window, request)
 	return nil
 }
@@ -594,7 +605,8 @@ func (h *host) chooseFolder(window *mygo.Window) {
 
 // browserMenu drives the window's Browser tab (decision 0184) with keys that
 // work while the guest has the keyboard, which the page's own never do.
-// Open Location… hands the keyboard to the tab's address field; Back and
+// New Tab (decision 0195) asks the page for another Browser tab; Open
+// Location… hands the keyboard to the tab's address field; Back and
 // Forward move the guest that shows, whose own Alt+Left and Alt+Right
 // guest.js answers; Comment turns its comment mode on and off.
 func (h *host) browserMenu() *mygo.MenuItem {
@@ -611,6 +623,11 @@ func (h *host) browserMenu() *mygo.MenuItem {
 		}}
 	}
 	return &mygo.MenuItem{Label: "Browser", Submenu: []*mygo.MenuItem{
+		{Label: "New Tab", Accelerator: "CmdOrCtrl+T", Click: func(_ *mygo.MenuItem, window *mygo.Window) {
+			if window != nil {
+				go h.browserCommand(window, "newTab")
+			}
+		}},
 		{Label: "Open Location…", Accelerator: "CmdOrCtrl+L", Click: func(_ *mygo.MenuItem, window *mygo.Window) {
 			if window != nil {
 				go h.browserCommand(window, "location")

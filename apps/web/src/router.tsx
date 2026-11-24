@@ -17,7 +17,7 @@ import { ChooseProject } from "./features/projects/ChooseProject.tsx"
 import { defaultProject, fetchProjects, repoKey, repoLanding, type RepoLanding } from "./api/projects-data.ts"
 import { compareSearch, legacyCompare, reviewFragment, routeCompare } from "./features/source-control/compare.ts"
 import { isCommitHash } from "./lib/commit-hash.ts"
-import { routeAt } from "./workspace/workspace-tabs.ts"
+import { browserTabID, routeAt } from "./workspace/workspace-tabs.ts"
 import { routeStep, routeWalkthrough } from "./features/walkthrough/walkthrough-steps.ts"
 import { routeFeedback, routeThread } from "./features/feedback/feedback-model.ts"
 import { navigationHistoryFor } from "./workspace/navigation-history-store.ts"
@@ -54,9 +54,9 @@ interface PageSearch {
   // welcome=1, without a path, review, or walkthrough, opens the Welcome tab
   // (decision 0052).
   welcome?: 1
-  // browser=1, without a path, review, walkthrough, or Welcome, opens the
-  // project's Browser tab (decision 0181).
-  browser?: 1
+  // browser=<n>, without a path, review, walkthrough, or Welcome, opens the
+  // project's Browser tab n, from 1 (decisions 0181, 0195).
+  browser?: number
   // fb=<id> reveals the Feedback view at that feedback (decision 0120);
   // alone it opens no tab. With thread=<n>, and without a path, review, or
   // walkthrough, it opens that visual thread's screen tab (decision 0182).
@@ -87,7 +87,7 @@ function validateSearch(search: Record<string, unknown>): PageSearch {
     wt: routeWalkthrough(search.wt),
     step: routeStep(search.step),
     welcome: search.welcome === 1 || search.welcome === "1" ? 1 : undefined,
-    browser: search.browser === 1 || search.browser === "1" ? 1 : undefined,
+    browser: browserTabID(search.browser),
     fb: routeFeedback(search.fb),
     thread: routeFeedback(search.fb) ? routeThread(search.thread) : undefined,
   }

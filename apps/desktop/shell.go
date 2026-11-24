@@ -40,19 +40,19 @@ type shell struct {
 	// zero is the web view of the app's page, nil until the window has made
 	// it.
 	zero *mygo.WebView
-	// guests are the window's guest pages by project; recent orders them,
-	// the one shown last at the end.
-	guests map[string]*guest
-	recent []string
-	// shown is the project whose guest shows at at, "" when none does.
-	shown string
+	// guests are the window's guest pages by project and tab; recent orders
+	// them, the one shown last at the end.
+	guests map[guestKey]*guest
+	recent []guestKey
+	// shown is the guest that shows at at, the zero key when none does.
+	shown guestKey
 	at    review.Frame
 	// nudged narrows the shown guest by a pixel; appearances counts them, so
 	// only the last one's timer widens it again.
 	nudged      bool
 	appearances int
-	// focusing is the project whose guest takes the keyboard when it shows.
-	focusing string
+	// focusing is the guest that takes the keyboard when it shows.
+	focusing guestKey
 	// layout is the window's content size and the zoom of the app's page,
 	// as of the last frame the page reported: where the composer fits.
 	layout layout
@@ -60,6 +60,13 @@ type shell struct {
 	// pick; composing is the pick that waits for its comment, nil for none.
 	composer  *mygo.WebView
 	composing *composition
+}
+
+// guestKey names a guest: a project's Browser tab (decisions 0184, 0195).
+// The zero key names none.
+type guestKey struct {
+	project string
+	tab     int
 }
 
 // layout is what placing the composer needs of the window.
@@ -79,7 +86,7 @@ type composition struct {
 }
 
 func newShell(hidesTitleBar bool) *shell {
-	return &shell{hidesTitleBar: hidesTitleBar, guests: map[string]*guest{}}
+	return &shell{hidesTitleBar: hidesTitleBar, guests: map[guestKey]*guest{}}
 }
 
 // view builds the window's content: the app's page, filling it, and over
@@ -127,11 +134,11 @@ func (s *shell) setZero(zero *mygo.WebView) {
 	s.mu.Unlock()
 }
 
-// guest finds the project's guest, nil when it has none.
-func (s *shell) guest(project string) *guest {
+// guest finds key's guest, nil when it has none.
+func (s *shell) guest(key guestKey) *guest {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.guests[project]
+	return s.guests[key]
 }
 
 // shownGuest is the guest that shows, nil when none does.
@@ -141,45 +148,45 @@ func (s *shell) shownGuest() *guest {
 	return s.guests[s.shown]
 }
 
-// add keeps a project's new guest and answers the guest that leaves to make
+// add keeps a new guest and answers the guest that leaves to make
 // room, if any: the one shown longest ago that does not show now.
 func (s *shell) add(added *guest) *guest {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.guests[added.project] = added
-	s.recent = append(s.recent, added.project)
+	s.guests[added.key] = added
+	s.recent = append(s.recent, added.key)
 	if len(s.guests) <= maxGuests {
 		return nil
 	}
-	for index, project := range s.recent {
-		if project == s.shown || project == added.project {
+	for index, key := range s.recent {
+		if key == s.shown || key == added.key {
 			continue
 		}
-		evicted := s.guests[project]
-		delete(s.guests, project)
+		evicted := s.guests[key]
+		delete(s.guests, key)
 		s.recent = append(s.recent[:index], s.recent[index+1:]...)
 		return evicted
 	}
 	return nil
 }
 
-// remove forgets the project's guest and answers it, nil when it had none.
-func (s *shell) remove(project string) *guest {
+// remove forgets key's guest and answers it, nil when it had none.
+func (s *shell) remove(key guestKey) *guest {
 	s.mu.Lock()
-	removed := s.guests[project]
-	delete(s.guests, project)
+	removed := s.guests[key]
+	delete(s.guests, key)
 	for index, each := range s.recent {
-		if each == project {
+		if each == key {
 			s.recent = append(s.recent[:index], s.recent[index+1:]...)
 			break
 		}
 	}
-	hidden := s.shown == project
+	hidden := s.shown == key
 	if hidden {
-		s.shown = ""
+		s.shown = guestKey{}
 	}
-	if s.focusing == project {
-		s.focusing = ""
+	if s.focusing == key {
+		s.focusing = guestKey{}
 	}
 	if s.composing != nil && s.composing.guest == removed {
 		s.composing = nil
@@ -191,32 +198,32 @@ func (s *shell) remove(project string) *guest {
 	return removed
 }
 
-// place shows the project's guest at at, in place of any other, in a window
+// place shows key's guest at at, in place of any other, in a window
 // laid out as window.
-func (s *shell) place(project string, at review.Frame, window layout) {
+func (s *shell) place(key guestKey, at review.Frame, window layout) {
 	s.mu.Lock()
-	shown := s.guests[project]
+	shown := s.guests[key]
 	if shown == nil {
 		s.mu.Unlock()
 		return
 	}
-	appeared := s.shown != project
-	s.shown, s.at, s.layout = project, at, window
+	appeared := s.shown != key
+	s.shown, s.at, s.layout = key, at, window
 	appearance := s.appearances
 	if appeared {
 		s.nudged = true
 		s.appearances++
 		appearance = s.appearances
 		for index, each := range s.recent {
-			if each == project {
-				s.recent = append(append(s.recent[:index], s.recent[index+1:]...), project)
+			if each == key {
+				s.recent = append(append(s.recent[:index], s.recent[index+1:]...), key)
 				break
 			}
 		}
 	}
-	focus := s.focusing == project && !appeared
+	focus := s.focusing == key && !appeared
 	if focus {
-		s.focusing = ""
+		s.focusing = guestKey{}
 	}
 	s.mu.Unlock()
 	s.window.Invalidate()
@@ -228,13 +235,13 @@ func (s *shell) place(project string, at review.Frame, window layout) {
 	}
 	time.AfterFunc(nudgeDelay, func() {
 		s.mu.Lock()
-		current := s.appearances == appearance && s.shown == project
-		focus := current && s.focusing == project
+		current := s.appearances == appearance && s.shown == key
+		focus := current && s.focusing == key
 		if current {
 			s.nudged = false
 		}
 		if focus {
-			s.focusing = ""
+			s.focusing = guestKey{}
 		}
 		s.mu.Unlock()
 		if !current {
@@ -247,13 +254,13 @@ func (s *shell) place(project string, at review.Frame, window layout) {
 	})
 }
 
-// hide stops showing the project's guest; its page stays. An empty project
+// hide stops showing key's guest; its page stays. The zero key
 // hides whichever shows.
-func (s *shell) hide(project string) {
+func (s *shell) hide(key guestKey) {
 	s.mu.Lock()
-	hidden := s.shown != "" && (project == "" || s.shown == project)
+	hidden := s.shown != (guestKey{}) && (key == (guestKey{}) || s.shown == key)
 	if hidden {
-		s.shown = ""
+		s.shown = guestKey{}
 	}
 	s.mu.Unlock()
 	if hidden {
@@ -261,14 +268,14 @@ func (s *shell) hide(project string) {
 	}
 }
 
-// focusWhenShown gives the project's guest the keyboard: now when it shows,
+// focusWhenShown gives the key's guest the keyboard: now when it shows,
 // else when it next does.
-func (s *shell) focusWhenShown(project string) {
+func (s *shell) focusWhenShown(key guestKey) {
 	s.mu.Lock()
-	shown := s.guests[project]
-	now := shown != nil && s.shown == project && !s.nudged
+	shown := s.guests[key]
+	now := shown != nil && s.shown == key && !s.nudged
 	if !now {
-		s.focusing = project
+		s.focusing = key
 	}
 	s.mu.Unlock()
 	if now {
@@ -280,7 +287,7 @@ func (s *shell) focusWhenShown(project string) {
 func (s *shell) close() {
 	s.mu.Lock()
 	guests := s.guests
-	s.guests, s.recent, s.shown, s.composing = map[string]*guest{}, nil, "", nil
+	s.guests, s.recent, s.shown, s.composing = map[guestKey]*guest{}, nil, guestKey{}, nil
 	s.mu.Unlock()
 	for _, each := range guests {
 		each.stop()

@@ -79,11 +79,11 @@ export function useBrowserComments({ browser, feedback, openThread, project, rer
       return
     }
     const list = threads.map(pagePin)
-    const signature = JSON.stringify([url, pins, commented, list])
+    const signature = JSON.stringify([browser.tab, url, pins, commented, list])
     if (signature === sent.current) return
     sent.current = signature
-    sendPins(project, list, pins)
-  }, [commented, hasGuest, pins, project, sendPins, threads, url])
+    sendPins(project, list, pins, browser.tab)
+  }, [browser.tab, commented, hasGuest, pins, project, sendPins, threads, url])
 
   const latest = useRef({ openThread, reread })
   useEffect(() => {

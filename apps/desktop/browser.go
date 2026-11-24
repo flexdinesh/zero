@@ -28,13 +28,13 @@ import (
 // event.
 const browserDelay = 100 * time.Millisecond
 
-// guest is one project's page in a window.
+// guest is the page of one of a project's Browser tabs in a window.
 type guest struct {
-	host    *host
-	window  *mygo.Window
-	frame   *shell
-	project string
-	view    *mygo.WebView
+	host   *host
+	window *mygo.Window
+	frame  *shell
+	key    guestKey
+	view   *mygo.WebView
 	// ctx ends when the guest closes.
 	ctx  context.Context
 	stop context.CancelFunc
@@ -65,36 +65,37 @@ type browserTopic struct {
 	project string
 }
 
-// browserOpen shows pageURL in the project's guest in window, making the
-// guest when the project has none. The guest takes the keyboard once it
-// shows.
+// browserOpen shows pageURL in the guest of the project's Browser tab in
+// window, making the guest when the tab has none. The guest takes the
+// keyboard once it shows.
 func (h *host) browserOpen(window *mygo.Window, request bridge.BrowserOpen) {
 	frame := h.shellOf(window)
 	if frame == nil {
 		return
 	}
+	key := guestKey{project: request.Project, tab: request.Tab}
 	frame.opening.Lock()
-	opened := frame.guest(request.Project)
+	opened := frame.guest(key)
 	if opened == nil {
 		var err error
-		if opened, err = h.newGuest(window, frame, request.Project); err != nil {
+		if opened, err = h.newGuest(window, frame, key); err != nil {
 			frame.opening.Unlock()
 			h.report("Could not open the page", err.Error())
 			return
 		}
 	}
 	frame.opening.Unlock()
-	frame.focusWhenShown(request.Project)
+	frame.focusWhenShown(key)
 	opened.record((*review.Browsing).Start)
 	if err := opened.view.Page().LoadURL(request.URL); err != nil {
 		h.report("Could not open the page", err.Error())
 	}
 }
 
-// newGuest makes a project's guest in window: untrusted, in the session of
-// the window's connection, under 0175's navigation policy. It loads nothing
-// yet.
-func (h *host) newGuest(window *mygo.Window, frame *shell, project string) (*guest, error) {
+// newGuest makes the guest of a project's Browser tab in window: untrusted,
+// in the session of the window's connection, under 0175's navigation
+// policy. It loads nothing yet. A project's tabs share the session.
+func (h *host) newGuest(window *mygo.Window, frame *shell, key guestKey) (*guest, error) {
 	app := h.page(window)
 	if app == nil {
 		return nil, errors.New("the window closed")
@@ -107,7 +108,7 @@ func (h *host) newGuest(window *mygo.Window, frame *shell, project string) (*gue
 		return nil, err
 	}
 	ctx, stop := context.WithCancel(context.Background())
-	made := &guest{host: h, window: window, frame: frame, project: project, view: view, ctx: ctx, stop: stop, loaded: make(chan struct{}, 1)}
+	made := &guest{host: h, window: window, frame: frame, key: key, view: view, ctx: ctx, stop: stop, loaded: make(chan struct{}, 1)}
 	page := view.Page()
 	page.SetPermissionHandler(func(mygo.PermissionRequest) bool { return false })
 	// OnWillNavigate sees what the page asks for, never LoadURL or history
@@ -135,7 +136,7 @@ func (h *host) newGuest(window *mygo.Window, frame *shell, project string) (*gue
 	})
 	page.OnDidFinishLoad(func() {
 		made.pageLoaded()
-		h.browserChanged(window, project)
+		h.browserChanged(window, key.project)
 	})
 	page.SetWindowOpenHandler(func(open mygo.WindowOpenRequest) *mygo.WindowOptions {
 		if target, ok := review.CheckURL(open.URL); ok {
@@ -165,7 +166,7 @@ func (g *guest) close() {
 	g.host.endComposing(g.frame, g, false)
 	g.stop()
 	g.view.Destroy()
-	g.host.browserChanged(g.window, g.project)
+	g.host.browserChanged(g.window, g.key.project)
 }
 
 // record applies a load event to the guest's state and tells the Browser
@@ -174,7 +175,7 @@ func (g *guest) record(event func(*review.Browsing)) {
 	g.mu.Lock()
 	event(&g.browsing)
 	g.mu.Unlock()
-	g.host.browserChanged(g.window, g.project)
+	g.host.browserChanged(g.window, g.key.project)
 }
 
 // state is what the Browser tab shows of the guest, read from its page now.
@@ -213,7 +214,7 @@ func (g *guest) act(action string) {
 		page.Reload()
 	case bridge.BrowserStop:
 		page.Stop()
-		g.host.browserChanged(g.window, g.project)
+		g.host.browserChanged(g.window, g.key.project)
 	case bridge.BrowserComment:
 		g.setCommenting(true)
 	case bridge.BrowserEndComment:
@@ -221,43 +222,45 @@ func (g *guest) act(action string) {
 	}
 }
 
-// browserState answers the project's guest in window, nil when it has none.
-func (h *host) browserState(window *mygo.Window, project string) *review.BrowserState {
+// browserState answers key's guest in window, nil when it has none.
+func (h *host) browserState(window *mygo.Window, key guestKey) *review.BrowserState {
 	if frame := h.shellOf(window); frame != nil {
-		if found := frame.guest(project); found != nil {
+		if found := frame.guest(key); found != nil {
 			return found.state()
 		}
 	}
 	return nil
 }
 
-// browserAct does a Browser tab action to the project's guest in window;
+// browserAct does a Browser tab action to the tab's guest in window;
 // nothing when it has none.
 func (h *host) browserAct(window *mygo.Window, request bridge.BrowserAction) {
 	frame := h.shellOf(window)
 	if frame == nil {
 		return
 	}
+	key := guestKey{project: request.Project, tab: request.Tab}
 	if request.Action == bridge.BrowserClose {
-		if closed := frame.remove(request.Project); closed != nil {
+		if closed := frame.remove(key); closed != nil {
 			closed.close()
 		}
 		return
 	}
-	if found := frame.guest(request.Project); found != nil {
+	if found := frame.guest(key); found != nil {
 		found.act(request.Action)
 	}
 }
 
-// browserFrame shows the project's guest where the window's page says its
+// browserFrame shows the tab's guest where the window's page says its
 // Browser tab is, or hides it.
 func (h *host) browserFrame(window *mygo.Window, request bridge.BrowserFrame) {
 	frame := h.shellOf(window)
 	if frame == nil {
 		return
 	}
+	key := guestKey{project: request.Project, tab: request.Tab}
 	if !request.Shown {
-		frame.hide(request.Project)
+		frame.hide(key)
 		return
 	}
 	app := h.page(window)
@@ -267,23 +270,23 @@ func (h *host) browserFrame(window *mygo.Window, request bridge.BrowserFrame) {
 	width, height := window.ContentSize()
 	at, ok := review.Place(request.X, request.Y, request.Width, request.Height, app.ZoomFactor(), width, height)
 	if !ok {
-		frame.hide(request.Project)
+		frame.hide(key)
 		return
 	}
-	frame.place(request.Project, at, layout{width: width, height: height, zoom: app.ZoomFactor()})
+	frame.place(key, at, layout{width: width, height: height, zoom: app.ZoomFactor()})
 	if composer := frame.composerView(); composer != nil {
 		composer.Page().SetZoomFactor(app.ZoomFactor())
 	}
 }
 
-// browserSnapshot answers the frame the project's guest shows now as a
-// base64 PNG, nil when it has no guest or no frame.
-func (h *host) browserSnapshot(window *mygo.Window, project string) *string {
+// browserSnapshot answers the frame key's guest shows now as a base64 PNG,
+// nil when it has no guest or no frame.
+func (h *host) browserSnapshot(window *mygo.Window, key guestKey) *string {
 	frame := h.shellOf(window)
 	if frame == nil {
 		return nil
 	}
-	found := frame.guest(project)
+	found := frame.guest(key)
 	if found == nil {
 		return nil
 	}
@@ -295,9 +298,9 @@ func (h *host) browserSnapshot(window *mygo.Window, project string) *string {
 	return &encoded
 }
 
-// browserChanged tells window's page that the project's guest changed:
-// once, browserDelay after the first change of a burst, so it reads the
-// last.
+// browserChanged tells window's page that a guest of the project's Browser
+// tabs changed: once, browserDelay after the first change of a burst, so it
+// reads the last. The event names the project; the page reads its tabs.
 func (h *host) browserChanged(window *mygo.Window, project string) {
 	topic := browserTopic{window: window, project: project}
 	h.browsers.mu.Lock()
@@ -315,21 +318,22 @@ func (h *host) browserChanged(window *mygo.Window, project string) {
 }
 
 // browserCommand asks window's page to do what the Browser menu names, for
-// the project whose guest shows there, null when none does. The app's page
-// takes the keyboard first: the guest may have it.
+// the project and tab whose guest shows there, null when none does. The
+// app's page takes the keyboard first: the guest may have it.
 func (h *host) browserCommand(window *mygo.Window, command string) {
 	frame := h.shellOf(window)
 	if frame == nil {
 		return
 	}
 	var project *string
+	var tab *int
 	if shown := frame.shownGuest(); shown != nil {
-		project = &shown.project
+		project, tab = &shown.key.project, &shown.key.tab
 	}
 	if zero := frame.zeroView(); zero != nil {
 		zero.Focus()
 	}
-	h.tell(window, "zero:browser-command", map[string]any{"project": project, "command": command})
+	h.tell(window, "zero:browser-command", map[string]any{"project": project, "tab": tab, "command": command})
 }
 
 // reloadShown reloads what the window's user looks at: the guest that

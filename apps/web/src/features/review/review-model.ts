@@ -123,3 +123,42 @@ export function reviewChoices(recent: readonly string[], query: string): ReviewC
   const first = typed && !recent.includes(typed) ? [{ url: typed, typed: true }] : []
   return [...first, ...matches.map((url) => ({ url, typed: false }))]
 }
+
+// TabPages is the address each of a project's Browser tabs last showed
+// (decision 0195), as zero-browser-tabs stores them: by project, then by
+// tab number. A tab whose page closed, past the window's page limit or
+// with the app, offers it again.
+export type TabPages = Readonly<Record<string, Readonly<Record<string, string>>>>
+
+export const tabPagesStorageKey = "zero-browser-tabs"
+const tabPagesProjects = 50
+
+export function parseTabPages(value: unknown): TabPages {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return {}
+  const pages: Record<string, Record<string, string>> = {}
+  for (const [project, tabs] of Object.entries(value)) {
+    if (typeof tabs !== "object" || tabs === null || Array.isArray(tabs)) continue
+    const kept: Record<string, string> = {}
+    for (const [tab, url] of Object.entries(tabs)) {
+      if (/^[1-9]\d?$/.test(tab) && typeof url === "string" && reviewURL(url) === url) kept[tab] = url
+    }
+    if (Object.keys(kept).length > 0) pages[project] = kept
+  }
+  return pages
+}
+
+// tabPage is the address tab of project last showed, "" for none.
+export function tabPage(pages: TabPages, project: string, tab: number): string {
+  return pages[project]?.[String(tab)] ?? ""
+}
+
+// withTabPage remembers url as what tab of project shows, or forgets the
+// tab for "". The project moves last, and the oldest projects go first past
+// the limit.
+export function withTabPage(pages: TabPages, project: string, tab: number, url: string): TabPages {
+  const { [String(tab)]: _previous, ...others } = pages[project] ?? {}
+  const tabs = url ? { ...others, [String(tab)]: url } : others
+  const { [project]: _project, ...rest } = pages
+  const kept = Object.fromEntries(Object.entries(rest).slice(-(tabPagesProjects - 1)))
+  return Object.keys(tabs).length > 0 ? { ...kept, [project]: tabs } : kept
+}

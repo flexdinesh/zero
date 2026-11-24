@@ -18,21 +18,25 @@ test("typing blame finds the line blame command and its setting", () => {
 
 test("the palette offers notification settings only where they exist", () => {
   const ids = (list: readonly Command[]) => list.map((command) => command.id)
-  assert.deepEqual(availableCommands(true, true, true), commands)
-  assert.ok(ids(availableCommands(true, true, true)).includes("settings.notifyCommits"))
-  assert.ok(!ids(availableCommands(false, false, false)).some((id) => id.startsWith("settings.notify")))
-  assert.ok(ids(availableCommands(false, false, false)).includes("settings.theme"))
-  assert.ok(ids(availableCommands(false, false, false)).includes("help.welcome"))
+  assert.deepEqual(availableCommands(true, true, true, true), commands)
+  assert.ok(ids(availableCommands(true, true, true, true)).includes("settings.notifyCommits"))
+  assert.ok(!ids(availableCommands(false, false, false, false)).some((id) => id.startsWith("settings.notify")))
+  assert.ok(ids(availableCommands(false, false, false, false)).includes("settings.theme"))
+  assert.ok(ids(availableCommands(false, false, false, false)).includes("help.welcome"))
 })
 
 test("the palette offers the Browser's Open Location only where the desktop app hosts the Browser", () => {
   const ids = (list: readonly Command[]) => list.map((command) => command.id)
-  assert.ok(ids(availableCommands(true, false, true)).includes("browser.openLocation"))
-  assert.ok(!ids(availableCommands(true, false, false)).includes("browser.openLocation"))
+  assert.ok(ids(availableCommands(true, false, true, false)).includes("browser.openLocation"))
+  assert.ok(!ids(availableCommands(true, false, false, false)).includes("browser.openLocation"))
+  // New Tab needs an app that keeps a page per tab (decision 0195).
+  assert.ok(ids(availableCommands(true, false, true, true)).includes("browser.newTab"))
+  assert.ok(!ids(availableCommands(true, false, true, false)).includes("browser.newTab"))
+  assert.ok(!ids(availableCommands(true, false, false, true)).includes("browser.newTab"))
 })
 
 test("the active tab’s wrap toggle comes before the default setting when searching", () => {
-  const wrap = (canWrap: boolean) => matchCommands(availableCommands(false, canWrap, false), "wrap").map(({ command }) => command.id)
+  const wrap = (canWrap: boolean) => matchCommands(availableCommands(false, canWrap, false, false), "wrap").map(({ command }) => command.id)
   assert.deepEqual(wrap(true), ["editor.toggleWordWrap", "settings.wordWrap"])
   assert.deepEqual(wrap(false), ["settings.wordWrap"])
 })
@@ -80,5 +84,5 @@ test("Go Back, Go Forward, and Recent Locations are Navigation commands", () => 
 
 test("typing report finds Report a Problem in Help on every client", () => {
   assert.deepEqual(matchCommands(commands, "report problem").map((match) => match.command.id), ["help.reportProblem"])
-  assert.ok(availableCommands(false, false, false).some((command) => command.id === "help.reportProblem"))
+  assert.ok(availableCommands(false, false, false, false).some((command) => command.id === "help.reportProblem"))
 })

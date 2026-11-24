@@ -19,10 +19,13 @@ export interface FakeBrowserState {
 export interface FakeBrowser {
   // calls is what the page asked: ["open", project, url], ["action",
   // project, action], ["frame", project, frame | null], ["snapshot", project],
-  // ["pins", project, pins, visible].
+  // ["pins", project, pins, visible]; each ends with the tab when the app
+  // keeps a page per tab (decision 0195).
   calls: unknown[][]
-  // state is what browserState answers.
+  // state is what browserState answers, for tab 1 when the app keeps a page
+  // per tab; states answers for the tabs it names.
   state: FakeBrowserState | null
+  states: Record<number, FakeBrowserState | null>
   // snapshot is what browserSnapshot answers: a base64 PNG, or null.
   snapshot: string | null
 }
@@ -70,22 +73,30 @@ export async function experimentalDesktop(page: Page) {
 
 // browserDesktop plays the desktop app hosting the Browser: it records what
 // the page asks in window.__browser and answers the state a test sets.
-// comments false is the app before in-page comments: no pins method.
-export async function browserDesktop(page: Page, experimental = true, comments = true) {
-  await page.addInitScript(({ comments, experimental, snapshot }) => {
-    const fake: FakeBrowser = { calls: [], state: null, snapshot }
+// comments false is the app before in-page comments: no pins method. tabs
+// true is the app that keeps a page per Browser tab (decision 0195); without
+// it the app is one before, whose preload passes no tab on.
+export async function browserDesktop(page: Page, experimental = true, comments = true, tabs = false) {
+  await page.addInitScript(({ comments, experimental, snapshot, tabs }) => {
+    const fake: FakeBrowser = { calls: [], state: null, states: {}, snapshot }
     window.__browser = fake
+    // An app before 0195 takes only the arguments it knew.
+    const taken = (args: unknown[], known: number) => tabs ? args : args.slice(0, known)
     window.zeroDesktop = {
       version: 2,
       experimental: { enabled: experimental, source: experimental ? "env" : "" },
-      browserOpen(...args: unknown[]) { fake.calls.push(["open", ...args]); return Promise.resolve() },
-      browserState() { return Promise.resolve(fake.state) },
-      browserAction(...args: unknown[]) { fake.calls.push(["action", ...args]); return Promise.resolve() },
-      browserFrame(...args: unknown[]) { fake.calls.push(["frame", ...args]); return Promise.resolve() },
-      browserSnapshot(...args: unknown[]) { fake.calls.push(["snapshot", ...args]); return Promise.resolve(fake.snapshot) },
-      ...(comments ? { browserPins(...args: unknown[]) { fake.calls.push(["pins", ...args]); return Promise.resolve() } } : {}),
+      ...(tabs ? { browserTabs: true } : {}),
+      browserOpen(...args: unknown[]) { fake.calls.push(["open", ...taken(args, 2)]); return Promise.resolve() },
+      browserState(_project: unknown, tab: unknown) {
+        if (!tabs || tab === 1) return Promise.resolve(fake.state)
+        return Promise.resolve(typeof tab === "number" ? fake.states[tab] ?? null : null)
+      },
+      browserAction(...args: unknown[]) { fake.calls.push(["action", ...taken(args, 2)]); return Promise.resolve() },
+      browserFrame(...args: unknown[]) { fake.calls.push(["frame", ...taken(args, 2)]); return Promise.resolve() },
+      browserSnapshot(...args: unknown[]) { fake.calls.push(["snapshot", ...taken(args, 1)]); return Promise.resolve(fake.snapshot) },
+      ...(comments ? { browserPins(...args: unknown[]) { fake.calls.push(["pins", ...taken(args, 3)]); return Promise.resolve() } } : {}),
     }
-  }, { comments, experimental, snapshot: snapshotPNG })
+  }, { comments, experimental, snapshot: snapshotPNG, tabs })
 }
 
 // composerDesktop plays the desktop app's composer web view (decision

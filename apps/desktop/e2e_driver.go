@@ -60,9 +60,10 @@ type e2eRequest struct {
 	Params struct {
 		Host   string `json:"host"`
 		Script string `json:"script"`
-		// Project names a guest of the window: eval and capture then act
-		// on its page, not the app's.
+		// Project and Tab name a guest of the window: eval and capture
+		// then act on its page, not the app's. Tab 0 is tab 1.
 		Project string `json:"project"`
+		Tab     int    `json:"tab"`
 		// Composer targets the window's composer instead.
 		Composer bool `json:"composer"`
 	} `json:"params"`
@@ -140,7 +141,11 @@ func (h *host) e2eCall(request e2eRequest) (any, error) {
 	var visitor *guest
 	if request.Params.Project != "" {
 		if frame := h.shellOf(window); frame != nil {
-			visitor = frame.guest(request.Params.Project)
+			tab := request.Params.Tab
+			if tab == 0 {
+				tab = 1
+			}
+			visitor = frame.guest(guestKey{project: request.Params.Project, tab: tab})
 		}
 		if visitor == nil {
 			return nil, errors.New("no guest for " + request.Params.Project)
@@ -164,7 +169,7 @@ func (h *host) e2eCall(request e2eRequest) (any, error) {
 		}
 		frame.mu.Lock()
 		defer frame.mu.Unlock()
-		shown := map[string]any{"project": frame.shown, "x": frame.at.X, "y": frame.at.Y, "width": frame.at.Width, "height": frame.at.Height, "guests": len(frame.guests), "composer": nil}
+		shown := map[string]any{"project": frame.shown.project, "tab": frame.shown.tab, "x": frame.at.X, "y": frame.at.Y, "width": frame.at.Width, "height": frame.at.Height, "guests": len(frame.guests), "composer": nil}
 		if composing := frame.composing; composing != nil && frame.guests[frame.shown] == composing.guest {
 			at := review.PlaceComposer(composing.capture.Rect, composing.guestZoom, frame.at, composing.height, frame.layout.zoom, frame.layout.width, frame.layout.height)
 			shown["composer"] = map[string]any{"x": at.X, "y": at.Y, "width": at.Width, "height": at.Height}

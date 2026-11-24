@@ -25,6 +25,7 @@ export type CommandAction =
   | { kind: "find" }
   | { kind: "find-step"; direction: 1 | -1 }
   | { kind: "browser-location" }
+  | { kind: "browser-new-tab" }
 
 export interface Command {
   id: string
@@ -75,17 +76,21 @@ export const commands: readonly Command[] = [
   { id: "walkthrough.exit", category: "Walkthrough", title: "Close Walkthrough", action: { kind: "walkthrough-exit" } },
   { id: "sourceControl.showFileHistory", category: "Source Control", title: "Show File History", action: { kind: "show-file-history" } },
   { id: "sourceControl.showLineBlame", category: "Source Control", title: "Show Line Blame", action: { kind: "show-line-blame" } },
+  { id: "browser.newTab", category: "Browser", title: "New Tab", action: { kind: "browser-new-tab" }, shortcut: mac ? "⌘T" : "Ctrl+T" },
   { id: "browser.openLocation", category: "Browser", title: "Open Location…", action: { kind: "browser-location" }, shortcut: mac ? "⌘L" : "Ctrl+L" },
   { id: "help.welcome", category: "Help", title: "Welcome", action: { kind: "open-welcome" } },
   { id: "help.reportProblem", category: "Help", title: "Report a Problem…", action: { kind: "report-problem" } },
 ]
 
-// availableCommands keeps commands supported by the client and active view.
-export function availableCommands(notificationsAvailable: boolean, canWrap: boolean, canBrowse: boolean): readonly Command[] {
+// availableCommands keeps commands supported by the client and active view:
+// canBrowse, the Browser; canBrowseTabs, more than one Browser tab
+// (decision 0195).
+export function availableCommands(notificationsAvailable: boolean, canWrap: boolean, canBrowse: boolean, canBrowseTabs: boolean): readonly Command[] {
   const settings = availableSettings(notificationsAvailable)
   return commands.filter(({ action }) => {
     if (action.kind === "toggle-word-wrap") return canWrap
     if (action.kind === "browser-location") return canBrowse
+    if (action.kind === "browser-new-tab") return canBrowse && canBrowseTabs
     if (action.kind === "open-setting") return settings.some((definition) => definition.id === action.setting)
     return true
   })

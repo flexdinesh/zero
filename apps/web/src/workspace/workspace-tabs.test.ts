@@ -3,7 +3,7 @@ import test from "node:test"
 
 import type { CompareContext } from "../features/source-control/compare.ts"
 import {
-  browserTab, documentKey, documentTab, includesTab, offeredTab, parseStoredTab, placeTab, reviewTab, routeAt, sameTab, screenTab, storedTab, tabKey, tabName,
+  browserTab, browserTabID, browserTabIDs, documentKey, documentTab, includesTab, offeredTab, parseStoredTab, nextBrowserTab, placeTab, reviewTab, routeAt, sameTab, screenTab, storedTab, tabKey, tabName,
   tabSearch, walkthroughTab, welcomeTab,
 } from "./workspace-tabs.ts"
 
@@ -115,9 +115,9 @@ test("the Welcome tab is one tab that keys, names, stores, and routes", () => {
   assert.deepEqual(tabSearch("/p", tab), { project: "/p", welcome: 1 })
 })
 
-test("the Browser tab is one tab per project, named by its page", () => {
+test("a Browser tab is tab 1 by default, named by its page", () => {
   const tab = browserTab()
-  assert.equal(tabKey(tab), "browser")
+  assert.equal(tabKey(tab), "browser:1")
   assert.equal(sameTab(tab, browserTab()), true)
   assert.equal(sameTab(tab, documentTab("browser")), false)
   assert.deepEqual(tabName(tab, context), { label: "Browser", title: "Browser" })
@@ -128,6 +128,32 @@ test("the Browser tab is one tab per project, named by its page", () => {
   assert.equal(parseStoredTab({ browser: 1 }), null)
   assert.deepEqual(tabSearch("/p", tab), { project: "/p", browser: 1 })
   assert.deepEqual(placeTab({ tabs: [], preview: null }, tab, true), { tabs: [tab], preview: null })
+})
+
+test("Browser tabs past the first keep their number in routes and memory (decision 0195)", () => {
+  const tab = browserTab(3)
+  assert.equal(sameTab(tab, browserTab()), false)
+  assert.equal(tabKey(tab), "browser:3")
+  assert.deepEqual(tabName(tab, context, () => "", (id) => ({ label: `tab ${id}`, title: "" })).label, "tab 3")
+  assert.deepEqual(storedTab(tab), { browser: true, id: 3 })
+  assert.deepEqual(parseStoredTab(storedTab(tab)), tab)
+  assert.equal(parseStoredTab({ browser: true, id: 0 }), null)
+  assert.equal(parseStoredTab({ browser: true, id: 100 }), null)
+  assert.deepEqual(tabSearch("/p", tab), { project: "/p", browser: 3 })
+  assert.equal(browserTabID("3"), 3)
+  assert.equal(browserTabID(1), 1)
+  for (const value of ["0", "100", "1.5", "x", 1.5, null, undefined]) assert.equal(browserTabID(value), undefined, String(value))
+  assert.deepEqual(browserTabIDs([documentTab("a.md"), browserTab(2), browserTab()]), [2, 1])
+  assert.equal(nextBrowserTab([]), 1)
+  assert.equal(nextBrowserTab([1, 3]), 2)
+  assert.equal(nextBrowserTab(Array.from({ length: 99 }, (_, index) => index + 1)), null)
+})
+
+test("an app without a page per tab offers Browser tab 1 only", () => {
+  const one = { browser: true, browserTabs: false, screens: false }
+  assert.equal(offeredTab(browserTab(), one), true)
+  assert.equal(offeredTab(browserTab(2), one), false)
+  assert.equal(offeredTab(browserTab(2), { ...one, browserTabs: true }), true)
 })
 
 test("a walkthrough step's tab is the preview tab the next step replaces", () => {
@@ -193,10 +219,10 @@ test("a screen tab opened as preview replaces the preview tab, as walkthrough st
 })
 
 test("a window offers the Browser tab and screen tabs only with their features", () => {
-  const off = { browser: false, screens: false }
+  const off = { browser: false, browserTabs: false, screens: false }
   assert.equal(offeredTab(browserTab(), off), false)
   assert.equal(offeredTab(screenTab("fb-3k2q8m", 5), off), false)
-  assert.equal(offeredTab(browserTab(), { browser: true, screens: true }), true)
-  assert.equal(offeredTab(screenTab("fb-3k2q8m", 5), { browser: false, screens: true }), true)
+  assert.equal(offeredTab(browserTab(), { browser: true, browserTabs: true, screens: true }), true)
+  assert.equal(offeredTab(screenTab("fb-3k2q8m", 5), { browser: false, browserTabs: false, screens: true }), true)
   for (const tab of [documentTab("a.md"), reviewTab({ kind: "working" }), walkthroughTab("w1"), welcomeTab()]) assert.equal(offeredTab(tab, off), true)
 })

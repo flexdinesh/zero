@@ -10,8 +10,8 @@ import { routeFeedback, routeThread } from "../features/feedback/feedback-model.
 // tree or, with at, from a commit (a snapshot), or review tabs of one
 // compare: uncommitted changes, the branch, a commit, or a commit range
 // (decision 0035), a walkthrough's own tab: its cover and notes (decision
-// 0047), the Welcome tab (decision 0052), the project's Browser tab
-// (decision 0184), or a visual feedback thread's screen tab: its screenshot
+// 0047), the Welcome tab (decision 0052), one of the project's Browser tabs
+// (decisions 0184, 0195), or a visual feedback thread's screen tab: its screenshot
 // and conversation (decision 0182). Pure helpers; components and memory
 // share them.
 
@@ -20,7 +20,7 @@ export type WorkspaceTab =
   | { kind: "review"; compare: Compare }
   | { kind: "walkthrough"; id: string }
   | { kind: "welcome" }
-  | { kind: "browser" }
+  | { kind: "browser"; id: number }
   | { kind: "screen"; feedback: string; thread: number }
 
 // StoredSnapshot is a remembered commit document.
@@ -39,9 +39,11 @@ export interface StoredWelcome {
   welcome: true
 }
 
-// StoredBrowser is the remembered Browser tab.
+// StoredBrowser is a remembered Browser tab; without an id it is tab 1, as
+// tabs before decision 0195 were stored.
 export interface StoredBrowser {
   browser: true
+  id?: number
 }
 
 // StoredScreen is a remembered screen tab: its feedback and thread number.
@@ -84,8 +86,32 @@ export function welcomeTab(): WorkspaceTab {
   return { kind: "welcome" }
 }
 
-export function browserTab(): WorkspaceTab {
-  return { kind: "browser" }
+// maxBrowserTabs bounds a project's Browser tabs (decision 0195), as the
+// desktop app does.
+export const maxBrowserTabs = 99
+
+// browserTabID reads a Browser tab's number, 1 to maxBrowserTabs, from a
+// route or memory: a number or its digits. undefined for anything else.
+export function browserTabID(value: unknown): number | undefined {
+  const id = typeof value === "string" && /^\d{1,2}$/.test(value) ? Number(value) : value
+  return typeof id === "number" && Number.isInteger(id) && id >= 1 && id <= maxBrowserTabs ? id : undefined
+}
+
+// browserTab is the project's Browser tab id, tab 1 by default.
+export function browserTab(id = 1): WorkspaceTab {
+  return { kind: "browser", id }
+}
+
+// browserTabIDs are the ids of the Browser tabs among tabs, in tab order.
+export function browserTabIDs(tabs: readonly WorkspaceTab[]): number[] {
+  return tabs.flatMap((tab) => tab.kind === "browser" ? [tab.id] : [])
+}
+
+// nextBrowserTab is the id a new Browser tab takes: the lowest one not
+// open, or null when every id is.
+export function nextBrowserTab(open: readonly number[]): number | null {
+  for (let id = 1; id <= maxBrowserTabs; id++) if (!open.includes(id)) return id
+  return null
 }
 
 // screenTab is a visual thread's tab: thread number of feedback id.
@@ -95,23 +121,26 @@ export function screenTab(feedback: string, thread: number): WorkspaceTab {
 
 // TabFeatures is which experimental tabs this window offers (decision
 // 0184): the Browser tab, where the desktop app hosts its page, and screen
-// tabs, with experimental features on.
+// tabs, with experimental features on. browserTabs says the app keeps a
+// page per Browser tab (decision 0195); without it a project has tab 1
+// only.
 export interface TabFeatures {
   browser: boolean
+  browserTabs: boolean
   screens: boolean
 }
 
 // offeredTab reports a tab this window can show. The others neither open
 // from a route nor restore from memory.
 export function offeredTab(tab: WorkspaceTab, features: TabFeatures): boolean {
-  if (tab.kind === "browser") return features.browser
+  if (tab.kind === "browser") return features.browser && (tab.id === 1 || features.browserTabs)
   return tab.kind !== "screen" || features.screens
 }
 
 // tabKey identifies a tab uniquely across kinds.
 export function tabKey(tab: WorkspaceTab): string {
   if (tab.kind === "welcome") return "welcome"
-  if (tab.kind === "browser") return "browser"
+  if (tab.kind === "browser") return `browser:${tab.id}`
   if (tab.kind === "walkthrough") return `walkthrough:${tab.id}`
   if (tab.kind === "screen") return `screen:${tab.feedback}:${tab.thread}`
   return tab.kind === "review" ? `review:${compareKey(tab.compare)}` : `document:${documentKey(tab.path, tab.at)}`
@@ -167,15 +196,15 @@ export interface ScreenName {
 
 // tabName names a tab as VS Code does: documents by file name, reviews by
 // what they compare, walkthroughs by their title once read, the Browser
-// tab as browserName names its page, and screen tabs by thread number and
-// page once read.
+// tabs as browserName names their pages, and screen tabs by thread number
+// and page once read.
 export function tabName(
   tab: WorkspaceTab, context: CompareContext, walkthroughTitle: (id: string) => string = () => "",
-  browserName: () => TabName = () => ({ label: "Browser", title: "Browser" }),
+  browserName: (id: number) => TabName = () => ({ label: "Browser", title: "Browser" }),
   screenName: (feedback: string, thread: number) => ScreenName | null = () => null,
 ): TabName {
   if (tab.kind === "welcome") return { label: "Welcome", title: "Welcome" }
-  if (tab.kind === "browser") return browserName()
+  if (tab.kind === "browser") return browserName(tab.id)
   if (tab.kind === "screen") {
     const name = screenName(tab.feedback, tab.thread)
     return name
@@ -196,7 +225,7 @@ export function tabName(
 
 export function storedTab(tab: WorkspaceTab): StoredTab {
   if (tab.kind === "welcome") return { welcome: true }
-  if (tab.kind === "browser") return { browser: true }
+  if (tab.kind === "browser") return tab.id === 1 ? { browser: true } : { browser: true, id: tab.id }
   if (tab.kind === "walkthrough") return { walkthrough: tab.id }
   if (tab.kind === "screen") return { screen: tab.feedback, thread: tab.thread }
   if (tab.kind === "review") return storedCompare(tab.compare)
@@ -208,7 +237,10 @@ export function storedTab(tab: WorkspaceTab): StoredTab {
 export function parseStoredTab(value: unknown): WorkspaceTab | null {
   if (typeof value === "string") return value ? documentTab(value) : null
   if (isRecord(value) && "welcome" in value) return value.welcome === true ? welcomeTab() : null
-  if (isRecord(value) && "browser" in value) return value.browser === true ? browserTab() : null
+  if (isRecord(value) && "browser" in value) {
+    const id = "id" in value ? browserTabID(value.id) : 1
+    return value.browser === true && id !== undefined ? browserTab(id) : null
+  }
   if (isRecord(value) && "walkthrough" in value) {
     return typeof value.walkthrough === "string" && value.walkthrough ? walkthroughTab(value.walkthrough) : null
   }
@@ -226,12 +258,11 @@ export function parseStoredTab(value: unknown): WorkspaceTab | null {
 }
 
 const welcomeSearch = { welcome: 1 } satisfies { welcome: 1 }
-const browserSearch = { browser: 1 } satisfies { browser: 1 }
 
 // tabSearch is the /view search that opens tab.
 export function tabSearch(project: string, tab: WorkspaceTab) {
   if (tab.kind === "welcome") return { project, ...welcomeSearch }
-  if (tab.kind === "browser") return { project, ...browserSearch }
+  if (tab.kind === "browser") return { project, browser: tab.id }
   if (tab.kind === "walkthrough") return { project, wt: tab.id }
   if (tab.kind === "screen") return { project, fb: tab.feedback, thread: tab.thread }
   if (tab.kind === "review") return { project, ...compareSearch(tab.compare) }
