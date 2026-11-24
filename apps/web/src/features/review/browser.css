@@ -106,6 +106,48 @@
   color: var(--color-text-muted);
 }
 
+/* A remembered page and its remove button (decision 0195), which shows on
+   hover or keyboard focus, always on a phone. */
+.browser-page-row {
+  --browser-page-action: max(var(--control-xs), var(--icon-button-min, 0px));
+  position: relative;
+}
+
+.browser-page-row > .browser-page {
+  padding-right: calc(var(--row-inset-end) + var(--browser-page-action) + var(--space-1));
+}
+
+.browser-page-remove {
+  position: absolute;
+  top: 50%;
+  right: var(--row-inset-end);
+  opacity: 0;
+  transform: translateY(-50%);
+}
+
+.browser-page-row:hover .browser-page-remove,
+.browser-page-row:focus-within .browser-page-remove {
+  opacity: 1;
+}
+
+/* In the address list the button follows the row's own content. */
+.browser-page-forget {
+  flex: none;
+  opacity: 0;
+}
+
+.browser-page:hover .browser-page-forget,
+.browser-page[data-active] .browser-page-forget {
+  opacity: 1;
+}
+
+@media (max-width: 48rem) {
+  .browser-page-remove,
+  .browser-page-forget {
+    opacity: 1;
+  }
+}
+
 .browser-notice {
   flex: none;
   align-items: center;

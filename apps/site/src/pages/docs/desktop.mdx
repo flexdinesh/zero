@@ -160,11 +160,15 @@ they showed. Experimental features can change or go away between releases.
 
 The **Browser** view, beside Feedback, shows a page of your running app
 inside Zero's window, in the project's **Browser** tab. Type an address, such
-as `localhost:5173`, or any http or https page, and press Enter. The tab has
-Back, Forward, Reload, the address (**Ctrl+L**, or **⌘L** on macOS) over your
-recent pages, and says why a page did not load. The view lists the project's
-pages and the comments on the one that shows. Closing the tab closes its
-page.
+as `localhost:5173`, or any http or https page, and press Enter. An address
+without a scheme opens over https, except on this computer (`localhost`,
+`127.0.0.1`), a private network address (`192.168.…`, `10.…`), or a `.local`
+name, which open over http. The tab has Back, Forward, Reload, the address
+(**Ctrl+L**, or **⌘L** on macOS) over your recent pages, and says why a page
+did not load. The view lists the project's pages and the comments on the one
+that shows. To remove a page from the list, press its **×** or select it and
+press **Delete**; in the address list, **Shift+Delete** removes the highlighted
+page. Closing the tab closes its page.
 
 Press **Comment** (**Ctrl+Shift+C**, or **⌘⇧C** on macOS), then click an
 element or drag a region, write beside it, and send: the comment joins the

@@ -1,24 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { desktopBridge, hostsBrowser, type BrowserAction, type BrowserState } from "../../lib/desktop-bridge.ts"
-import { parseRecent, recentStorageKey, rememberURL, type RecentURLs } from "./review-model.ts"
-
-function readRecent(): RecentURLs {
-  try {
-    return parseRecent(JSON.parse(window.localStorage.getItem(recentStorageKey) ?? "null"))
-  } catch {
-    // Unavailable or malformed storage remembers nothing.
-    return {}
-  }
-}
-
-function writeRecent(recent: RecentURLs) {
-  try {
-    window.localStorage.setItem(recentStorageKey, JSON.stringify(recent))
-  } catch {
-    // The page still opens; it is only not remembered.
-  }
-}
+import { useRecentPages } from "./use-recent-pages.ts"
 
 // A request to focus another project's address field waits here while the
 // window switches to that project; its workspace takes it once mounted.
@@ -34,6 +17,8 @@ export interface ProjectBrowser {
   state: BrowserState | null
   // recent is the project's pages, most recent first.
   recent: readonly string[]
+  // forget removes a page from recent (decision 0195).
+  forget(url: string): void
   // open shows a page in the guest, making it first if the project has
   // none, and remembers the page.
   open(url: string): void
@@ -56,7 +41,7 @@ export function useProjectBrowser(project: string): ProjectBrowser {
   const browserState = available ? bridge?.browserState ?? null : null
   const browserAction = available ? bridge?.browserAction ?? null : null
   const [state, setState] = useState<BrowserState | null>(null)
-  const [recent, setRecent] = useState<readonly string[]>(() => readRecent()[project] ?? [])
+  const { recent, remember, forget } = useRecentPages(project)
   const reads = useRef(0)
   const field = useRef<(() => void) | null>(null)
   const wantsFocus = useRef(false)
@@ -86,11 +71,9 @@ export function useProjectBrowser(project: string): ProjectBrowser {
 
   const open = useCallback((url: string) => {
     if (!browserOpen) return
-    const remembered = rememberURL(readRecent(), project, url)
-    writeRecent(remembered)
-    setRecent(remembered[project] ?? [])
+    remember(url)
     void browserOpen(project, url).then(refresh)
-  }, [browserOpen, project, refresh])
+  }, [browserOpen, project, refresh, remember])
 
   const act = useCallback((action: BrowserAction) => {
     void browserAction?.(project, action).then(refresh)
@@ -118,7 +101,7 @@ export function useProjectBrowser(project: string): ProjectBrowser {
     requestFocus()
   }, [project, requestFocus])
 
-  return { available, state, recent, open, act, requestFocus, registerField }
+  return { available, state, recent, forget, open, act, requestFocus, registerField }
 }
 
 // focusBrowserLater asks the workspace of project, once it mounts, to focus

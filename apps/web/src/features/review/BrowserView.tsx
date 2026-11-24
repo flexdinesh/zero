@@ -31,7 +31,7 @@ interface BrowserViewProps {
 // comments on that page, and where comments go. Choosing a page opens it in
 // the tab; choosing a comment opens its thread.
 export function BrowserView({ browser, comments, mobile, onDismiss, onOpen, onOpenThread, target }: BrowserViewProps) {
-  const { recent, state } = browser
+  const { recent, state, forget } = browser
   const pagesID = useId()
   const current = state ? recent.indexOf(state.url) : -1
   const open = (index: number) => {
@@ -40,7 +40,11 @@ export function BrowserView({ browser, comments, mobile, onDismiss, onOpen, onOp
     onOpen(url)
     if (mobile) onDismiss()
   }
-  const { container, tabIndex, setFocused, onKeyDown } = useRovingRows(recent.length, current, open)
+  const remove = (index: number) => {
+    const url = recent[index]
+    if (url) forget(url)
+  }
+  const { container, tabIndex, setFocused, onKeyDown } = useRovingRows(recent.length, current, open, remove)
   return (
     <div className="browser-view">
       <ViewHeader className="explorer-header sidebar-header" title="Browser"
@@ -55,12 +59,16 @@ export function BrowserView({ browser, comments, mobile, onDismiss, onOpen, onOp
           ) : (
             <div ref={container} role="listbox" aria-labelledby={pagesID} onKeyDown={onKeyDown}>
               {recent.map((url, index) => (
-                <ListRow key={url} role="option" aria-selected={index === current} selected={index === current}
-                  tabIndex={index === tabIndex ? 0 : -1} className="browser-page" title={url}
-                  onFocus={() => setFocused(index)} onClick={() => open(index)}>
-                  <AppWindowIcon className="browser-page-icon" aria-hidden="true" />
-                  <span className="browser-page-address">{pageLabel(url)}</span>
-                </ListRow>
+                <div key={url} className="browser-page-row">
+                  <ListRow role="option" aria-selected={index === current} selected={index === current}
+                    aria-keyshortcuts="Delete" tabIndex={index === tabIndex ? 0 : -1} className="browser-page" title={url}
+                    onFocus={() => setFocused(index)} onClick={() => open(index)}>
+                    <AppWindowIcon className="browser-page-icon" aria-hidden="true" />
+                    <span className="browser-page-address">{pageLabel(url)}</span>
+                  </ListRow>
+                  <IconButton size="xs" className="browser-page-remove" tabIndex={-1} label={`Remove ${pageLabel(url)}`}
+                    title="Remove from Pages (Delete)" icon={<XIcon aria-hidden="true" />} onClick={() => remove(index)} />
+                </div>
               ))}
             </div>
           )}

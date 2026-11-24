@@ -194,3 +194,4 @@ rewriting history; update `Status` on the old record.
 | [0192](0192-fast-first-paint.md) | Paint first, read the tree apart, keep followed scans | Accepted; extends 0050, 0080, 0191 |
 | [0193](0193-load-in-parallel-paint-once.md) | Load in parallel, paint once when fast | Accepted; supersedes 0192's stream-gated tree and delayed Explorer skeleton; extends 0153, 0191 |
 | [0194](0194-broad-folders.md) | Broad folders are not loaded by default | Accepted; extends 0066, 0146, 0191, 0192 |
+| [0195](0195-browser-tabs-and-page-history.md) | Browser page history and https by default | Accepted; extends 0184 |
