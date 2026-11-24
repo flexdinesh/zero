@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { blockingFailure, browserTabName, currentPage, failureText, isLoopback, refusedFailure, stageView } from "./browser-model.ts"
+import { blockingFailure, browserTabName, browserTabNames, currentPage, failureText, isLoopback, refusedFailure, stageView } from "./browser-model.ts"
 import type { BrowserState } from "../../lib/desktop-bridge.ts"
 
 const shown: BrowserState = {
@@ -95,4 +95,27 @@ test("failureText names a refused scheme and offers Reload", () => {
 test("failureText keeps a crashed process's reason", () => {
   assert.equal(failureText({ kind: "crashed", url: "", description: "out of memory" }).detail, "out of memory.")
   assert.equal(failureText({ kind: "crashed", url: "", description: "" }).detail, "Its web process ended. Reload to start it again.")
+})
+
+test("a tab with no guest that remembers a page shows it closed (decision 0195)", () => {
+  assert.equal(stageView(null, "https://a.test/"), "closed")
+  assert.equal(stageView(null, ""), "empty")
+  assert.equal(stageView(shown, "https://a.test/"), "page")
+})
+
+test("browserTabNames tells tabs of one host apart by path, and unnamed tabs by number", () => {
+  const names = browserTabNames([
+    { id: 1, url: "http://localhost:5173/settings", title: "" },
+    { id: 2, url: "http://localhost:5173/billing", title: "" },
+    { id: 3, url: "https://example.com/", title: "" },
+    { id: 4, url: "", title: "" },
+    { id: 5, url: "", title: "" },
+  ])
+  assert.equal(names.get(1)?.label, "localhost:5173/settings")
+  assert.equal(names.get(2)?.label, "localhost:5173/billing")
+  assert.equal(names.get(3)?.label, "example.com")
+  assert.equal(names.get(4)?.label, "Browser 4")
+  assert.equal(names.get(5)?.label, "Browser 5")
+  assert.equal(browserTabNames([{ id: 1, url: "", title: "" }]).get(1)?.label, "Browser")
+  assert.equal(browserTabNames([{ id: 1, url: "", title: "" }, { id: 2, url: "", title: "" }]).get(1)?.label, "Browser")
 })

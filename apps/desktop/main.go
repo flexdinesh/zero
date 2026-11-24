@@ -267,7 +267,7 @@ func (h *host) openWindow(start string) {
 	if frame != nil {
 		// A page that loads anew has no Browser tab showing yet: the guest
 		// hides until the tab reports its rectangle again.
-		page.OnDidNavigate(func(string) { frame.hide("") })
+		page.OnDidNavigate(func(string) { frame.hide(guestKey{}) })
 		// mygo tells only a page window's page the room of the controls; each
 		// load of Zero's page hears it from the app (decision 0185).
 		page.OnDOMReady(func() { go frame.sendTitleBar() })
@@ -287,7 +287,7 @@ func (h *host) openWindow(start string) {
 	var reloads reloadLimiter
 	page.OnRenderProcessGone(func(string) {
 		if frame != nil {
-			frame.hide("")
+			frame.hide(guestKey{})
 		}
 		if reloads.allow(time.Now()) {
 			page.Reload()

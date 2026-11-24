@@ -26,19 +26,20 @@ interface BrowserTabProps {
   project: string
 }
 
-// BrowserTab is the project's Browser tab (decision 0184): a browser's
-// controls above a stage. The desktop app draws the page of the developer's
-// app, the guest, over the stage's rectangle; Zero's page is under it and
-// draws there only what stands in for the page: the prompt before one
-// opens, a failure, or the guest's snapshot while an overlay is open.
+// BrowserTab is one of the project's Browser tabs (decisions 0184, 0195): a
+// browser's controls above a stage. The desktop app draws the page of the
+// developer's app, the guest, over the stage's rectangle; Zero's page is
+// under it and draws there only what stands in for the page: the prompt
+// before one opens, the offer to load again a page that closed, a failure,
+// or the guest's snapshot while an overlay is open.
 // Comment puts the page in comment mode, where a click or a drag picks
 // what a comment is about; the app shows the composer beside the pick.
 export function BrowserTab({ browser, comments, project }: BrowserTabProps) {
-  const { state, recent, forget, open, act, registerField } = browser
-  const page = currentPage(state, recent[0] ?? "")
-  const view = stageView(state)
+  const { state, recent, remembered, forget, open, act, registerField, tab } = browser
+  const page = currentPage(state, remembered)
+  const view = stageView(state, remembered)
   const failure = blockingFailure(state)
-  const { attach, cover } = useBrowserStage(project, view === "page")
+  const { attach, cover } = useBrowserStage(project, tab, view === "page")
   const commenting = comments.available && state?.commenting === true
   const overlay = useOverlayOpen()
   // Escape in Zero's page ends comment mode; in the guest's page, where the
@@ -87,6 +88,7 @@ export function BrowserTab({ browser, comments, project }: BrowserTabProps) {
       <div ref={attach} className="browser-stage" data-view={view}>
         {cover && <img className="browser-stage-cover" src={cover} alt="" draggable={false} />}
         {view === "empty" && <EmptyStage recent={recent} onOpen={open} onForget={forget} />}
+        {view === "closed" && <ClosedStage url={remembered} onReload={() => open(remembered)} />}
         {failure && <FailedStage failure={failure} onRetry={() => {
           if (failure.kind === "crashed") act("reload")
           else open(failure.url || page)
@@ -301,6 +303,20 @@ function EmptyStage({ recent, onOpen, onForget }: { recent: readonly string[]; o
           </ul>
         </div>
       )}
+    </div>
+  )
+}
+
+// ClosedStage fills the stage of a tab whose page closed (decision 0195):
+// past the window's page limit, or with the app. It loads only when asked.
+function ClosedStage({ url, onReload }: { url: string; onReload(): void }) {
+  return (
+    <div className="browser-state">
+      <h2 className="browser-state-title">{pageLabel(url)} is not loaded</h2>
+      <p className="browser-state-detail">
+        Zero keeps up to 8 pages loaded in a window and closes the one you looked at longest ago. Pages also close when Zero quits.
+      </p>
+      <Button variant="outline" size="sm" onClick={onReload}>Reload page</Button>
     </div>
   )
 }

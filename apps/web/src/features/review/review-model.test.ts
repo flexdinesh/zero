@@ -1,7 +1,9 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { defaultsToHTTP, forgetURL, pageKey, pageLabel, parseRecent, rememberURL, reviewChoices, reviewURL, samePage } from "./review-model.ts"
+import {
+  defaultsToHTTP, forgetURL, pageKey, pageLabel, parseRecent, parseTabPages, rememberURL, reviewChoices, reviewURL, samePage, tabPage, withTabPage,
+} from "./review-model.ts"
 
 test("reviewURL accepts http(s) pages and bare hosts only", () => {
   assert.equal(reviewURL(" localhost:5173/settings "), "http://localhost:5173/settings")
@@ -86,4 +88,21 @@ test("a page is its origin and path, and its hash when the hash is a route; the 
   assert.equal(samePage("http://localhost:5173/settings", "http://localhost:3000/settings"), false)
   // Nothing matches what is not a page.
   assert.equal(samePage("", ""), false)
+})
+
+test("each Browser tab remembers the page it last showed (decision 0195)", () => {
+  let pages = parseTabPages({ "/a": { 1: "https://a.test/", 2: "javascript:x", x: "https://b.test/" }, "/b": [], "/c": { 100: "https://c.test/" } })
+  assert.deepEqual(pages, { "/a": { 1: "https://a.test/" } })
+  assert.equal(tabPage(pages, "/a", 1), "https://a.test/")
+  assert.equal(tabPage(pages, "/a", 2), "")
+  pages = withTabPage(pages, "/a", 2, "http://localhost:5173/")
+  assert.deepEqual(pages, { "/a": { 1: "https://a.test/", 2: "http://localhost:5173/" } })
+  pages = withTabPage(pages, "/a", 1, "")
+  pages = withTabPage(pages, "/a", 2, "")
+  assert.deepEqual(pages, {})
+  for (let index = 0; index < 60; index++) pages = withTabPage(pages, `/p${index}`, 1, "https://a.test/")
+  assert.equal(Object.keys(pages).length, 50)
+  assert.equal(tabPage(pages, "/p59", 1), "https://a.test/")
+  assert.equal(tabPage(pages, "/p0", 1), "")
+  assert.deepEqual(parseTabPages(null), {})
 })

@@ -297,9 +297,11 @@ export interface NotificationStatus {
 // setAppearance has the app's menus and window controls follow the theme's
 // polarity, or the OS for "system" (decision 0119); diagnostics resolves the
 // app's part of a problem report, or null when it refuses (decision 0152).
-// The browser methods drive a project's guest, the page the Browser tab
-// shows (decision 0184): browserOpen makes it if the project has none and
-// navigates; browserState resolves it, or null without one; browserAction
+// The browser methods drive the guest of one of a project's Browser tabs,
+// the page that tab shows (decision 0184), its tab a number from 1
+// (decision 0195): browserTabs says the app keeps a guest per tab, where an
+// older one keeps one per project and ignores the tab; browserOpen makes
+// the guest if the tab has none and navigates; browserState resolves it, or null without one; browserAction
 // steers it; browserFrame says where it shows, or hides it with null (the
 // page is kept); browserSnapshot resolves its frame now as a base64 PNG, or
 // null; browserPins replaces the pins the guest's page shows, which the app
@@ -325,12 +327,13 @@ export interface DesktopBridge {
   configureNotifications: ((config: NotificationConfig) => Promise<NotificationStatus | null>) | null
   setAppearance: ((appearance: DesktopAppearance) => void) | null
   diagnostics: (() => Promise<DesktopDiagnostics | null>) | null
-  browserOpen: ((project: string, url: string) => Promise<void>) | null
-  browserState: ((project: string) => Promise<BrowserState | null>) | null
-  browserAction: ((project: string, action: BrowserAction) => Promise<void>) | null
-  browserFrame: ((project: string, frame: BrowserFrame | null) => void) | null
-  browserSnapshot: ((project: string) => Promise<string | null>) | null
-  browserPins: ((project: string, pins: readonly BrowserPin[], visible: boolean) => void) | null
+  browserTabs: boolean
+  browserOpen: ((project: string, url: string, tab: number) => Promise<void>) | null
+  browserState: ((project: string, tab: number) => Promise<BrowserState | null>) | null
+  browserAction: ((project: string, action: BrowserAction, tab: number) => Promise<void>) | null
+  browserFrame: ((project: string, frame: BrowserFrame | null, tab: number) => void) | null
+  browserSnapshot: ((project: string, tab: number) => Promise<string | null>) | null
+  browserPins: ((project: string, pins: readonly BrowserPin[], visible: boolean, tab: number) => void) | null
   composerCapture: (() => Promise<ComposerCapture | null>) | null
   composerWalk: ((direction: WalkDirection) => Promise<ComposerCapture | null>) | null
   composerResize: ((height: number) => void) | null
@@ -398,6 +401,7 @@ export function readDesktopBridge(value: unknown): DesktopBridge | null {
   return {
     version: value.version,
     experimental: readExperimentalState(value.experimental),
+    browserTabs: value.browserTabs === true,
     setExperimental: typeof setExperimental === "function"
       ? async (enabled) => {
         try {
@@ -460,42 +464,42 @@ export function readDesktopBridge(value: unknown): DesktopBridge | null {
       }
       : null,
     browserOpen: typeof browserOpen === "function"
-      ? async (project, url) => {
+      ? async (project, url, tab) => {
         try {
           // The app reports failures in the guest's state.
-          await browserOpen.call(value, project, url)
+          await browserOpen.call(value, project, url, tab)
         } catch {
           // Refused: the state says what shows.
         }
       }
       : null,
     browserState: typeof browserState === "function"
-      ? async (project) => {
+      ? async (project, tab) => {
         try {
-          return readBrowserState(await browserState.call(value, project))
+          return readBrowserState(await browserState.call(value, project, tab))
         } catch {
           return null
         }
       }
       : null,
     browserAction: typeof browserAction === "function"
-      ? async (project, action) => {
+      ? async (project, action, tab) => {
         try {
-          await browserAction.call(value, project, action)
+          await browserAction.call(value, project, action, tab)
         } catch {
           // Refused: the state says what shows.
         }
       }
       : null,
     browserFrame: typeof browserFrame === "function"
-      ? (project, frame) => {
-        Promise.resolve(browserFrame.call(value, project, frame)).catch(() => undefined)
+      ? (project, frame, tab) => {
+        Promise.resolve(browserFrame.call(value, project, frame, tab)).catch(() => undefined)
       }
       : null,
     browserSnapshot: typeof browserSnapshot === "function"
-      ? async (project) => {
+      ? async (project, tab) => {
         try {
-          const png: unknown = await browserSnapshot.call(value, project)
+          const png: unknown = await browserSnapshot.call(value, project, tab)
           return typeof png === "string" && png !== "" ? png : null
         } catch {
           return null
@@ -503,8 +507,8 @@ export function readDesktopBridge(value: unknown): DesktopBridge | null {
       }
       : null,
     browserPins: typeof browserPins === "function"
-      ? (project, pins, visible) => {
-        Promise.resolve(browserPins.call(value, project, pins, visible)).catch(() => undefined)
+      ? (project, pins, visible, tab) => {
+        Promise.resolve(browserPins.call(value, project, pins, visible, tab)).catch(() => undefined)
       }
       : null,
     composerCapture: typeof composerCapture === "function"
@@ -591,6 +595,13 @@ export function hostsBrowser(bridge: DesktopBridge | null): boolean {
 // browserAvailable reports whether this window hosts the Browser.
 export function browserAvailable(): boolean {
   return hostsBrowser(desktopBridge())
+}
+
+// browserTabsAvailable reports whether this window's Browser keeps a page
+// per Browser tab (decision 0195).
+export function browserTabsAvailable(): boolean {
+  const bridge = desktopBridge()
+  return hostsBrowser(bridge) && bridge?.browserTabs === true
 }
 
 // hostsComments reports a Browser that takes comments on its page (decision

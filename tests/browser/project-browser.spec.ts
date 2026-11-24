@@ -140,13 +140,14 @@ test("the Browser activity opens the tab, an address opens a page, and the stage
   await expectGuestOnStage(page)
 
   // The activity lists the page, marked as the one showing; choosing it
-  // opens it again.
+  // shows its tab without loading it again (decision 0195).
   const pages = pane.getByRole("listbox", { name: "Pages" }).getByRole("option")
   await expect(pages).toHaveCount(1)
   await expect(pages.first()).toHaveAttribute("aria-selected", "true")
   await expect(pages.first()).toHaveAttribute("title", "http://localhost:5173/settings")
   await pages.first().click()
-  await expect.poll(async () => (await calls(page, "open")).length).toBe(2)
+  await expect(page).toHaveURL(/browser=1/)
+  expect(await calls(page, "open")).toHaveLength(1)
 })
 
 test("another tab hides the guest, and coming back shows it where the stage is", async ({ page }) => {
@@ -363,4 +364,96 @@ test("an address without a scheme opens over https, except on this machine or th
   await address(page).fill("192.168.1.20:5173")
   await page.keyboard.press("Enter")
   await expect.poll(async () => (await calls(page, "open")).at(-1)).toEqual(["open", gitFixtureRoot, "http://192.168.1.20:5173/"])
+})
+
+// setTabState sets the state of Browser tab tab's guest and announces it.
+async function setTabState(page: Page, tab: number, state: FakeBrowserState | null) {
+  await page.evaluate(({ tab, state, project }) => {
+    if (window.__browser) window.__browser.states[tab] = state
+    window.dispatchEvent(new CustomEvent("zero:browser", { detail: project }))
+  }, { tab, state, project: gitFixtureRoot })
+}
+
+test("pages open in more Browser tabs, each with its own page, and the view marks open pages (decision 0195)", async ({ page }) => {
+  const remembered = ["http://localhost:5173/settings", "http://localhost:5173/billing", "http://localhost:3000/"]
+  await page.addInitScript(({ project, remembered }) => {
+    if (!window.sessionStorage.getItem("seeded")) {
+      window.localStorage.setItem("zero-review-urls", JSON.stringify({ [project]: remembered }))
+      window.sessionStorage.setItem("seeded", "1")
+    }
+  }, { project: gitFixtureRoot, remembered })
+  await browserDesktop(page, true, true, true)
+  await page.goto(`${gitApiOrigin}/view?project=${project}&browser=1`)
+  await setState(page, shown)
+  await expect(stage(page)).toHaveAttribute("data-view", "page")
+  await views(page).getByRole("button", { name: /^Browser/ }).click()
+  const pages = page.locator(".browser-view").getByRole("listbox", { name: "Pages" })
+  const settingsRow = page.locator(".browser-page-row").filter({ has: page.getByRole("option", { name: "localhost:5173/settings", exact: true }) })
+  await expect(settingsRow).toHaveAttribute("data-open", "true")
+
+  // Cmd/Ctrl-click opens the page in a new tab, tab 2.
+  await pages.getByRole("option", { name: "localhost:5173/billing", exact: true }).click({ modifiers: ["ControlOrMeta"] })
+  await expect(page).toHaveURL(/browser=2/)
+  await expect.poll(async () => (await calls(page, "open")).at(-1)).toEqual(["open", gitFixtureRoot, "http://localhost:5173/billing", 2])
+  await setTabState(page, 2, { ...shown, url: "http://localhost:5173/billing", title: "Billing" })
+  // Two tabs of one host read apart by path.
+  await expect(tabs(page).getByRole("tab", { name: "localhost:5173/settings" })).toBeVisible()
+  await expect(tabs(page).getByRole("tab", { name: "localhost:5173/billing" })).toHaveAttribute("aria-selected", "true")
+  await expect.poll(async () => (await calls(page, "frame")).at(-1)?.[3]).toBe(2)
+
+  // A page open in a tab switches to it, without loading it again.
+  const opened = (await calls(page, "open")).length
+  await pages.getByRole("option", { name: "localhost:5173/settings", exact: true }).click()
+  await expect(page).toHaveURL(/browser=1/)
+  expect(await calls(page, "open")).toHaveLength(opened)
+
+  // A page not open loads in the tab that shows.
+  await pages.getByRole("option", { name: "localhost:3000/", exact: true }).click()
+  await expect.poll(async () => (await calls(page, "open")).at(-1)).toEqual(["open", gitFixtureRoot, "http://localhost:3000/", 1])
+
+  // Closing a tab closes only its page.
+  await page.getByRole("button", { name: /^Close Browser: Billing/ }).click()
+  await expect.poll(async () => (await calls(page, "action")).at(-1)).toEqual(["action", gitFixtureRoot, "close", 2])
+})
+
+test("a tab whose page closed offers to load it again, and only when asked (decision 0195)", async ({ page }) => {
+  await page.addInitScript(({ project }) => {
+    if (!window.sessionStorage.getItem("seeded")) {
+      window.localStorage.setItem("zero-browser-tabs", JSON.stringify({ [project]: { 2: "http://localhost:5173/billing" } }))
+      window.sessionStorage.setItem("seeded", "1")
+    }
+  }, { project: gitFixtureRoot })
+  await browserDesktop(page, true, true, true)
+  await page.goto(`${gitApiOrigin}/view?project=${project}&browser=2`)
+  await expect(stage(page)).toHaveAttribute("data-view", "closed")
+  const main = page.getByRole("main")
+  await expect(main.getByRole("heading", { name: "localhost:5173/billing is not loaded" })).toBeVisible()
+  await expect(address(page)).toHaveValue("http://localhost:5173/billing")
+  expect(await calls(page, "open")).toEqual([])
+  await main.getByRole("button", { name: "Reload page" }).click()
+  await expect.poll(() => calls(page, "open")).toEqual([["open", gitFixtureRoot, "http://localhost:5173/billing", 2]])
+})
+
+test("New Tab opens another Browser tab with its address field ready, only where the app keeps a page per tab (decision 0195)", async ({ page }) => {
+  await browserDesktop(page, true, true, true)
+  await page.goto(`${gitApiOrigin}/view?project=${project}&browser=1`)
+  await setState(page, shown)
+  await expect(stage(page)).toHaveAttribute("data-view", "page")
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent("zero:browser-command", { cancelable: true, detail: { command: "newTab", project: null, tab: null } })))
+  await expect(page).toHaveURL(/browser=2/)
+  await expect(address(page)).toBeFocused()
+  await expect(address(page)).toHaveValue("")
+  await expect(stage(page)).toHaveAttribute("data-view", "empty")
+
+  // An app before 0195 keeps one page: a modifier click opens no new tab.
+  const older = await page.context().newPage()
+  await older.addInitScript(({ project }) => {
+    window.localStorage.setItem("zero-review-urls", JSON.stringify({ [project]: ["http://localhost:3000/"] }))
+  }, { project: gitFixtureRoot })
+  await browserDesktop(older)
+  await older.goto(`${gitApiOrigin}/view?project=${project}&browser=1`)
+  await views(older).getByRole("button", { name: /^Browser/ }).click()
+  await older.locator(".browser-view").getByRole("option", { name: "localhost:3000/", exact: true }).click({ modifiers: ["ControlOrMeta"] })
+  await expect.poll(async () => (await calls(older, "open")).at(-1)).toEqual(["open", gitFixtureRoot, "http://localhost:3000/"])
+  await expect(older).toHaveURL(/browser=1/)
 })

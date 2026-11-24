@@ -120,7 +120,7 @@ func (g *guest) handle(event review.Event) {
 			composer.Focus()
 		}
 	case review.EventPin:
-		g.host.tell(g.window, "zero:browser-pin", map[string]any{"project": g.project, "thread": event.Thread})
+		g.host.tell(g.window, "zero:browser-pin", map[string]any{"project": g.key.project, "thread": event.Thread})
 	}
 }
 
@@ -139,7 +139,7 @@ func (g *guest) setCommenting(on bool) {
 		// The composer's page loads now, to be ready for the first pick.
 		go func() { _, _ = g.host.composer(g.window, g.frame) }()
 	}
-	g.host.browserChanged(g.window, g.project)
+	g.host.browserChanged(g.window, g.key.project)
 }
 
 func (g *guest) isCommenting() bool {
@@ -171,12 +171,12 @@ func (g *guest) picked(selection review.Selection) {
 	g.frame.compose(&composition{
 		guest:     g,
 		guestZoom: g.view.Page().ZoomFactor(),
-		capture:   review.Capture{Project: g.project, PNG: base64.StdEncoding.EncodeToString(png), Selection: selection},
+		capture:   review.Capture{Project: g.key.project, PNG: base64.StdEncoding.EncodeToString(png), Selection: selection},
 		height:    review.ComposerHeight,
 	})
 	composer.Focus()
 	go g.host.tellPage(composer.Page(), "zero:composer", nil)
-	g.host.browserChanged(g.window, g.project)
+	g.host.browserChanged(g.window, g.key.project)
 }
 
 func errorText(err error, fallback string) string {
@@ -201,14 +201,14 @@ func (g *guest) sendPins() {
 	g.call("window.__zeroBrowser.pins(" + strconv.Quote(string(encoded)) + ", " + strconv.FormatBool(visible) + ")")
 }
 
-// browserPins takes the pins of the project's page from window's Browser
-// tab; the guest shows them again after each load.
+// browserPins takes the pins of the tab's page from window's Browser tab;
+// the guest shows them again after each load.
 func (h *host) browserPins(window *mygo.Window, request bridge.BrowserPins) {
 	frame := h.shellOf(window)
 	if frame == nil {
 		return
 	}
-	found := frame.guest(request.Project)
+	found := frame.guest(guestKey{project: request.Project, tab: request.Tab})
 	if found == nil {
 		return
 	}
@@ -281,9 +281,9 @@ func (h *host) endComposing(frame *shell, of *guest, sent bool) {
 		go h.tellPage(composer.Page(), "zero:composer", nil)
 	}
 	if sent {
-		h.tell(picking.window, "zero:browser-commented", picking.project)
+		h.tell(picking.window, "zero:browser-commented", picking.key.project)
 	}
-	h.browserChanged(picking.window, picking.project)
+	h.browserChanged(picking.window, picking.key.project)
 }
 
 // composerCapture answers the pick waiting for the composer in window, nil

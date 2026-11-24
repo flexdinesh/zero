@@ -134,11 +134,17 @@ test("diagnostics resolves a valid report and null for an invalid one, a refusal
   assert.equal(readDesktopBridge({ version: 2 })?.diagnostics, null)
 })
 
-test("browserOpen passes the project and URL through and swallows refusals", async () => {
+test("browserTabs is the app's word that it keeps a guest per tab (decision 0195)", () => {
+  assert.equal(readDesktopBridge({ version: 2, browserTabs: true })?.browserTabs, true)
+  assert.equal(readDesktopBridge({ version: 2 })?.browserTabs, false)
+  assert.equal(readDesktopBridge({ version: 2, browserTabs: "yes" })?.browserTabs, false)
+})
+
+test("browserOpen passes the project, URL, and tab through and swallows refusals", async () => {
   const calls: unknown[][] = []
   const bridge = readDesktopBridge({ version: 2, browserOpen(...args: unknown[]) { calls.push(args); return Promise.reject(new Error("refused")) } })
-  await bridge?.browserOpen?.("/p", "http://a.test/")
-  assert.deepEqual(calls, [["/p", "http://a.test/"]])
+  await bridge?.browserOpen?.("/p", "http://a.test/", 2)
+  assert.deepEqual(calls, [["/p", "http://a.test/", 2]])
   assert.equal(readDesktopBridge({ version: 2 })?.browserOpen, null)
 })
 
@@ -149,22 +155,22 @@ test("browserState passes the project and keeps a well-formed state only", async
     failure: { kind: "load", url: "http://localhost:5173/", description: "refused" }, commenting: true, composing: false, extra: 1,
   }
   const bridge = readDesktopBridge({ version: 2, browserState(...args: unknown[]) { calls.push(args); return Promise.resolve(state) } })
-  assert.deepEqual(await bridge?.browserState?.("/p"), {
+  assert.deepEqual(await bridge?.browserState?.("/p", 1), {
     url: "http://localhost:5173/", title: "Home", loading: false, canGoBack: true, canGoForward: false,
     failure: { kind: "load", url: "http://localhost:5173/", description: "refused" }, commenting: true, composing: false,
   })
-  assert.deepEqual(calls, [["/p"]])
-  const answer = (value: unknown) => readDesktopBridge({ version: 2, browserState: () => Promise.resolve(value) })?.browserState?.("/p")
+  assert.deepEqual(calls, [["/p", 1]])
+  const answer = (value: unknown) => readDesktopBridge({ version: 2, browserState: () => Promise.resolve(value) })?.browserState?.("/p", 1)
   assert.equal(await answer(null), null)
   assert.equal(await answer({ ...state, loading: "no" }), null)
   assert.equal(await answer({ ...state, failure: { kind: "boom", url: "", description: "" } }), null)
-  assert.equal(await readDesktopBridge({ version: 2, browserState: () => Promise.reject(new Error("refused")) })?.browserState?.("/p"), null)
+  assert.equal(await readDesktopBridge({ version: 2, browserState: () => Promise.reject(new Error("refused")) })?.browserState?.("/p", 1), null)
   assert.equal(readDesktopBridge({ version: 2 })?.browserState, null)
 })
 
 test("browserState reads a missing title as empty and missing comment state as off", async () => {
   const state = { url: "http://localhost:5173/", loading: true, canGoBack: false, canGoForward: false, failure: null }
-  assert.deepEqual(await readDesktopBridge({ version: 2, browserState: () => Promise.resolve(state) })?.browserState?.("/p"), {
+  assert.deepEqual(await readDesktopBridge({ version: 2, browserState: () => Promise.resolve(state) })?.browserState?.("/p", 1), {
     ...state, title: "", commenting: false, composing: false,
   })
 })
@@ -172,25 +178,25 @@ test("browserState reads a missing title as empty and missing comment state as o
 test("browserAction passes the project and action through and swallows refusals", async () => {
   const calls: unknown[][] = []
   const bridge = readDesktopBridge({ version: 2, browserAction(...args: unknown[]) { calls.push(args); return Promise.reject(new Error("refused")) } })
-  await bridge?.browserAction?.("/p", "back")
-  assert.deepEqual(calls, [["/p", "back"]])
+  await bridge?.browserAction?.("/p", "back", 3)
+  assert.deepEqual(calls, [["/p", "back", 3]])
   assert.equal(readDesktopBridge({ version: 2 })?.browserAction, null)
 })
 
 test("browserFrame passes a frame or null and swallows refusals", () => {
   const calls: unknown[][] = []
   const bridge = readDesktopBridge({ version: 2, browserFrame(...args: unknown[]) { calls.push(args); return Promise.reject(new Error("refused")) } })
-  bridge?.browserFrame?.("/p", { x: 240, y: 64, width: 800, height: 600 })
-  bridge?.browserFrame?.("/p", null)
-  assert.deepEqual(calls, [["/p", { x: 240, y: 64, width: 800, height: 600 }], ["/p", null]])
+  bridge?.browserFrame?.("/p", { x: 240, y: 64, width: 800, height: 600 }, 1)
+  bridge?.browserFrame?.("/p", null, 2)
+  assert.deepEqual(calls, [["/p", { x: 240, y: 64, width: 800, height: 600 }, 1], ["/p", null, 2]])
   assert.equal(readDesktopBridge({ version: 2 })?.browserFrame, null)
 })
 
 test("browserSnapshot resolves a base64 PNG, and null for anything else or a refusal", async () => {
-  const snapshot = (value: unknown) => readDesktopBridge({ version: 2, browserSnapshot: () => Promise.resolve(value) })?.browserSnapshot?.("/p")
+  const snapshot = (value: unknown) => readDesktopBridge({ version: 2, browserSnapshot: () => Promise.resolve(value) })?.browserSnapshot?.("/p", 1)
   assert.equal(await snapshot("iVBORw0KGgo="), "iVBORw0KGgo=")
   for (const value of [null, undefined, "", 3, { png: "x" }]) assert.equal(await snapshot(value), null)
-  assert.equal(await readDesktopBridge({ version: 2, browserSnapshot: () => Promise.reject(new Error("x")) })?.browserSnapshot?.("/p"), null)
+  assert.equal(await readDesktopBridge({ version: 2, browserSnapshot: () => Promise.reject(new Error("x")) })?.browserSnapshot?.("/p", 1), null)
   assert.equal(readDesktopBridge({ version: 2 })?.browserSnapshot, null)
 })
 
@@ -281,9 +287,9 @@ test("browserPins passes the project, pins, and whether they show, and swallows 
   const calls: unknown[][] = []
   const bridge = readDesktopBridge({ version: 2, browserPins(...args: unknown[]) { calls.push(args); return Promise.reject(new Error("refused")) } })
   const pins = [{ thread: 3, resolved: false, selector: "#save", x: 815, y: 1640 }, { thread: 1, resolved: true, x: 10, y: 20 }]
-  bridge?.browserPins?.("/p", pins, true)
-  bridge?.browserPins?.("/p", [], false)
-  assert.deepEqual(calls, [["/p", pins, true], ["/p", [], false]])
+  bridge?.browserPins?.("/p", pins, true, 1)
+  bridge?.browserPins?.("/p", [], false, 2)
+  assert.deepEqual(calls, [["/p", pins, true, 1], ["/p", [], false, 2]])
   assert.equal(readDesktopBridge({ version: 2 })?.browserPins, null)
   assert.equal(readDesktopBridge({ version: 2, browserPins: true })?.browserPins, null)
 })

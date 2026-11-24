@@ -63,7 +63,8 @@ import { useSourceControlCommands, useSourceControlQuery } from "./features/sour
 import { filePaths } from "./api/page-data.ts"
 import { isCommitHash } from "./lib/commit-hash.ts"
 import {
-  browserTab, documentKey, documentTab, includesTab, reviewTab, screenTab, tabKey, tabName, tabSearch, walkthroughTab, welcomeTab,
+  browserTab, browserTabID, browserTabIDs, documentKey, documentTab, includesTab, nextBrowserTab, reviewTab, screenTab, tabKey, tabName, tabSearch, walkthroughTab,
+  welcomeTab,
   type TabFeatures, type WorkspaceTab,
 } from "./workspace/workspace-tabs.ts"
 import { FindBar } from "./features/find/FindBar.tsx"
@@ -83,10 +84,11 @@ import type { CommandAction } from "./workspace/commands.ts"
 import { ReportProblemDialog } from "./features/diagnostics/ReportProblemDialog.tsx"
 import { BrowserTab } from "./features/review/BrowserTab.tsx"
 import { BrowserView } from "./features/review/BrowserView.tsx"
-import { browserTabName, currentPage } from "./features/review/browser-model.ts"
+import { browserTabName, browserTabNames } from "./features/review/browser-model.ts"
+import { samePage } from "./features/review/review-model.ts"
 import { useBrowserComments } from "./features/review/use-browser-comments.ts"
-import { focusBrowserLater, useBrowserLocation, useProjectBrowser } from "./features/review/use-project-browser.ts"
-import { browserAvailable, experimentalEnabled } from "./lib/desktop-bridge.ts"
+import { focusBrowserLater, useBrowserCommands, useProjectBrowser } from "./features/review/use-project-browser.ts"
+import { browserAvailable, browserTabsAvailable, experimentalEnabled } from "./lib/desktop-bridge.ts"
 import type { SourceChanges } from "./features/documents/SourceDocument.tsx"
 import { NavigationProvider, NavigationStatus, type NavigationCaret } from "./features/navigation/NavigationProvider.tsx"
 import { useSettings } from "./settings/SettingsProvider.tsx"
@@ -154,17 +156,17 @@ interface ScreenRoute {
 
 // routeTab is the tab a route shows: a review, a document (a snapshot with
 // at), a walkthrough's own tab, a visual thread's screen tab, Welcome, or
-// the Browser tab, else none.
+// a Browser tab (browser, its id; 0 for none), else none.
 function routeTab(
   review: WorkspaceTab | null, documentPath: string, at: string, walkthrough: string, screen: ScreenRoute | null, welcome: boolean,
-  browser: boolean,
+  browser: number,
 ): WorkspaceTab | null {
   if (review) return review
   if (documentPath) return documentTab(documentPath, at)
   if (walkthrough) return walkthroughTab(walkthrough)
   if (screen) return screenTab(screen.feedback, screen.thread)
   if (welcome) return welcomeTab()
-  return browser ? browserTab() : null
+  return browser ? browserTab(browser) : null
 }
 
 // reviewStatusBar describes the file holding selected lines, else the
@@ -241,7 +243,7 @@ export function App({ project }: AppProps) {
   // The Browser tab and screen tabs exist only where the desktop app's
   // experimental features offer them (decision 0184): elsewhere their routes
   // open nothing and their remembered tabs stay closed.
-  const tabFeatures = useMemo((): TabFeatures => ({ browser: browserAvailable(), screens: experimentalEnabled() }), [])
+  const tabFeatures = useMemo((): TabFeatures => ({ browser: browserAvailable(), browserTabs: browserTabsAvailable(), screens: experimentalEnabled() }), [])
   // fb=<id> reveals the Feedback view at that feedback; with thread=<n> and
   // without a path, review, or walkthrough, the route is that visual
   // thread's screen tab (decision 0182).
@@ -254,9 +256,11 @@ export function App({ project }: AppProps) {
   // welcome=1 alone routes the Welcome tab (decision 0052).
   const searchWelcome = useSearch({ strict: false, select: (search) => search.welcome === 1 })
   const welcomeRoute = !searchPath && !reviewRoute && !walkthroughRoute && !screenRouted && searchWelcome
-  // browser=1 alone routes the project's Browser tab (decision 0184).
-  const searchBrowser = useSearch({ strict: false, select: (search) => search.browser === 1 })
-  const browserRoute = tabFeatures.browser && !searchPath && !reviewRoute && !walkthroughRoute && !screenRouted && !welcomeRoute && searchBrowser
+  // browser=<n> alone routes the project's Browser tab n (decisions 0184,
+  // 0195); 0 for none. An app without a page per tab offers tab 1 only.
+  const searchBrowser = useSearch({ strict: false, select: (search) => browserTabID(search.browser) ?? 0 })
+  const browserRoute = tabFeatures.browser && !searchPath && !reviewRoute && !walkthroughRoute && !screenRouted && !welcomeRoute
+    && (searchBrowser === 1 || tabFeatures.browserTabs) ? searchBrowser : 0
   const openSearch = useRef<() => void>(() => {})
   const searchCommands = useRef<SearchCommands | null>(null)
   const openFiles = useRef<() => void>(() => {})
@@ -268,6 +272,7 @@ export function App({ project }: AppProps) {
   const openRecent = useRef<() => void>(() => {})
   const openReport = useRef<() => void>(() => {})
   const openBrowserCommand = useRef<(focus: boolean) => void>(() => {})
+  const newBrowserTabCommand = useRef<() => void>(() => {})
   const stepHunk = useRef<HunkStep>(() => {})
   const [lastPage, setLastPage] = useState<PageData | null>(() => result ? initialPage(result) : null)
   useEffect(() => {
@@ -329,8 +334,6 @@ export function App({ project }: AppProps) {
   }, [])
   const reportProblem = useCallback(() => openReport.current(), [])
   useDesktopReportProblem(reportProblem)
-  // The project's Browser tab and view share its guest (decision 0184).
-  const projectBrowser = useProjectBrowser(project)
   const runNavigation = useRef<(kind: NavigationKind) => void>(() => {})
   const registerNavigation = useCallback((command: ((kind: NavigationKind) => void) | null) => {
     runNavigation.current = command ?? (() => {})
@@ -421,6 +424,16 @@ export function App({ project }: AppProps) {
   const listedThreads = feedbackView.session.feedback
   const screenThreads = ownScreenSession.feedback
   const { setDocumentMode, toggleWordWrap } = workspace
+  // The project's Browser tabs and view share their guests (decisions 0184,
+  // 0195). The view follows the Browser tab that shows, else the one shown
+  // last, else the first open, else tab 1.
+  const openBrowserTabs = useMemo(() => browserTabIDs(workspace.tabs), [workspace.tabs])
+  const [lastBrowserTab, setLastBrowserTab] = useState(0)
+  useEffect(() => {
+    if (browserRoute) setLastBrowserTab(browserRoute)
+  }, [browserRoute])
+  const followedBrowserTab = browserRoute || (openBrowserTabs.includes(lastBrowserTab) ? lastBrowserTab : openBrowserTabs[0] ?? 1)
+  const projectBrowser = useProjectBrowser(project, followedBrowserTab, openBrowserTabs)
   const previewPreference = usePreviewPreference(project)
   const { settings } = useSettings()
   const openRemembered = useCallback((tab: WorkspaceTab) => {
@@ -464,6 +477,7 @@ export function App({ project }: AppProps) {
     else if (action.kind === "select-color-theme") openColorTheme.current()
     else if (action.kind === "report-problem") openReport.current()
     else if (action.kind === "browser-location") openBrowserCommand.current(true)
+    else if (action.kind === "browser-new-tab") newBrowserTabCommand.current()
     else if (action.kind === "toggle-word-wrap") {
       if (wordWrap !== null) toggleWordWrap(pageKey, defaultWordWrap)
     } else if (action.kind === "find") findCommands.current?.open()
@@ -710,8 +724,7 @@ export function App({ project }: AppProps) {
     subject: (hash) => listed?.find((commit) => commit.hash === hash)?.subject ?? "",
   }), [defaultBase, listed])
   const listedWalkthroughs = walkthroughs.list.result
-  const browserPage = currentPage(projectBrowser.state, projectBrowser.recent[0] ?? "")
-  const browserTitle = projectBrowser.state?.title ?? ""
+  const browserNames = useMemo(() => browserTabNames(projectBrowser.pages), [projectBrowser.pages])
   const nameScreen = useCallback((id: string, number: number) => {
     for (const feedback of [listedThreads, screenThreads]) {
       if (feedback?.id !== id) continue
@@ -722,7 +735,7 @@ export function App({ project }: AppProps) {
   }, [listedThreads, screenThreads])
   const nameTab = useCallback((tab: WorkspaceTab) => tabName(tab, compareContext,
     (id) => listedWalkthroughs?.find((entry) => entry.id === id)?.title ?? "",
-    () => browserTabName(browserPage, browserTitle), nameScreen), [browserPage, browserTitle, compareContext, listedWalkthroughs, nameScreen])
+    (id) => browserNames.get(id) ?? browserTabName(""), nameScreen), [browserNames, compareContext, listedWalkthroughs, nameScreen])
   // The history entry on screen takes the name its tab shows.
   const historyKey = useRouterState({ select: (state) => entryKey(state.location) })
   useEffect(() => {
@@ -737,33 +750,59 @@ export function App({ project }: AppProps) {
     prepareDocumentNavigation()
     void navigate({ to: "/view", search: tabSearch(project, welcomeTab()), hash: "" })
   }, [navigate, prepareDocumentNavigation, project, welcomeRoute])
-  // openBrowser shows the Browser tab; with focus its address field takes
-  // the keyboard, once the tab has mounted.
-  const { requestFocus: focusBrowser } = projectBrowser
-  const openBrowser = useCallback((focus: boolean) => {
+  // openBrowser shows a Browser tab, the followed one by default; with focus
+  // its address field takes the keyboard, once the tab has mounted.
+  const { requestFocus: focusBrowser, openIn: openGuestPageIn } = projectBrowser
+  const openBrowser = useCallback((focus: boolean, tab = followedBrowserTab) => {
     if (!tabFeatures.browser) return
     if (focus) focusBrowser()
-    if (browserRoute) return
+    if (browserRoute === tab) return
     prepareDocumentNavigation()
-    void navigate({ to: "/view", search: tabSearch(project, browserTab()), hash: "" })
-  }, [browserRoute, focusBrowser, navigate, prepareDocumentNavigation, project, tabFeatures])
+    void navigate({ to: "/view", search: tabSearch(project, browserTab(tab)), hash: "" })
+  }, [browserRoute, focusBrowser, followedBrowserTab, navigate, prepareDocumentNavigation, project, tabFeatures])
+  // openNewBrowserTab opens another Browser tab (decision 0195), on url
+  // when given, else with its address field taking the keyboard. Without a
+  // page per tab, or with every tab open, the followed tab stands in.
+  const openNewBrowserTab = useCallback((url: string | null) => {
+    const tab = tabFeatures.browserTabs ? nextBrowserTab(openBrowserTabs) ?? followedBrowserTab : followedBrowserTab
+    if (url) openGuestPageIn(tab, url)
+    openBrowser(url === null, tab)
+  }, [followedBrowserTab, openBrowser, openBrowserTabs, openGuestPageIn, tabFeatures])
   // Open Location asks for this project's address field, or for that of the
-  // project whose page shows, switching to it first.
-  useBrowserLocation(tabFeatures.browser, useCallback((target: string | null) => {
-    if (target === null || target === project) {
-      openBrowser(true)
+  // project whose page shows, switching to it first; New Tab opens one.
+  useBrowserCommands(tabFeatures.browser, useMemo(() => ({
+    locate(target: string | null, tab: number | null) {
+      if (target === null || target === project) {
+        openBrowser(true, tab ?? followedBrowserTab)
+        return
+      }
+      focusBrowserLater(target)
+      void navigate({ to: "/view", search: tabSearch(target, browserTab(tab ?? 1)), hash: "" })
+    },
+    newTab() {
+      openNewBrowserTab(null)
+    },
+  }), [followedBrowserTab, navigate, openBrowser, openNewBrowserTab, project]))
+  // openBrowserPage shows a page in the followed Browser tab and brings the
+  // tab forward: the page shows only there.
+  const openBrowserPage = useCallback((url: string) => {
+    openGuestPageIn(followedBrowserTab, url)
+    openBrowser(false, followedBrowserTab)
+  }, [followedBrowserTab, openBrowser, openGuestPageIn])
+  // choosePage answers a page chosen in the Browser view (decision 0195): a
+  // new tab when asked, else the tab that shows it already, else the
+  // followed tab.
+  const { pages: browserPages } = projectBrowser
+  const choosePage = useCallback((url: string, newTab: boolean) => {
+    if (newTab) {
+      openNewBrowserTab(url)
       return
     }
-    focusBrowserLater(target)
-    void navigate({ to: "/view", search: tabSearch(target, browserTab()), hash: "" })
-  }, [navigate, openBrowser, project]))
-  // openBrowserPage shows a page in the Browser tab and brings the tab
-  // forward: the page shows only there.
-  const { open: openGuestPage } = projectBrowser
-  const openBrowserPage = useCallback((url: string) => {
-    openGuestPage(url)
-    openBrowser(false)
-  }, [openBrowser, openGuestPage])
+    const showing = browserPages.find((page) => page.id === followedBrowserTab && samePage(page.url, url))
+      ?? browserPages.find((page) => samePage(page.url, url))
+    if (showing) openBrowser(false, showing.id)
+    else openBrowserPage(url)
+  }, [browserPages, followedBrowserTab, openBrowser, openBrowserPage, openNewBrowserTab])
   // Choosing the Browser activity brings the tab forward too: its view
   // lists pages for that tab.
   const browserViewShown = sidebar.visibleView === "browser"
@@ -774,7 +813,8 @@ export function App({ project }: AppProps) {
   }, [browserViewShown, openBrowser])
   useLayoutEffect(() => {
     openWelcomeCommand.current = openWelcome
-    openBrowserCommand.current = openBrowser
+    openBrowserCommand.current = (focus) => openBrowser(focus)
+    newBrowserTabCommand.current = () => openNewBrowserTab(null)
     // The palette command acts on the working-tree file in view; without one
     // it focuses the filter field.
     fileHistoryCommand.current = () => {
@@ -790,7 +830,7 @@ export function App({ project }: AppProps) {
     if (tab.kind === "document") navigateToDocument(tab.path, tab.at)
     else if (tab.kind === "walkthrough") openWalkthrough(tab.id)
     else if (tab.kind === "welcome") openWelcome()
-    else if (tab.kind === "browser") openBrowser(false)
+    else if (tab.kind === "browser") openBrowser(false, tab.id)
     else if (tab.kind === "screen") openThread(screenRoute(project, tab.feedback, tab.thread))
     else openReview(tab.compare, true)
   }, [navigateToDocument, openBrowser, openReview, openThread, openWalkthrough, openWelcome, project])
@@ -954,8 +994,8 @@ export function App({ project }: AppProps) {
     const closed = workspace.closeTabs(tabs, activeTab)
     if (!closed) return
     for (const tab of closed.tabs) if (tab.kind === "document") forgetDocumentScroll(documentKey(tab.path, tab.at))
-    // Closing the Browser tab closes its page (decision 0184).
-    if (closed.tabs.some((tab) => tab.kind === "browser")) projectBrowser.act("close")
+    // Closing a Browser tab closes its page (decisions 0184, 0195).
+    for (const tab of closed.tabs) if (tab.kind === "browser") projectBrowser.close(tab.id)
     if (!activeTab || !includesTab(closed.tabs, activeTab)) return
     if (closed.replacement) {
       selectTab(closed.replacement)
@@ -1098,7 +1138,7 @@ export function App({ project }: AppProps) {
           browser={tabFeatures.browser ? <SidebarBody visible={visibleSidebarView === "browser"}>
             <BrowserView browser={projectBrowser} comments={browserComments} mobile={mobileSidebar} onDismiss={sidebar.dismiss}
               target={{ name: projectName(project), branch: branchFeedback?.branch ?? page.branch, folder: page.projectKind === "folder" }}
-              onOpen={openBrowserPage} onOpenThread={openPageThread} />
+              onOpen={choosePage} onOpenThread={openPageThread} />
           </SidebarBody> : null}
           walkthroughs={<SidebarBody visible={walkthroughsShown}>
             <WalkthroughsView project={project} session={walkthroughs} context={compareContext} mobile={mobileSidebar}

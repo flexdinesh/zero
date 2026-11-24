@@ -22,7 +22,7 @@ import { browserTab, documentTab, reviewTab, screenTab, welcomeTab, type TabFeat
 
 const working = reviewTab({ kind: "working" })
 // every is a window that offers the Browser and screen tabs.
-const every: TabFeatures = { browser: true, screens: true }
+const every: TabFeatures = { browser: true, browserTabs: true, screens: true }
 
 const docs = (...paths: string[]) => paths.map((path) => documentTab(path))
 
@@ -187,14 +187,20 @@ test("Browser and screen tabs restore only where the window offers them (decisio
   const memory: ProjectMemory = { tabs: ["a.md", { browser: true }, { screen: "fb-3k2q8m", thread: 5 }], active: { browser: true } }
   const files = new Set(["a.md"])
   assert.deepEqual(restoreTabs(memory, files, every), { tabs: [documentTab("a.md"), browserTab(), screenTab("fb-3k2q8m", 5)], active: browserTab() })
-  assert.deepEqual(restoreTabs(memory, files, { browser: false, screens: false }), { tabs: [documentTab("a.md")], active: null })
+  assert.deepEqual(restoreTabs(memory, files, { browser: false, browserTabs: false, screens: false }), { tabs: [documentTab("a.md")], active: null })
   // Experimental features without the browser methods keep screen tabs only.
-  assert.deepEqual(restoreTabs(memory, files, { browser: false, screens: true }).tabs, [documentTab("a.md"), screenTab("fb-3k2q8m", 5)])
+  assert.deepEqual(restoreTabs(memory, files, { browser: false, browserTabs: false, screens: true }).tabs, [documentTab("a.md"), screenTab("fb-3k2q8m", 5)])
+})
+
+test("Browser tabs past the first restore only where the app keeps a page per tab (decision 0195)", () => {
+  const memory: ProjectMemory = { tabs: [{ browser: true }, { browser: true, id: 3 }], active: { browser: true, id: 3 } }
+  assert.deepEqual(restoreTabs(memory, new Set(), every), { tabs: [browserTab(), browserTab(3)], active: browserTab(3) })
+  assert.deepEqual(restoreTabs(memory, new Set(), { ...every, browserTabs: false }).tabs, [browserTab()])
 })
 
 test("documents restored before the tree are kept, then the removed ones go", () => {
   const memory = { tabs: ["README.md", "gone.md", { path: "gone.md", at: "a".repeat(40) }], active: "gone.md" }
-  const restored = restoreTabs(memory, null, { browser: true, screens: true })
+  const restored = restoreTabs(memory, null, { browser: true, browserTabs: true, screens: true })
   assert.deepEqual(restored.tabs, [documentTab("README.md"), documentTab("gone.md"), documentTab("gone.md", "a".repeat(40))])
   assert.deepEqual(restored.active, documentTab("gone.md"))
   const files = new Set(["README.md"])

@@ -254,6 +254,26 @@ func TestParseBrowserOpen(t *testing.T) {
 	}
 }
 
+func TestParseBrowserTab(t *testing.T) {
+	for _, value := range []any{1.0, 2.0, float64(MaxBrowserTabs)} {
+		if got, ok := ParseBrowserTab(value); !ok || float64(got) != value {
+			t.Errorf("ParseBrowserTab(%v) = %d, %v", value, got, ok)
+		}
+	}
+	for name, value := range map[string]any{
+		"zero":     0.0,
+		"negative": -1.0,
+		"too many": float64(MaxBrowserTabs + 1),
+		"fraction": 1.5,
+		"text":     "1",
+		"missing":  nil,
+	} {
+		if got, ok := ParseBrowserTab(value); ok {
+			t.Errorf("%s: accepted %d", name, got)
+		}
+	}
+}
+
 func TestParseBrowserProject(t *testing.T) {
 	if got, ok := ParseBrowserProject("/home/u/app"); !ok || got != "/home/u/app" {
 		t.Errorf("ParseBrowserProject = %q, %v", got, ok)

@@ -321,7 +321,9 @@ func NewDiagnostics(version, commit, logDir string, lines, crash []string, home 
 // project's guest, an absolute http or https URL.
 type BrowserOpen struct {
 	Project string
-	URL     string
+	// Tab is the project's Browser tab, set from ParseBrowserTab.
+	Tab int
+	URL string
 }
 
 // ParseBrowserOpen validates browserOpen's payload: an absolute project
@@ -339,6 +341,16 @@ func ParseBrowserOpen(project, pageURL any) (BrowserOpen, bool) {
 	return BrowserOpen{Project: p, URL: checked}, true
 }
 
+// MaxBrowserTabs bounds a project's Browser tabs (decision 0195).
+const MaxBrowserTabs = 99
+
+// ParseBrowserTab validates the tab of the Browser tab's calls (decision
+// 0195): a whole number from 1 to MaxBrowserTabs. The preload passes 1 for
+// a page that names none, as pages before 0195 did.
+func ParseBrowserTab(tab any) (int, bool) {
+	return wholeNumber(tab, 1, MaxBrowserTabs)
+}
+
 // ParseBrowserProject validates a project of the Browser tab's calls: an
 // absolute project directory.
 func ParseBrowserProject(project any) (string, bool) {
@@ -353,7 +365,9 @@ func ParseBrowserProject(project any) (string, bool) {
 // guest.
 type BrowserAction struct {
 	Project string
-	Action  string
+	// Tab is the project's Browser tab, set from ParseBrowserTab.
+	Tab    int
+	Action string
 }
 
 // Browser actions: history moves, loading, closing the guest, and comment
@@ -386,7 +400,9 @@ func ParseBrowserAction(project, action any) (BrowserAction, bool) {
 // BrowserFrame is browserFrame's payload: where a project's guest shows, in
 // CSS pixels of the sender's viewport, or Shown false to hide it.
 type BrowserFrame struct {
-	Project             string
+	Project string
+	// Tab is the project's Browser tab, set from ParseBrowserTab.
+	Tab                 int
 	Shown               bool
 	X, Y, Width, Height float64
 }
@@ -426,6 +442,8 @@ func ParseBrowserFrame(project, frame any) (BrowserFrame, bool) {
 // project's page, and whether they show.
 type BrowserPins struct {
 	Project string
+	// Tab is the project's Browser tab, set from ParseBrowserTab.
+	Tab     int
 	Pins    []review.Pin
 	Visible bool
 }

@@ -8,9 +8,12 @@ import { ViewHeader } from "../../components/ui/view-header.tsx"
 import { useRovingRows } from "../../lib/use-roving-rows.ts"
 import { CommentTarget, type CommentTargetProps } from "../feedback/CommentTarget.tsx"
 import { commentRow, openCount, type PageThread } from "./browser-comments.ts"
-import { pageLabel } from "./review-model.ts"
+import { pageLabel, samePage } from "./review-model.ts"
 import { commentKeys, type BrowserComments } from "./use-browser-comments.ts"
 import type { ProjectBrowser } from "./use-project-browser.ts"
+
+const mac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform)
+const newTabHint = `${mac ? "⌘" : "Ctrl+"}click to open in a new tab`
 
 interface BrowserViewProps {
   browser: ProjectBrowser
@@ -19,25 +22,27 @@ interface BrowserViewProps {
   target: CommentTargetProps
   mobile: boolean
   onDismiss(): void
-  // onOpen shows a page in the project's Browser tab and brings the tab
-  // forward.
-  onOpen(url: string): void
+  // onOpen shows a page in a Browser tab and brings the tab forward: in a
+  // new tab with newTab, else in the tab that shows it already, else in
+  // the tab followed (decision 0195).
+  onOpen(url: string, newTab: boolean): void
   // onOpenThread opens a thread's screen tab.
   onOpenThread(thread: number): void
 }
 
 // BrowserView is the Browser activity (decision 0184): the project's pages,
-// most recent first, with the one its Browser tab shows marked, then the
-// comments on that page, and where comments go. Choosing a page opens it in
-// the tab; choosing a comment opens its thread.
+// most recent first, with the one its Browser tab shows selected and those
+// open in any Browser tab marked (decision 0195), then the comments on that
+// page, and where comments go. Choosing a page opens it, Cmd/Ctrl or a
+// middle click in a new tab; choosing a comment opens its thread.
 export function BrowserView({ browser, comments, mobile, onDismiss, onOpen, onOpenThread, target }: BrowserViewProps) {
-  const { recent, state, forget } = browser
+  const { recent, state, forget, pages, multiple } = browser
   const pagesID = useId()
   const current = state ? recent.indexOf(state.url) : -1
-  const open = (index: number) => {
+  const open = (index: number, newTab = false) => {
     const url = recent[index]
     if (!url) return
-    onOpen(url)
+    onOpen(url, newTab)
     if (mobile) onDismiss()
   }
   const remove = (index: number) => {
@@ -58,18 +63,27 @@ export function BrowserView({ browser, comments, mobile, onDismiss, onOpen, onOp
             </StatusMessage>
           ) : (
             <div ref={container} role="listbox" aria-labelledby={pagesID} onKeyDown={onKeyDown}>
-              {recent.map((url, index) => (
-                <div key={url} className="browser-page-row">
+              {recent.map((url, index) => {
+                const inTab = pages.some((page) => samePage(page.url, url))
+                return (
+                <div key={url} className="browser-page-row" data-open={inTab || undefined}>
                   <ListRow role="option" aria-selected={index === current} selected={index === current}
-                    aria-keyshortcuts="Delete" tabIndex={index === tabIndex ? 0 : -1} className="browser-page" title={url}
-                    onFocus={() => setFocused(index)} onClick={() => open(index)}>
+                    aria-keyshortcuts="Delete" aria-description={inTab ? "Open in a tab" : undefined}
+                    tabIndex={index === tabIndex ? 0 : -1} className="browser-page"
+                    title={multiple ? `${url}\n${newTabHint}` : url}
+                    onFocus={() => setFocused(index)} onClick={(event) => open(index, multiple && (event.metaKey || event.ctrlKey))}
+                    onAuxClick={(event) => {
+                      if (event.button === 1 && multiple) open(index, true)
+                    }}>
                     <AppWindowIcon className="browser-page-icon" aria-hidden="true" />
                     <span className="browser-page-address">{pageLabel(url)}</span>
+                    {inTab && <span className="browser-page-open" aria-hidden="true" />}
                   </ListRow>
                   <IconButton size="xs" className="browser-page-remove" tabIndex={-1} label={`Remove ${pageLabel(url)}`}
                     title="Remove from Pages (Delete)" icon={<XIcon aria-hidden="true" />} onClick={() => remove(index)} />
                 </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </section>

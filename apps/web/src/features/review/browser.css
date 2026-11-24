@@ -130,6 +130,24 @@
   opacity: 1;
 }
 
+/* A page open in a Browser tab (decision 0195): a square mark, as pins are,
+   where the remove button shows, which takes its place on hover and
+   focus. */
+.browser-page-open {
+  position: absolute;
+  top: 50%;
+  right: calc(var(--row-inset-end) + (var(--browser-page-action) - var(--space-2)) / 2);
+  width: var(--space-2);
+  height: var(--space-2);
+  background: var(--color-accent);
+  transform: translateY(-50%);
+}
+
+.browser-page-row:hover .browser-page-open,
+.browser-page-row:focus-within .browser-page-open {
+  visibility: hidden;
+}
+
 /* In the address list the button follows the row's own content. */
 .browser-page-forget {
   flex: none;

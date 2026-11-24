@@ -19,14 +19,14 @@ export interface BrowserStage {
   cover: string | null
 }
 
-// useBrowserStage keeps the desktop app told where project's guest shows
-// (decision 0184): the stage's rectangle while the stage holds the page and
-// no overlay of Zero's is open, measured again whenever the stage resizes or
-// the window does; nothing (hidden) otherwise and once the tab leaves the
-// screen. While an overlay is open the guest's snapshot fills the stage: the
+// useBrowserStage keeps the desktop app told where the guest of project's
+// Browser tab tab shows (decisions 0184, 0195): the stage's rectangle while
+// the stage holds the page and no overlay of Zero's is open, measured again
+// whenever the stage resizes or the window does; nothing (hidden) otherwise
+// and once the tab leaves the screen. While an overlay is open the guest's snapshot fills the stage: the
 // image goes in first, then the guest hides, and coming back the guest shows
 // first and the image leaves a frame later.
-export function useBrowserStage(project: string, page: boolean): BrowserStage {
+export function useBrowserStage(project: string, tab: number, page: boolean): BrowserStage {
   const bridge = useMemo(() => desktopBridge(), [])
   const tell = bridge?.browserFrame ?? null
   const snapshot = bridge?.browserSnapshot ?? null
@@ -36,7 +36,7 @@ export function useBrowserStage(project: string, page: boolean): BrowserStage {
   // null when the app had none.
   const [snap, setSnap] = useState<{ src: string | null } | null>(null)
 
-  const reporter = useMemo(() => tell ? frameReporter((frame) => tell(project, frame), nextFrame) : null, [project, tell])
+  const reporter = useMemo(() => tell ? frameReporter((frame) => tell(project, frame, tab), nextFrame) : null, [project, tab, tell])
   useEffect(() => () => reporter?.close(), [reporter])
 
   useEffect(() => {
@@ -61,7 +61,7 @@ export function useBrowserStage(project: string, page: boolean): BrowserStage {
   useEffect(() => {
     if (plan !== "covered" || !snapshot) return
     let waiting = true
-    void snapshot(project).then((png) => {
+    void snapshot(project, tab).then((png) => {
       // An overlay that closed meanwhile left the guest showing. A guest
       // already hidden has no frame to give: the image it gave last stays.
       if (waiting) setSnap((current) => png ? { src: snapshotURL(png) } : current ?? { src: null })
@@ -69,7 +69,7 @@ export function useBrowserStage(project: string, page: boolean): BrowserStage {
     return () => {
       waiting = false
     }
-  }, [plan, project, snapshot])
+  }, [plan, project, snapshot, tab])
 
   // Coming back, the guest shows first and the image leaves a frame after
   // it; an overlay that opens before then keeps the image.
