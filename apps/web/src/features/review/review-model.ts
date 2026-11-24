@@ -3,8 +3,9 @@
 
 // reviewURL reads what the reviewer typed as the page to open: an
 // absolute http or https URL with a host and no credentials; a bare
-// localhost, dotted host, or host:port takes http. null for anything else. The desktop app checks
-// again.
+// localhost, dotted host, or host:port takes https, or http when
+// defaultsToHTTP says its host is this machine or the local network
+// (decision 0195). null for anything else. The desktop app checks again.
 export function reviewURL(raw: string): string | null {
   const text = raw.trim()
   if (!text || text.length > 2048 || /\s/.test(text)) return null
@@ -13,7 +14,8 @@ export function reviewURL(raw: string): string | null {
   if (!schemed && !/^(?:localhost|[^/?#:]*\.[^/?#:]*|[^/?#:]+:\d+)(?:[:/?#]|$)/i.test(text)) return null
   let parsed: URL
   try {
-    parsed = new URL(schemed ? text : `http://${text}`)
+    parsed = new URL(schemed ? text : `https://${text}`)
+    if (!schemed && defaultsToHTTP(parsed.hostname)) parsed = new URL(`http://${text}`)
   } catch {
     return null
   }
@@ -21,11 +23,28 @@ export function reviewURL(raw: string): string | null {
   return parsed.href
 }
 
-// pageLabel is a page without its scheme: "localhost:5173/settings?tab=2".
+// defaultsToHTTP reports a host a bare address opens over http (decision
+// 0195): this machine (localhost, *.localhost, 127.0.0.0/8, [::1]), a
+// private IPv4 address (10/8, 172.16/12, 192.168/16), or a .local name,
+// where dev servers serve plain http. hostname is a URL's, lowercase.
+export function defaultsToHTTP(hostname: string): boolean {
+  const host = hostname.toLowerCase()
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host === "[::1]") return true
+  const octets = /^(\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/.exec(host)
+  if (!octets) return false
+  const first = Number(octets[1])
+  const second = Number(octets[2])
+  return first === 127 || first === 10 || (first === 172 && second >= 16 && second <= 31) || (first === 192 && second === 168)
+}
+
+// pageLabel is a page without its scheme, "localhost:5173/settings?tab=2",
+// unless the bare label would open another address: then the scheme stays,
+// "http://example.test/", so http and https of one page read apart.
 export function pageLabel(url: string): string {
   try {
     const parsed = new URL(url)
-    return `${parsed.host}${parsed.pathname}${parsed.search}`
+    const bare = `${parsed.host}${parsed.pathname}${parsed.search}`
+    return reviewURL(bare) === `${parsed.origin}${parsed.pathname}${parsed.search}` ? bare : `${parsed.protocol}//${bare}`
   } catch {
     return url
   }
@@ -78,6 +97,14 @@ export function rememberURL(recent: RecentURLs, project: string, url: string): R
   const urls = [url, ...(recent[project] ?? []).filter((each) => each !== url)].slice(0, recentPerProject)
   const { [project]: _previous, ...rest } = recent
   return { ...Object.fromEntries(Object.entries(rest).slice(-(recentProjects - 1))), [project]: urls }
+}
+
+// forgetURL removes url from project's pages (decision 0195); a project
+// left with none is dropped, and the others keep their order.
+export function forgetURL(recent: RecentURLs, project: string, url: string): RecentURLs {
+  return Object.fromEntries(Object.entries(recent)
+    .map(([each, urls]): [string, readonly string[]] => [each, each === project ? urls.filter((kept) => kept !== url) : urls])
+    .filter(([, urls]) => urls.length > 0))
 }
 
 // ReviewChoice is one suggestion under the address field: the typed page,

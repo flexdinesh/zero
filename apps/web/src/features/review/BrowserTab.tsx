@@ -34,7 +34,7 @@ interface BrowserTabProps {
 // Comment puts the page in comment mode, where a click or a drag picks
 // what a comment is about; the app shows the composer beside the pick.
 export function BrowserTab({ browser, comments, project }: BrowserTabProps) {
-  const { state, recent, open, act, registerField } = browser
+  const { state, recent, forget, open, act, registerField } = browser
   const page = currentPage(state, recent[0] ?? "")
   const view = stageView(state)
   const failure = blockingFailure(state)
@@ -70,7 +70,7 @@ export function BrowserTab({ browser, comments, project }: BrowserTabProps) {
           <IconButton label="Reload" icon={<RotateCwIcon aria-hidden="true" />}
             disabledReason={state ? undefined : "No page open"} onClick={() => act("reload")} />
         )}
-        <AddressField page={page} recent={recent} onOpen={open} registerField={registerField} />
+        <AddressField page={page} recent={recent} onOpen={open} onForget={forget} registerField={registerField} />
         {comments.available && <>
           {commenting && <span className="browser-comment-hint" role="status">Click an element or drag a region · Esc to finish</span>}
           <ToggleButton size="text" className="browser-comment-toggle" pressed={commenting} disabledReason={noComment}
@@ -86,7 +86,7 @@ export function BrowserTab({ browser, comments, project }: BrowserTabProps) {
       <RefusedNotice failure={refusedFailure(state)} />
       <div ref={attach} className="browser-stage" data-view={view}>
         {cover && <img className="browser-stage-cover" src={cover} alt="" draggable={false} />}
-        {view === "empty" && <EmptyStage recent={recent} onOpen={open} />}
+        {view === "empty" && <EmptyStage recent={recent} onOpen={open} onForget={forget} />}
         {failure && <FailedStage failure={failure} onRetry={() => {
           if (failure.kind === "crashed") act("reload")
           else open(failure.url || page)
@@ -102,15 +102,18 @@ interface AddressFieldProps {
   page: string
   recent: readonly string[]
   onOpen(url: string): void
+  // onForget removes a remembered page (decision 0195).
+  onForget(url: string): void
   registerField(focus: (() => void) | null): void
 }
 
 // AddressField is the address of the guest's page over the project's recent
 // pages: typing lists the typed page and the recent ones that match, arrows
-// choose, Enter opens, and Escape or leaving the field puts back the
-// address the guest shows. Its list drops over the stage, so it counts as
+// choose, Enter opens, Shift+Delete or a row's remove button forgets a
+// remembered page, and Escape or leaving the field puts back the address
+// the guest shows. Its list drops over the stage, so it counts as
 // an overlay while open.
-function AddressField({ page, recent, onOpen, registerField }: AddressFieldProps) {
+function AddressField({ page, recent, onOpen, onForget, registerField }: AddressFieldProps) {
   const input = useRef<HTMLInputElement>(null)
   // selecting says the field just took the keyboard and selected its text.
   const selecting = useRef(false)
@@ -160,6 +163,9 @@ function AddressField({ page, recent, onOpen, registerField }: AddressFieldProps
       event.preventDefault()
       // An untouched field opens what it shows again.
       go(draft === null ? (page ? { url: page, typed: true } : undefined) : active)
+    } else if (event.key === "Delete" && event.shiftKey && active && !active.typed) {
+      event.preventDefault()
+      onForget(active.url)
     } else if (event.key === "Escape" && draft !== null) {
       event.preventDefault()
       restore()
@@ -235,6 +241,14 @@ function AddressField({ page, recent, onOpen, registerField }: AddressFieldProps
                   <span className="browser-page-address">{pageLabel(choice.url)}</span>
                   {choice.typed && <span className="browser-page-note">Open</span>}
                   {choice === active && <CornerDownLeftIcon className="browser-page-enter" aria-hidden="true" />}
+                  {!choice.typed && (
+                    <IconButton size="xs" className="browser-page-forget" tabIndex={-1} label={`Remove ${pageLabel(choice.url)}`}
+                      title="Remove from Pages (Shift+Delete)" icon={<XIcon aria-hidden="true" />}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        onForget(choice.url)
+                      }} />
+                  )}
                 </ListRow>
               ))}
             </div>
@@ -264,7 +278,7 @@ function RefusedNotice({ failure }: { failure: BrowserFailure | null }) {
 }
 
 // EmptyStage fills the stage before the project has a page open.
-function EmptyStage({ recent, onOpen }: { recent: readonly string[]; onOpen(url: string): void }) {
+function EmptyStage({ recent, onOpen, onForget }: { recent: readonly string[]; onOpen(url: string): void; onForget(url: string): void }) {
   const titleID = useId()
   return (
     <div className="browser-state">
@@ -275,11 +289,13 @@ function EmptyStage({ recent, onOpen }: { recent: readonly string[]; onOpen(url:
           <h3 id={titleID} className="browser-state-label">Recent pages</h3>
           <ul aria-labelledby={titleID}>
             {recent.map((url) => (
-              <li key={url}>
+              <li key={url} className="browser-page-row">
                 <ListButton className="browser-page" title={url} onClick={() => onOpen(url)}>
                   <AppWindowIcon className="browser-page-icon" aria-hidden="true" />
                   <span className="browser-page-address">{pageLabel(url)}</span>
                 </ListButton>
+                <IconButton size="xs" className="browser-page-remove" label={`Remove ${pageLabel(url)}`}
+                  title="Remove from Pages" icon={<XIcon aria-hidden="true" />} onClick={() => onForget(url)} />
               </li>
             ))}
           </ul>

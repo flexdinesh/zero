@@ -317,3 +317,50 @@ test("narrow windows keep the address usable", async ({ page }) => {
   const overflow = await page.getByRole("main").evaluate((element) => element.scrollWidth - element.clientWidth)
   expect(overflow).toBeLessThanOrEqual(0)
 })
+
+test("pages are removed one by one, and http and https of one page read apart (decision 0195)", async ({ page }) => {
+  const remembered = ["https://barneybishop.com/", "http://barneybishop.com/", "http://localhost:5173/settings", "http://localhost:3000/"]
+  await page.addInitScript(({ project, remembered }) => {
+    if (!window.sessionStorage.getItem("seeded")) {
+      window.localStorage.setItem("zero-review-urls", JSON.stringify({ [project]: remembered }))
+      window.sessionStorage.setItem("seeded", "1")
+    }
+  }, { project: gitFixtureRoot, remembered })
+  await openPage(page)
+  await views(page).getByRole("button", { name: /^Browser/ }).click()
+  const pages = page.locator(".browser-view").getByRole("listbox", { name: "Pages" })
+  await expect(pages.getByRole("option")).toHaveText(["barneybishop.com/", "http://barneybishop.com/", "localhost:5173/settings", "localhost:3000/"])
+
+  // The row's button removes it.
+  await pages.getByRole("option", { name: "http://barneybishop.com/", exact: true }).hover()
+  await pages.getByRole("button", { name: "Remove http://barneybishop.com/" }).click()
+  await expect(pages.getByRole("option")).toHaveText(["barneybishop.com/", "localhost:5173/settings", "localhost:3000/"])
+
+  // Delete removes the focused row, and focus moves to the next.
+  await pages.getByRole("option", { name: "barneybishop.com/", exact: true }).focus()
+  await page.keyboard.press("Delete")
+  await expect(pages.getByRole("option")).toHaveText(["localhost:5173/settings", "localhost:3000/"])
+  await expect(pages.getByRole("option", { name: "localhost:5173/settings" })).toBeFocused()
+
+  // Shift+Delete removes the highlighted page under the address field.
+  await address(page).fill("localhost:3000")
+  const list = page.getByRole("main").getByRole("listbox", { name: "Pages" })
+  await expect(list.getByRole("option", { name: "Open http://localhost:3000/, recent" })).toBeVisible()
+  await page.keyboard.press("Shift+Delete")
+  // Forgotten, it is only the typed address now.
+  await expect(list.getByRole("option", { name: "Open http://localhost:3000/", exact: true })).toBeVisible()
+  await page.keyboard.press("Escape")
+  await expect(pages.getByRole("option")).toHaveText(["localhost:5173/settings"])
+  const stored = await page.evaluate(() => window.localStorage.getItem("zero-review-urls"))
+  expect(JSON.parse(stored ?? "null")).toEqual({ [gitFixtureRoot]: ["http://localhost:5173/settings"] })
+})
+
+test("an address without a scheme opens over https, except on this machine or the local network (decision 0195)", async ({ page }) => {
+  await openPage(page)
+  await address(page).fill("barneybishop.com")
+  await page.keyboard.press("Enter")
+  await expect.poll(async () => (await calls(page, "open")).at(-1)).toEqual(["open", gitFixtureRoot, "https://barneybishop.com/"])
+  await address(page).fill("192.168.1.20:5173")
+  await page.keyboard.press("Enter")
+  await expect.poll(async () => (await calls(page, "open")).at(-1)).toEqual(["open", gitFixtureRoot, "http://192.168.1.20:5173/"])
+})
