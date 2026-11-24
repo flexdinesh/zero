@@ -1018,12 +1018,13 @@ func TestWebViewApp(t *testing.T) {
 		}))
 		defer site.Close()
 
-		// The activity opens the project's Browser tab, empty.
+		// The activity opens the project's Browser tab with no page: empty,
+		// or offering again a page an earlier launch showed (decision 0195).
 		shell.waitEval("the Browser activity", `const button = [...document.querySelectorAll('nav[aria-label="Views"] button')].find((each) => (each.getAttribute("aria-label") ?? "").startsWith("Browser"))
 			if (!button) return false
 			button.click()
 			return true`)
-		shell.waitEval("the empty Browser tab", `return document.querySelector(".browser-stage")?.dataset.view === "empty" && document.querySelector('input[aria-label="Page address"]') !== null`)
+		shell.waitEval("the Browser tab without a page", `return ["empty", "closed"].includes(document.querySelector(".browser-stage")?.dataset.view) && document.querySelector('input[aria-label="Page address"]') !== null`)
 		if shown := shell.shown(); shown.Project != "" || shown.Guests != 0 {
 			t.Errorf("before an address the window shows %+v", shown)
 		}
